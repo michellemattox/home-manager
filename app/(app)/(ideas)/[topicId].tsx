@@ -5,9 +5,9 @@ import {
   FlatList,
   TouchableOpacity,
   TextInput,
-  Alert,
   RefreshControl,
 } from "react-native";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { impactLight } from "@/lib/haptics";
@@ -91,20 +91,17 @@ export default function TopicIdeasScreen() {
       });
       setNewIdeaText("");
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     }
   };
 
   const handleDelete = (idea: Idea) => {
-    Alert.alert("Delete idea?", undefined, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () =>
-          deleteIdea.mutate({ id: idea.id, topicId: idea.topic_id }),
-      },
-    ]);
+    showConfirm(
+      "Delete idea?",
+      undefined,
+      () => deleteIdea.mutate({ id: idea.id, topicId: idea.topic_id }),
+      true
+    );
   };
 
   return (

@@ -4,9 +4,9 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
   Share,
 } from "react-native";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -24,14 +24,12 @@ export default function SettingsScreen() {
   const [inviteLoading, setInviteLoading] = useState(false);
 
   const handleSignOut = async () => {
-    Alert.alert("Sign out?", "You'll need to sign in again.", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: () => supabase.auth.signOut(),
-      },
-    ]);
+    showConfirm(
+      "Sign out?",
+      "You'll need to sign in again.",
+      () => supabase.auth.signOut(),
+      true
+    );
   };
 
   const handleInvite = async () => {
@@ -45,7 +43,7 @@ export default function SettingsScreen() {
         title: "Home Manager Invite",
       });
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     } finally {
       setInviteLoading(false);
     }

@@ -15,6 +15,7 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import { useIdeaTopics, useCreateIdeaTopic } from "@/hooks/useIdeas";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { Button } from "@/components/ui/Button";
+import { showAlert, showConfirm } from "@/lib/alert";
 import type { IdeaTopic } from "@/types/app.types";
 
 const TOPIC_COLORS = [
@@ -59,7 +60,7 @@ export default function IdeasScreen() {
       setTopicName("");
       setShowModal(false);
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     }
   };
 

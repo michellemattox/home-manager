@@ -13,6 +13,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useCreateRecurringTask } from "@/hooks/useRecurringTasks";
 import { TASK_CATEGORIES, type FrequencyType } from "@/types/app.types";
@@ -77,7 +78,7 @@ export default function NewTaskScreen() {
       });
       router.back();
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     }
   };
 

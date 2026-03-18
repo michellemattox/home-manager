@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -13,9 +12,9 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { WebForm } from "@/components/ui/WebForm";
 import { useCreateHousehold } from "@/hooks/useHousehold";
 import { useAuthStore } from "@/stores/authStore";
-import { useHouseholdStore } from "@/stores/householdStore";
 
 const schema = z.object({
   householdName: z.string().min(1, "Enter a household name"),
@@ -28,8 +27,8 @@ type FormData = z.infer<typeof schema>;
 export default function OnboardingScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
-  const { setHousehold, setCurrentMember, setMembers } = useHouseholdStore();
   const createHousehold = useCreateHousehold();
+  const [error, setError] = useState<string | null>(null);
 
   const {
     control,
@@ -39,8 +38,9 @@ export default function OnboardingScreen() {
 
   const onSubmit = async (data: FormData) => {
     if (!user) return;
+    setError(null);
     try {
-      const household = await createHousehold.mutateAsync({
+      await createHousehold.mutateAsync({
         name: data.householdName,
         zipCode: data.zipCode,
         userId: user.id,
@@ -48,7 +48,7 @@ export default function OnboardingScreen() {
       });
       router.replace("/(app)/(tasks)");
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      setError(e.message);
     }
   };
 
@@ -70,61 +70,69 @@ export default function OnboardingScreen() {
           </Text>
         </View>
 
-        <Controller
-          control={control}
-          name="displayName"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Your Name"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              autoCapitalize="words"
-              error={errors.displayName?.message}
-              placeholder="e.g. Sarah"
-            />
-          )}
-        />
+        {error && (
+          <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+            <Text className="text-red-600 text-sm">{error}</Text>
+          </View>
+        )}
 
-        <Controller
-          control={control}
-          name="householdName"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Household Name"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              autoCapitalize="words"
-              error={errors.householdName?.message}
-              placeholder="e.g. The Johnson Home"
-            />
-          )}
-        />
+        <WebForm onSubmit={handleSubmit(onSubmit)}>
+          <Controller
+            control={control}
+            name="displayName"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="Your Name"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                autoCapitalize="words"
+                error={errors.displayName?.message}
+                placeholder="e.g. Sarah"
+              />
+            )}
+          />
 
-        <Controller
-          control={control}
-          name="zipCode"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="ZIP Code"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              keyboardType="number-pad"
-              error={errors.zipCode?.message}
-              placeholder="e.g. 90210"
-              hint="Used to find local vendors"
-            />
-          )}
-        />
+          <Controller
+            control={control}
+            name="householdName"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="Household Name"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                autoCapitalize="words"
+                error={errors.householdName?.message}
+                placeholder="e.g. The Johnson Home"
+              />
+            )}
+          />
 
-        <Button
-          title="Create Household"
-          onPress={handleSubmit(onSubmit)}
-          loading={createHousehold.isPending}
-          className="mt-4"
-        />
+          <Controller
+            control={control}
+            name="zipCode"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="ZIP Code"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                keyboardType="number-pad"
+                error={errors.zipCode?.message}
+                placeholder="e.g. 90210"
+                hint="Used to find local vendors"
+              />
+            )}
+          />
+
+          <Button
+            title="Create Household"
+            onPress={handleSubmit(onSubmit)}
+            loading={createHousehold.isPending}
+            className="mt-4"
+          />
+        </WebForm>
       </ScrollView>
     </KeyboardAvoidingView>
   );

@@ -17,6 +17,7 @@ import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { MemberAvatar, MemberAvatarGroup } from "@/components/ui/MemberAvatar";
 import { formatDateTime, formatDate } from "@/utils/dateUtils";
 
@@ -71,7 +72,7 @@ export default function ProjectDetailScreen() {
       setUpdateText("");
       setShowUpdateModal(false);
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     }
   };
 

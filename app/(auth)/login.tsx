@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -26,6 +25,7 @@ type FormData = z.infer<typeof schema>;
 export default function LoginScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const {
     control,
@@ -34,10 +34,11 @@ export default function LoginScreen() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const onLogin = async (data: FormData) => {
+    setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword(data);
+    const { error: signInError } = await supabase.auth.signInWithPassword(data);
     setLoading(false);
-    if (error) Alert.alert("Login failed", error.message);
+    if (signInError) setError(signInError.message);
   };
 
   return (
@@ -56,6 +57,12 @@ export default function LoginScreen() {
           </Text>
           <Text className="text-gray-500 mt-1">Sign in to your account</Text>
         </View>
+
+        {error && (
+          <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+            <Text className="text-red-600 text-sm">{error}</Text>
+          </View>
+        )}
 
         <WebForm onSubmit={handleSubmit(onLogin)}>
           <Controller
@@ -86,7 +93,7 @@ export default function LoginScreen() {
                 onChangeText={onChange}
                 onBlur={onBlur}
                 secureTextEntry
-                autoComplete="current-password"
+                autoComplete="password"
                 error={errors.password?.message}
                 placeholder="••••••••"
               />

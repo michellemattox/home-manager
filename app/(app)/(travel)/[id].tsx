@@ -5,8 +5,8 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
-  Alert,
 } from "react-native";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { impactLight } from "@/lib/haptics";
@@ -102,7 +102,7 @@ export default function TripDetailScreen() {
       });
       setNewTaskTitle("");
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     }
   };
 
@@ -112,14 +112,12 @@ export default function TripDetailScreen() {
   };
 
   const handleDelete = (task: TripTask) => {
-    Alert.alert("Delete task?", `Remove "${task.title}"?`, [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Delete",
-        style: "destructive",
-        onPress: () => deleteTask.mutate({ taskId: task.id, tripId: task.trip_id }),
-      },
-    ]);
+    showConfirm(
+      "Delete task?",
+      `Remove "${task.title}"?`,
+      () => deleteTask.mutate({ taskId: task.id, tripId: task.trip_id }),
+      true
+    );
   };
 
   if (!trip) return null;

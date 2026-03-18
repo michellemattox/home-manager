@@ -4,8 +4,8 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from "react-native";
+import { showAlert } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -25,15 +25,10 @@ export default function VendorsScreen() {
 
   const handleOpen = (url: string) => {
     if (!zipCode) {
-      Alert.alert(
-        "No ZIP Code",
-        "Add your ZIP code in Settings to search nearby vendors."
-      );
+      showAlert("No ZIP Code", "Add your ZIP code in Settings to search nearby vendors.");
       return;
     }
-    Linking.openURL(url).catch(() =>
-      Alert.alert("Error", "Could not open link")
-    );
+    Linking.openURL(url).catch(() => showAlert("Error", "Could not open link"));
   };
 
   return (

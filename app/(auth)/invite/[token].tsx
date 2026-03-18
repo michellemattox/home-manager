@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from "react";
-import { View, Text, Alert, ActivityIndicator } from "react-native";
+import { View, Text,  ActivityIndicator } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { showAlert, showConfirm } from "@/lib/alert";
 import { useAcceptInvite } from "@/hooks/useHousehold";
 import { useAuthStore } from "@/stores/authStore";
 
@@ -37,7 +38,7 @@ export default function InviteScreen() {
       });
       router.replace("/(app)/(tasks)");
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     }
   };
 

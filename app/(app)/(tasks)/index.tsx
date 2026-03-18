@@ -5,8 +5,8 @@ import {
   FlatList,
   TouchableOpacity,
   RefreshControl,
-  Alert,
 } from "react-native";
+import { showAlert } from "@/lib/alert";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationSuccess } from "@/lib/haptics";
@@ -82,7 +82,7 @@ export default function TasksScreen() {
         completedBy: currentMember.id,
       });
     } catch (e: any) {
-      Alert.alert("Error", e.message);
+      showAlert("Error", e.message);
     }
   };
 

@@ -5,7 +5,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -32,6 +31,8 @@ type FormData = z.infer<typeof schema>;
 export default function SignupScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
 
   const {
     control,
@@ -40,20 +41,19 @@ export default function SignupScreen() {
   } = useForm<FormData>({ resolver: zodResolver(schema) });
 
   const onSignup = async (data: FormData) => {
+    setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+    const { error: signUpError } = await supabase.auth.signUp({
       email: data.email,
       password: data.password,
     });
     setLoading(false);
-    if (error) {
-      Alert.alert("Sign up failed", error.message);
+
+    if (signUpError) {
+      setError(signUpError.message);
     } else {
-      Alert.alert(
-        "Account created!",
-        "You can now sign in and set up your household.",
-        [{ text: "OK", onPress: () => router.replace("/(auth)/login") }]
-      );
+      setSuccess(true);
+      setTimeout(() => router.replace("/(auth)/login"), 1500);
     }
   };
 
@@ -72,6 +72,20 @@ export default function SignupScreen() {
             Set up your Home Manager account
           </Text>
         </View>
+
+        {error && (
+          <View className="bg-red-50 border border-red-200 rounded-xl px-4 py-3 mb-4">
+            <Text className="text-red-600 text-sm">{error}</Text>
+          </View>
+        )}
+
+        {success && (
+          <View className="bg-green-50 border border-green-200 rounded-xl px-4 py-3 mb-4">
+            <Text className="text-green-600 text-sm font-medium">
+              Account created! Redirecting to sign in…
+            </Text>
+          </View>
+        )}
 
         <WebForm onSubmit={handleSubmit(onSignup)}>
           <Controller
@@ -102,7 +116,7 @@ export default function SignupScreen() {
                 onChangeText={onChange}
                 onBlur={onBlur}
                 secureTextEntry
-                autoComplete="new-password"
+                autoComplete="password"
                 error={errors.password?.message}
                 placeholder="••••••••"
               />
@@ -119,7 +133,7 @@ export default function SignupScreen() {
                 onChangeText={onChange}
                 onBlur={onBlur}
                 secureTextEntry
-                autoComplete="new-password"
+                autoComplete="password"
                 error={errors.confirmPassword?.message}
                 placeholder="••••••••"
               />
