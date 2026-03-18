@@ -11,29 +11,16 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
+import { DateInput } from "@/components/ui/DateInput";
 import { Button } from "@/components/ui/Button";
 import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCreateProject } from "@/hooks/useProjects";
+import { useServiceRecords } from "@/hooks/useServices";
 import { displayToCents } from "@/utils/currencyUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority } from "@/types/app.types";
-
-// Accepts MM/DD/YYYY or YYYY-MM-DD, returns YYYY-MM-DD or null
-function parseDateInput(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  // Already ISO
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  // MM/DD/YYYY
-  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (match) {
-    const [, m, d, y] = match;
-    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-  }
-  return null;
-}
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -42,8 +29,11 @@ const schema = z.object({
   priority: z.enum(["low", "medium", "high"]),
   ownerIds: z.array(z.string()),
   category: z.string().optional(),
-  dueDate: z.string().optional(),
-  estimatedCost: z.string().optional(),
+  dueDate: z.string().optional(),        // ISO YYYY-MM-DD or ""
+  estimatedCost: z.string().optional(),  // display dollars
+  totalCost: z.string().optional(),      // display dollars
+  contractorName: z.string().optional(),
+  notes: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -65,12 +55,22 @@ export default function NewProjectScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const createProject = useCreateProject();
+  const { data: serviceRecords } = useServiceRecords(household?.id);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
+
+  // Unique vendor names for quick-pick
+  const vendorNames = React.useMemo(() => {
+    const names = new Set<string>();
+    (serviceRecords ?? []).forEach((r) => names.add(r.vendor_name));
+    return Array.from(names).sort();
+  }, [serviceRecords]);
 
   const {
     control,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -78,25 +78,23 @@ export default function NewProjectScreen() {
       status: "planned",
       priority: "medium",
       ownerIds: currentMember ? [currentMember.id] : [],
-      category: undefined,
       dueDate: "",
       estimatedCost: "",
+      totalCost: "",
+      contractorName: "",
+      notes: "",
     },
   });
+
+  const contractorName = watch("contractorName");
 
   const onSubmit = async (data: FormData) => {
     if (!household || !currentMember) return;
 
-    const isoDate = data.dueDate ? parseDateInput(data.dueDate) : null;
-    if (data.dueDate && !isoDate) {
-      showAlert("Invalid date", "Use MM/DD/YYYY format, e.g. 06/15/2025");
-      return;
-    }
-
     const estimatedCents =
-      data.estimatedCost && data.estimatedCost.trim()
-        ? displayToCents(data.estimatedCost)
-        : 0;
+      data.estimatedCost?.trim() ? displayToCents(data.estimatedCost) : 0;
+    const totalCents =
+      data.totalCost?.trim() ? displayToCents(data.totalCost) : 0;
 
     try {
       await createProject.mutateAsync({
@@ -106,9 +104,12 @@ export default function NewProjectScreen() {
           description: data.description ?? null,
           status: data.status,
           priority: data.priority,
-          expected_date: isoDate,
+          expected_date: data.dueDate || null,
           category: data.category ?? null,
           estimated_cost_cents: estimatedCents,
+          total_cost_cents: totalCents,
+          contractor_name: data.contractorName?.trim() || null,
+          notes: data.notes?.trim() || null,
           created_by: currentMember.id,
         },
         ownerIds: data.ownerIds,
@@ -130,10 +131,7 @@ export default function NewProjectScreen() {
         </Text>
       </View>
 
-      <ScrollView
-        contentContainerClassName="px-4 py-4"
-        keyboardShouldPersistTaps="handled"
-      >
+      <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
         <Controller
           control={control}
           name="title"
@@ -177,16 +175,10 @@ export default function NewProjectScreen() {
                   key={cat}
                   onPress={() => onChange(value === cat ? undefined : cat)}
                   className={`px-3 py-1.5 rounded-full border ${
-                    value === cat
-                      ? "bg-indigo-600 border-indigo-600"
-                      : "bg-white border-gray-200"
+                    value === cat ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text
-                    className={`text-sm font-medium ${
-                      value === cat ? "text-white" : "text-gray-600"
-                    }`}
-                  >
+                  <Text className={`text-sm font-medium ${value === cat ? "text-white" : "text-gray-600"}`}>
                     {cat}
                   </Text>
                 </TouchableOpacity>
@@ -207,16 +199,10 @@ export default function NewProjectScreen() {
                   key={s.value}
                   onPress={() => onChange(s.value)}
                   className={`px-3 py-1.5 rounded-xl border flex-1 items-center ${
-                    value === s.value
-                      ? "bg-blue-600 border-blue-600"
-                      : "bg-white border-gray-200"
+                    value === s.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text
-                    className={`text-sm font-medium ${
-                      value === s.value ? "text-white" : "text-gray-700"
-                    }`}
-                  >
+                  <Text className={`text-sm font-medium ${value === s.value ? "text-white" : "text-gray-700"}`}>
                     {s.label}
                   </Text>
                 </TouchableOpacity>
@@ -237,16 +223,10 @@ export default function NewProjectScreen() {
                   key={p.value}
                   onPress={() => onChange(p.value)}
                   className={`px-3 py-1.5 rounded-xl border flex-1 items-center ${
-                    value === p.value
-                      ? "bg-blue-600 border-blue-600"
-                      : "bg-white border-gray-200"
+                    value === p.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text
-                    className={`text-sm font-medium ${
-                      value === p.value ? "text-white" : "text-gray-700"
-                    }`}
-                  >
+                  <Text className={`text-sm font-medium ${value === p.value ? "text-white" : "text-gray-700"}`}>
                     {p.label}
                   </Text>
                 </TouchableOpacity>
@@ -259,32 +239,94 @@ export default function NewProjectScreen() {
         <Controller
           control={control}
           name="dueDate"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
+          render={({ field: { onChange, value } }) => (
+            <DateInput
               label="Due Date (optional)"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              placeholder="MM/DD/YYYY"
-              keyboardType="numbers-and-punctuation"
+              value={value ?? ""}
+              onChange={onChange}
               hint="When do you want this done by?"
             />
           )}
         />
 
-        {/* Estimated Cost */}
+        {/* Budget */}
         <Controller
           control={control}
           name="estimatedCost"
           render={({ field: { onChange, value, onBlur } }) => (
             <Input
-              label="Estimated Cost (optional)"
+              label="Budget / Estimated Cost (optional)"
               value={value}
               onChangeText={onChange}
               onBlur={onBlur}
               placeholder="0.00"
               keyboardType="decimal-pad"
-              hint="Your budget for this project"
+            />
+          )}
+        />
+
+        {/* Total / Actual Cost */}
+        <Controller
+          control={control}
+          name="totalCost"
+          render={({ field: { onChange, value, onBlur } }) => (
+            <Input
+              label="Total Cost — Actual (optional)"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              hint="Enter when known; compared against budget"
+            />
+          )}
+        />
+
+        {/* Contractor */}
+        <Controller
+          control={control}
+          name="contractorName"
+          render={({ field: { onChange, value, onBlur } }) => (
+            <Input
+              label="Contractor / Vendor (optional)"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              placeholder="e.g. ABC Plumbing"
+            />
+          )}
+        />
+        {vendorNames.length > 0 && (
+          <View className="flex-row flex-wrap gap-2 mb-4 -mt-2">
+            {vendorNames.map((name) => (
+              <TouchableOpacity
+                key={name}
+                onPress={() => setValue("contractorName", contractorName === name ? "" : name)}
+                className={`px-3 py-1 rounded-full border ${
+                  contractorName === name ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-xs font-medium ${contractorName === name ? "text-white" : "text-gray-600"}`}>
+                  {name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
+
+        {/* Notes */}
+        <Controller
+          control={control}
+          name="notes"
+          render={({ field: { onChange, value, onBlur } }) => (
+            <Input
+              label="Notes (optional)"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              multiline
+              numberOfLines={4}
+              placeholder="Paint color codes, model numbers, permit info..."
             />
           )}
         />
@@ -302,23 +344,13 @@ export default function NewProjectScreen() {
                   <TouchableOpacity
                     key={m.id}
                     onPress={() =>
-                      onChange(
-                        selected
-                          ? value.filter((id) => id !== m.id)
-                          : [...value, m.id]
-                      )
+                      onChange(selected ? value.filter((id) => id !== m.id) : [...value, m.id])
                     }
                     className={`px-3 py-1.5 rounded-full border ${
-                      selected
-                        ? "bg-blue-600 border-blue-600"
-                        : "bg-white border-gray-200"
+                      selected ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                     }`}
                   >
-                    <Text
-                      className={`text-sm font-medium ${
-                        selected ? "text-white" : "text-gray-700"
-                      }`}
-                    >
+                    <Text className={`text-sm font-medium ${selected ? "text-white" : "text-gray-700"}`}>
                       {m.display_name}
                     </Text>
                   </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -16,32 +16,27 @@ import {
   useUpdateProject,
   useDeleteProject,
 } from "@/hooks/useProjects";
+import {
+  useAddProjectTask,
+  useToggleProjectTask,
+  useDeleteProjectTask,
+} from "@/hooks/useProjectTasks";
+import { useServiceRecords } from "@/hooks/useServices";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
+import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { MemberAvatar, MemberAvatarGroup } from "@/components/ui/MemberAvatar";
 import { formatDateTime, formatDate } from "@/utils/dateUtils";
 import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
-import type { ProjectStatus, ProjectPriority } from "@/types/app.types";
-
-// Accepts MM/DD/YYYY or YYYY-MM-DD, returns YYYY-MM-DD or null
-function parseDateInput(input: string): string | null {
-  const trimmed = input.trim();
-  if (!trimmed) return null;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
-  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
-  if (match) {
-    const [, m, d, y] = match;
-    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-  }
-  return null;
-}
+import type { ProjectStatus, ProjectPriority, ProjectTask } from "@/types/app.types";
 
 function isoToDisplay(iso: string): string {
+  if (!iso) return "";
   const [y, m, d] = iso.split("-");
   return `${m}/${d}/${y}`;
 }
@@ -54,12 +49,7 @@ const STATUS_CONFIG: Record<ProjectStatus, { label: string; variant: any }> = {
   finished: { label: "Finished", variant: "success" },
 };
 
-const EDITABLE_STATUSES: ProjectStatus[] = [
-  "planned",
-  "in_progress",
-  "on_hold",
-  "finished",
-];
+const EDITABLE_STATUSES: ProjectStatus[] = ["planned", "in_progress", "on_hold", "finished"];
 
 const PRIORITIES: { label: string; value: ProjectPriority }[] = [
   { label: "Low", value: "low" },
@@ -67,16 +57,65 @@ const PRIORITIES: { label: string; value: ProjectPriority }[] = [
   { label: "High", value: "high" },
 ];
 
+function BudgetRow({ budget, total }: { budget: number; total: number }) {
+  if (budget === 0 && total === 0) return null;
+  const diff = total - budget;
+  const pct = budget > 0 ? Math.round(Math.abs(diff) / budget * 100) : null;
+
+  return (
+    <View className="gap-1 pt-2 border-t border-gray-100 mt-2">
+      {budget > 0 && (
+        <View className="flex-row justify-between">
+          <Text className="text-xs text-gray-500">Budget</Text>
+          <Text className="text-xs font-medium text-gray-700">{centsToDisplay(budget)}</Text>
+        </View>
+      )}
+      {total > 0 && (
+        <View className="flex-row justify-between">
+          <Text className="text-xs text-gray-500">Total Cost</Text>
+          <Text className="text-xs font-medium text-gray-700">{centsToDisplay(total)}</Text>
+        </View>
+      )}
+      {budget > 0 && total > 0 && diff !== 0 && (
+        <View className="flex-row justify-between items-center mt-1">
+          <Text className={`text-xs font-semibold ${diff > 0 ? "text-red-500" : "text-green-600"}`}>
+            {diff > 0 ? "Over budget" : "Under budget"}
+          </Text>
+          <Text className={`text-xs font-semibold ${diff > 0 ? "text-red-500" : "text-green-600"}`}>
+            {centsToDisplay(Math.abs(diff))}{pct !== null ? ` (${pct}%)` : ""}
+          </Text>
+        </View>
+      )}
+      {budget > 0 && total > 0 && diff === 0 && (
+        <Text className="text-xs text-green-600 font-medium text-right">On budget</Text>
+      )}
+    </View>
+  );
+}
+
 export default function ProjectDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const { data: project, isLoading, refetch } = useProject(id);
-  const { members } = useHouseholdStore();
+  const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const addUpdate = useAddProjectUpdate();
   const editUpdate = useEditProjectUpdate();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
+  const addTask = useAddProjectTask();
+  const toggleTask = useToggleProjectTask();
+  const deleteTask = useDeleteProjectTask();
+  const { data: serviceRecords } = useServiceRecords(household?.id);
+
+  const currentMember = members.find((m) => m.user_id === user?.id);
+
+  // Vendor names for contractor quick-pick in edit modal
+  const vendorNames = React.useMemo(() => {
+    const names = new Set<string>();
+    (serviceRecords ?? []).forEach((r) => names.add(r.vendor_name));
+    return Array.from(names).sort();
+  }, [serviceRecords]);
 
   // Add update modal
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -86,81 +125,71 @@ export default function ProjectDetailScreen() {
   const [editingUpdate, setEditingUpdate] = useState<{ id: string; body: string } | null>(null);
   const [editUpdateText, setEditUpdateText] = useState("");
 
-  // Edit project modal
+  // Inline task add
+  const [newTaskText, setNewTaskText] = useState("");
+
+  // Edit project modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState<ProjectPriority>("medium");
   const [editCategory, setEditCategory] = useState<string | undefined>(undefined);
   const [editDueDate, setEditDueDate] = useState("");
-  const [editCost, setEditCost] = useState("");
-
-  const currentMember = members.find((m) => m.user_id === user?.id);
+  const [editBudget, setEditBudget] = useState("");
+  const [editTotalCost, setEditTotalCost] = useState("");
+  const [editContractor, setEditContractor] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   // Realtime subscription
   useEffect(() => {
     if (!id) return;
     const channel = supabase
       .channel(`project_updates:${id}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "project_updates", filter: `project_id=eq.${id}` },
-        () => refetch()
-      )
+      .on("postgres_changes", {
+        event: "INSERT",
+        schema: "public",
+        table: "project_updates",
+        filter: `project_id=eq.${id}`,
+      }, () => refetch())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id]);
 
-  // Seed edit fields when modal opens
+  // Seed edit modal
   useEffect(() => {
     if (showEditModal && project) {
       setEditTitle(project.title);
       setEditDescription(project.description ?? "");
       setEditPriority(project.priority as ProjectPriority);
       setEditCategory(project.category ?? undefined);
-      setEditDueDate(project.expected_date ? isoToDisplay(project.expected_date) : "");
-      setEditCost(project.estimated_cost_cents ? (project.estimated_cost_cents / 100).toFixed(2) : "");
+      setEditDueDate(project.expected_date ?? "");
+      setEditBudget(project.estimated_cost_cents ? (project.estimated_cost_cents / 100).toFixed(2) : "");
+      setEditTotalCost(project.total_cost_cents ? (project.total_cost_cents / 100).toFixed(2) : "");
+      setEditContractor(project.contractor_name ?? "");
+      setEditNotes(project.notes ?? "");
     }
   }, [showEditModal]);
 
   const handleAddUpdate = async () => {
     if (!updateText.trim() || !currentMember || !id) return;
     try {
-      await addUpdate.mutateAsync({
-        project_id: id,
-        author_id: currentMember.id,
-        body: updateText.trim(),
-      });
+      await addUpdate.mutateAsync({ project_id: id, author_id: currentMember.id, body: updateText.trim() });
       setUpdateText("");
       setShowUpdateModal(false);
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    }
+    } catch (e: any) { showAlert("Error", e.message); }
   };
 
   const handleSaveEditUpdate = async () => {
     if (!editingUpdate || !editUpdateText.trim()) return;
     try {
-      await editUpdate.mutateAsync({
-        id: editingUpdate.id,
-        body: editUpdateText.trim(),
-        projectId: id!,
-      });
+      await editUpdate.mutateAsync({ id: editingUpdate.id, body: editUpdateText.trim(), projectId: id! });
       setEditingUpdate(null);
       setEditUpdateText("");
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    }
+    } catch (e: any) { showAlert("Error", e.message); }
   };
 
   const handleSaveEditProject = async () => {
     if (!editTitle.trim() || !id) return;
-    const isoDate = editDueDate ? parseDateInput(editDueDate) : null;
-    if (editDueDate && !isoDate) {
-      showAlert("Invalid date", "Use MM/DD/YYYY format");
-      return;
-    }
-    const estimatedCents = editCost.trim() ? displayToCents(editCost) : 0;
     try {
       await updateProject.mutateAsync({
         id,
@@ -169,14 +198,15 @@ export default function ProjectDetailScreen() {
           description: editDescription.trim() || null,
           priority: editPriority,
           category: editCategory ?? null,
-          expected_date: isoDate,
-          estimated_cost_cents: estimatedCents,
+          expected_date: editDueDate || null,
+          estimated_cost_cents: editBudget.trim() ? displayToCents(editBudget) : 0,
+          total_cost_cents: editTotalCost.trim() ? displayToCents(editTotalCost) : 0,
+          contractor_name: editContractor.trim() || null,
+          notes: editNotes.trim() || null,
         },
       });
       setShowEditModal(false);
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    }
+    } catch (e: any) { showAlert("Error", e.message); }
   };
 
   const handleStatusChange = async (newStatus: ProjectStatus) => {
@@ -189,26 +219,32 @@ export default function ProjectDetailScreen() {
     }
     try {
       await updateProject.mutateAsync({ id, updates });
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    }
+    } catch (e: any) { showAlert("Error", e.message); }
   };
 
   const handleDelete = () => {
     if (!project) return;
     showConfirm(
       "Delete project?",
-      `"${project.title}" and all its updates will be permanently removed.`,
+      `"${project.title}" and all its data will be permanently removed.`,
       async () => {
         try {
           await deleteProject.mutateAsync({ id: project.id, householdId: project.household_id });
           router.back();
-        } catch (e: any) {
-          showAlert("Error", e.message);
-        }
+        } catch (e: any) { showAlert("Error", e.message); }
       },
       true
     );
+  };
+
+  const handleAddTask = async () => {
+    if (!newTaskText.trim() || !id) return;
+    const sortedTasks = [...(project?.project_tasks ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+    const nextOrder = sortedTasks.length > 0 ? sortedTasks[sortedTasks.length - 1].sort_order + 1 : 0;
+    try {
+      await addTask.mutateAsync({ project_id: id, title: newTaskText.trim(), sort_order: nextOrder });
+      setNewTaskText("");
+    } catch (e: any) { showAlert("Error", e.message); }
   };
 
   if (!project) return null;
@@ -220,6 +256,12 @@ export default function ProjectDetailScreen() {
   const sortedUpdates = [...(project.project_updates ?? [])].sort(
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
+
+  const sortedTasks: ProjectTask[] = [...((project as any).project_tasks ?? [])].sort(
+    (a: ProjectTask, b: ProjectTask) => a.sort_order - b.sort_order
+  );
+
+  const completedTasks = sortedTasks.filter((t) => t.is_completed).length;
 
   const isFinished = project.status === "finished" || project.status === "completed";
   const sc = STATUS_CONFIG[project.status];
@@ -254,30 +296,21 @@ export default function ProjectDetailScreen() {
                 label={project.priority.charAt(0).toUpperCase() + project.priority.slice(1)}
                 variant={project.priority === "high" ? "danger" : project.priority === "medium" ? "warning" : "default"}
               />
-              {project.category && (
-                <Badge label={project.category} variant="default" />
-              )}
+              {project.category && <Badge label={project.category} variant="default" />}
             </View>
             <MemberAvatarGroup members={owners} />
           </View>
 
-          {project.description && (
+          {project.description ? (
             <Text className="text-gray-600 mb-3">{project.description}</Text>
-          )}
+          ) : null}
 
-          {/* Dates + cost */}
-          <View className="gap-1 mb-3">
-            <Text className="text-xs text-gray-400">
-              Added {formatDateTime(project.created_at)}
-            </Text>
+          {/* Dates */}
+          <View className="gap-1 mb-2">
+            <Text className="text-xs text-gray-400">Added {formatDateTime(project.created_at)}</Text>
             {project.expected_date && (
-              <Text className="text-xs text-gray-500 font-medium">
+              <Text className="text-xs text-gray-600 font-medium">
                 Due {formatDate(project.expected_date)}
-              </Text>
-            )}
-            {project.estimated_cost_cents > 0 && (
-              <Text className="text-xs text-gray-500">
-                Budget: {centsToDisplay(project.estimated_cost_cents)}
               </Text>
             )}
             {isFinished && project.completed_at && (
@@ -287,14 +320,38 @@ export default function ProjectDetailScreen() {
             )}
           </View>
 
+          {/* Contractor link */}
+          {project.contractor_name && (
+            <TouchableOpacity
+              onPress={() =>
+                router.push({
+                  pathname: "/(app)/(services)",
+                  params: { vendor: project.contractor_name! },
+                } as any)
+              }
+              className="flex-row items-center py-2 border-t border-gray-100 mt-2"
+            >
+              <Text className="text-xs text-gray-500 mr-1">Contractor:</Text>
+              <Text className="text-xs font-semibold text-blue-600 flex-1">
+                {project.contractor_name}
+              </Text>
+              <Text className="text-blue-400 text-xs">→ View Services</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Budget */}
+          <BudgetRow
+            budget={project.estimated_cost_cents ?? 0}
+            total={project.total_cost_cents ?? 0}
+          />
+
           {/* Status chips */}
           {!isFinished && (
-            <View>
+            <View className="mt-3">
               <Text className="text-xs font-medium text-gray-500 mb-2">Change status</Text>
               <View className="flex-row flex-wrap gap-2">
                 {EDITABLE_STATUSES.map((s) => {
                   const active = project.status === s;
-                  const cfg = STATUS_CONFIG[s];
                   return (
                     <TouchableOpacity
                       key={s}
@@ -303,12 +360,8 @@ export default function ProjectDetailScreen() {
                         active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                       }`}
                     >
-                      <Text
-                        className={`text-sm font-medium ${
-                          active ? "text-white" : "text-gray-700"
-                        }`}
-                      >
-                        {cfg.label}
+                      <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
+                        {STATUS_CONFIG[s].label}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -326,6 +379,88 @@ export default function ProjectDetailScreen() {
             </TouchableOpacity>
           )}
         </Card>
+
+        {/* Notes */}
+        {project.notes && (
+          <Card className="mb-4">
+            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Notes</Text>
+            <Text className="text-sm text-gray-700 leading-relaxed">{project.notes}</Text>
+          </Card>
+        )}
+
+        {/* Checklist */}
+        <View className="mb-4">
+          <View className="flex-row items-center justify-between mb-3">
+            <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+              Checklist{sortedTasks.length > 0 ? ` (${completedTasks}/${sortedTasks.length})` : ""}
+            </Text>
+          </View>
+
+          <Card>
+            {sortedTasks.map((task) => (
+              <View key={task.id} className="flex-row items-center py-2 border-b border-gray-50">
+                <TouchableOpacity
+                  onPress={() =>
+                    toggleTask.mutate({
+                      id: task.id,
+                      project_id: id!,
+                      is_completed: !task.is_completed,
+                    })
+                  }
+                  className={`w-5 h-5 rounded-full border-2 mr-3 items-center justify-center ${
+                    task.is_completed ? "bg-green-500 border-green-500" : "border-gray-300"
+                  }`}
+                >
+                  {task.is_completed && (
+                    <Text className="text-white text-xs">✓</Text>
+                  )}
+                </TouchableOpacity>
+                <Text
+                  className={`flex-1 text-sm ${
+                    task.is_completed ? "text-gray-400 line-through" : "text-gray-700"
+                  }`}
+                >
+                  {task.title}
+                </Text>
+                {!isFinished && (
+                  <TouchableOpacity
+                    onPress={() =>
+                      showConfirm("Remove task?", task.title, () =>
+                        deleteTask.mutate({ id: task.id, project_id: id! })
+                      )
+                    }
+                    className="ml-2 p-1"
+                  >
+                    <Text className="text-gray-300 text-sm">✕</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            ))}
+
+            {!isFinished && (
+              <View className="flex-row items-center pt-2">
+                <TextInput
+                  className="flex-1 text-sm text-gray-900 py-1"
+                  placeholder="Add a task..."
+                  placeholderTextColor="#9ca3af"
+                  value={newTaskText}
+                  onChangeText={setNewTaskText}
+                  onSubmitEditing={handleAddTask}
+                  returnKeyType="done"
+                />
+                {newTaskText.trim().length > 0 && (
+                  <TouchableOpacity onPress={handleAddTask} className="ml-2">
+                    <Text className="text-blue-600 text-sm font-medium">Add</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            )}
+
+            {sortedTasks.length === 0 && isFinished && (
+              <Text className="text-gray-400 text-sm text-center py-2">No checklist items</Text>
+            )}
+          </Card>
+        </View>
 
         {/* Updates */}
         <View className="flex-row items-center justify-between mb-3">
@@ -373,9 +508,7 @@ export default function ProjectDetailScreen() {
                     </TouchableOpacity>
                   )}
                 </View>
-                <Text className="text-gray-700 text-sm leading-relaxed">
-                  {update.body}
-                </Text>
+                <Text className="text-gray-700 text-sm leading-relaxed">{update.body}</Text>
               </Card>
             );
           })
@@ -400,14 +533,10 @@ export default function ProjectDetailScreen() {
             </TouchableOpacity>
             <Text className="flex-1 text-center text-lg font-semibold">Add Update</Text>
             <TouchableOpacity onPress={handleAddUpdate} disabled={!updateText.trim() || addUpdate.isPending}>
-              <Text className={`text-base font-semibold ${updateText.trim() ? "text-blue-600" : "text-gray-300"}`}>
-                Post
-              </Text>
+              <Text className={`text-base font-semibold ${updateText.trim() ? "text-blue-600" : "text-gray-300"}`}>Post</Text>
             </TouchableOpacity>
           </View>
-          <Text className="text-xs text-gray-400 mb-3">
-            Posting as {currentMember?.display_name ?? "you"}
-          </Text>
+          <Text className="text-xs text-gray-400 mb-3">Posting as {currentMember?.display_name ?? "you"}</Text>
           <TextInput
             className="bg-white border border-gray-200 rounded-2xl p-4 text-base text-gray-900 min-h-[120px]"
             placeholder="What's the latest on this project?"
@@ -429,9 +558,7 @@ export default function ProjectDetailScreen() {
             </TouchableOpacity>
             <Text className="flex-1 text-center text-lg font-semibold">Edit Update</Text>
             <TouchableOpacity onPress={handleSaveEditUpdate} disabled={!editUpdateText.trim() || editUpdate.isPending}>
-              <Text className={`text-base font-semibold ${editUpdateText.trim() ? "text-blue-600" : "text-gray-300"}`}>
-                Save
-              </Text>
+              <Text className={`text-base font-semibold ${editUpdateText.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
             </TouchableOpacity>
           </View>
           <TextInput
@@ -447,20 +574,18 @@ export default function ProjectDetailScreen() {
 
       {/* Edit Project modal */}
       <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet">
-        <View className="flex-1 bg-gray-50 px-4 pt-6">
-          <View className="flex-row items-center mb-6">
+        <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setShowEditModal(false)}>
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-center text-lg font-semibold">Edit Project</Text>
             <TouchableOpacity onPress={handleSaveEditProject} disabled={!editTitle.trim() || updateProject.isPending}>
-              <Text className={`text-base font-semibold ${editTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>
-                Save
-              </Text>
+              <Text className={`text-base font-semibold ${editTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
             </TouchableOpacity>
           </View>
 
-          <ScrollView keyboardShouldPersistTaps="handled">
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
             <Text className="text-sm font-medium text-gray-700 mb-1">Title</Text>
             <TextInput
               className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
@@ -513,25 +638,66 @@ export default function ProjectDetailScreen() {
               ))}
             </View>
 
-            <Text className="text-sm font-medium text-gray-700 mb-1">Due Date</Text>
-            <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+            <DateInput
+              label="Due Date"
               value={editDueDate}
-              onChangeText={setEditDueDate}
-              placeholder="MM/DD/YYYY"
-              keyboardType="numbers-and-punctuation"
+              onChange={setEditDueDate}
             />
 
-            <Text className="text-sm font-medium text-gray-700 mb-1">Estimated Cost</Text>
+            <Text className="text-sm font-medium text-gray-700 mb-1">Budget / Estimated Cost</Text>
             <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-6"
-              value={editCost}
-              onChangeText={setEditCost}
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+              value={editBudget}
+              onChangeText={setEditBudget}
               placeholder="0.00"
               keyboardType="decimal-pad"
             />
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Total Cost — Actual</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+              value={editTotalCost}
+              onChangeText={setEditTotalCost}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Contractor / Vendor</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-2"
+              value={editContractor}
+              onChangeText={setEditContractor}
+              placeholder="e.g. ABC Plumbing"
+            />
+            {vendorNames.length > 0 && (
+              <View className="flex-row flex-wrap gap-2 mb-4">
+                {vendorNames.map((name) => (
+                  <TouchableOpacity
+                    key={name}
+                    onPress={() => setEditContractor(editContractor === name ? "" : name)}
+                    className={`px-3 py-1 rounded-full border ${
+                      editContractor === name ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <Text className={`text-xs font-medium ${editContractor === name ? "text-white" : "text-gray-600"}`}>
+                      {name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            )}
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Notes</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-6 min-h-[100px]"
+              value={editNotes}
+              onChangeText={setEditNotes}
+              multiline
+              textAlignVertical="top"
+              placeholder="Paint color codes, model numbers, permit info..."
+            />
           </ScrollView>
-        </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );

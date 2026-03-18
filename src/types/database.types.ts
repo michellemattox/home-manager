@@ -85,6 +85,9 @@ export interface Database {
           created_at: string;
           category: string | null;
           estimated_cost_cents: number;
+          notes: string | null;
+          contractor_name: string | null;
+          total_cost_cents: number;
         };
         Insert: {
           id?: string;
@@ -99,6 +102,9 @@ export interface Database {
           created_at?: string;
           category?: string | null;
           estimated_cost_cents?: number;
+          notes?: string | null;
+          contractor_name?: string | null;
+          total_cost_cents?: number;
         };
         Update: {
           id?: string;
@@ -113,6 +119,9 @@ export interface Database {
           created_at?: string;
           category?: string | null;
           estimated_cost_cents?: number;
+          notes?: string | null;
+          contractor_name?: string | null;
+          total_cost_cents?: number;
         };
         Relationships: Rel;
       };
@@ -142,6 +151,36 @@ export interface Database {
           project_id?: string;
           author_id?: string;
           body?: string;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
+      project_tasks: {
+        Row: {
+          id: string;
+          project_id: string;
+          title: string;
+          is_completed: boolean;
+          completed_at: string | null;
+          sort_order: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          project_id: string;
+          title: string;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          sort_order?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          project_id?: string;
+          title?: string;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          sort_order?: number;
           created_at?: string;
         };
         Relationships: Rel;

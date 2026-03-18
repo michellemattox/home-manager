@@ -26,7 +26,7 @@ export function useProject(projectId: string | undefined) {
       if (!projectId) return null;
       const { data, error } = await supabase
         .from("projects")
-        .select("*, project_owners(member_id), project_updates(*)")
+        .select("*, project_owners(member_id), project_updates(*), project_tasks(*)")
         .eq("id", projectId)
         .single();
       if (error) throw error;

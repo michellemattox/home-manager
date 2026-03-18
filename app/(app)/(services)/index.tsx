@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   RefreshControl,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getYear, parseISO } from "date-fns";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -58,15 +58,20 @@ function ServiceRow({
 
 export default function ServicesScreen() {
   const router = useRouter();
+  const { vendor: initialVendor } = useLocalSearchParams<{ vendor?: string }>();
   const { household } = useHouseholdStore();
   const { data: records, isLoading, refetch } = useServiceRecords(household?.id);
   const deleteRecord = useDeleteServiceRecord();
   const [showChart, setShowChart] = useState(true);
+  const [vendorFilter, setVendorFilter] = useState<string | null>(initialVendor ?? null);
 
   const sections = useMemo(() => {
     if (!records?.length) return [];
+    const filtered = vendorFilter
+      ? records.filter((r) => r.vendor_name === vendorFilter)
+      : records;
     const byYear: Record<number, ServiceRecord[]> = {};
-    records.forEach((r) => {
+    filtered.forEach((r) => {
       const year = getYear(parseISO(r.service_date));
       if (!byYear[year]) byYear[year] = [];
       byYear[year].push(r);
@@ -78,7 +83,7 @@ export default function ServicesScreen() {
         total: items.reduce((s, r) => s + r.cost_cents, 0),
         data: items,
       }));
-  }, [records]);
+  }, [records, vendorFilter]);
 
   const handleDelete = (record: ServiceRecord) => {
     showConfirm(
@@ -89,7 +94,10 @@ export default function ServicesScreen() {
     );
   };
 
-  const totalAllTime = (records ?? []).reduce((s, r) => s + r.cost_cents, 0);
+  const filteredRecords = vendorFilter
+    ? (records ?? []).filter((r) => r.vendor_name === vendorFilter)
+    : (records ?? []);
+  const totalAllTime = filteredRecords.reduce((s, r) => s + r.cost_cents, 0);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -113,6 +121,18 @@ export default function ServicesScreen() {
         ListHeaderComponent={
           records && records.length > 0 ? (
             <View className="mb-4">
+              {/* Vendor filter chip */}
+              {vendorFilter && (
+                <TouchableOpacity
+                  onPress={() => setVendorFilter(null)}
+                  className="flex-row items-center self-start bg-blue-100 border border-blue-300 rounded-full px-3 py-1.5 mb-3"
+                >
+                  <Text className="text-sm text-blue-700 font-medium mr-2">
+                    Showing: {vendorFilter}
+                  </Text>
+                  <Text className="text-blue-500 font-bold">✕</Text>
+                </TouchableOpacity>
+              )}
               {/* Summary bar */}
               <View className="flex-row mb-3">
                 <Card className="flex-1 mr-2 items-center">
@@ -124,7 +144,7 @@ export default function ServicesScreen() {
                 <Card className="flex-1 items-center">
                   <Text className="text-xs text-gray-400 mb-1">Records</Text>
                   <Text className="text-lg font-bold text-gray-900">
-                    {records.length}
+                    {filteredRecords.length}
                   </Text>
                 </Card>
               </View>
@@ -142,7 +162,7 @@ export default function ServicesScreen() {
                     {showChart ? "Hide" : "Show"}
                   </Text>
                 </TouchableOpacity>
-                {showChart && <SpendChart records={records} />}
+                {showChart && <SpendChart records={filteredRecords} />}
               </Card>
             </View>
           ) : null

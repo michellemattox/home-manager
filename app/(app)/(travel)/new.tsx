@@ -12,12 +12,12 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
+import { DateInput } from "@/components/ui/DateInput";
 import { Button } from "@/components/ui/Button";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCreateTrip } from "@/hooks/useTrips";
-import { toISODateString } from "@/utils/dateUtils";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -43,8 +43,8 @@ export default function NewTripScreen() {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
-      departureDate: toISODateString(new Date()),
-      returnDate: toISODateString(new Date()),
+      departureDate: new Date().toISOString().slice(0, 10),
+      returnDate: new Date().toISOString().slice(0, 10),
     },
   });
 
@@ -114,14 +114,12 @@ export default function NewTripScreen() {
         <Controller
           control={control}
           name="departureDate"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Departure Date (YYYY-MM-DD)"
+          render={({ field: { onChange, value } }) => (
+            <DateInput
+              label="Departure Date"
               value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
+              onChange={onChange}
               error={errors.departureDate?.message}
-              placeholder="2024-06-15"
             />
           )}
         />
@@ -129,14 +127,12 @@ export default function NewTripScreen() {
         <Controller
           control={control}
           name="returnDate"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Return Date (YYYY-MM-DD)"
+          render={({ field: { onChange, value } }) => (
+            <DateInput
+              label="Return Date"
               value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
+              onChange={onChange}
               error={errors.returnDate?.message}
-              placeholder="2024-06-22"
             />
           )}
         />

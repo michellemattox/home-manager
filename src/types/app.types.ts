@@ -20,6 +20,7 @@ export type ServiceRecord =
 export type IdeaTopic = Database["public"]["Tables"]["idea_topics"]["Row"];
 export type Idea = Database["public"]["Tables"]["ideas"]["Row"];
 export type DeviceToken = Database["public"]["Tables"]["device_tokens"]["Row"];
+export type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
 
 export type ProjectStatus = Project["status"];
 export type ProjectPriority = Project["priority"];
@@ -31,6 +32,7 @@ export interface ProjectWithOwners extends Project {
   updates: ProjectUpdate[];
   project_owners: { member_id: string }[];
   project_updates: ProjectUpdate[];
+  project_tasks: ProjectTask[];
 }
 
 export interface TripWithTasks extends Trip {

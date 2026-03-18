@@ -12,12 +12,12 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
+import { DateInput } from "@/components/ui/DateInput";
 import { Button } from "@/components/ui/Button";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useCreateServiceRecord } from "@/hooks/useServices";
 import { SERVICE_TYPES } from "@/types/app.types";
-import { toISODateString } from "@/utils/dateUtils";
 import { displayToCents } from "@/utils/currencyUtils";
 
 const schema = z.object({
@@ -41,7 +41,7 @@ export default function NewServiceScreen() {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { serviceDate: toISODateString(new Date()) },
+    defaultValues: { serviceDate: new Date().toISOString().slice(0, 10) },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -130,14 +130,12 @@ export default function NewServiceScreen() {
         <Controller
           control={control}
           name="serviceDate"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Service Date (YYYY-MM-DD)"
+          render={({ field: { onChange, value } }) => (
+            <DateInput
+              label="Service Date"
               value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
+              onChange={onChange}
               error={errors.serviceDate?.message}
-              placeholder="2023-06-15"
             />
           )}
         />
