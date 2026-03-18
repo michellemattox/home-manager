@@ -51,24 +51,14 @@ export function useCreateHousehold() {
       userId: string;
       displayName: string;
     }) => {
-      const { data: household, error: hErr } = await supabase
-        .from("households")
-        .insert({ name, zip_code: zipCode })
-        .select()
-        .single();
-      if (hErr) throw hErr;
-      const h = household as Household;
-
-      const { error: mErr } = await supabase.from("household_members").insert({
-        household_id: h.id,
-        user_id: userId,
-        display_name: displayName,
-        role: "admin",
-        color_hex: "#2563EB",
+      const { data, error } = await supabase.rpc("create_household_with_member", {
+        p_name: name,
+        p_zip_code: zipCode,
+        p_user_id: userId,
+        p_display_name: displayName,
       });
-      if (mErr) throw mErr;
-
-      return h;
+      if (error) throw error;
+      return data as Household;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["household"] }),
   });
