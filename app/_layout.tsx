@@ -9,14 +9,15 @@ import { useAuthStore } from "@/stores/authStore";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
-import { View } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 import type { HouseholdMember } from "@/types/app.types";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
   const { session, setSession } = useAuthStore();
-  const { clearHousehold } = useHouseholdStore();
+  const { household, householdChecked, clearHousehold, setHouseholdChecked } =
+    useHouseholdStore();
 
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(
@@ -30,10 +31,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         }
 
         if (newSession?.user) {
-          // Register push notifications
           await registerForPushNotificationsAsync(newSession.user.id);
 
-          // Load household membership
           const { data: member } = await supabase
             .from("household_members")
             .select("*")
@@ -47,12 +46,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
               useHouseholdStore.getState();
             setCurrentMember(m);
 
-            const { data: household } = await supabase
+            const { data: householdData } = await supabase
               .from("households")
               .select("*")
               .eq("id", m.household_id)
               .maybeSingle();
-            if (household) setHousehold(household as any);
+            if (householdData) setHousehold(householdData as any);
 
             const { data: members } = await supabase
               .from("household_members")
@@ -60,6 +59,12 @@ function AuthGate({ children }: { children: React.ReactNode }) {
               .eq("household_id", m.household_id);
             setMembers((members ?? []) as any);
           }
+
+          // Always mark check complete, whether or not a household was found
+          useHouseholdStore.getState().setHouseholdChecked(true);
+        } else {
+          // No session - reset check state for next login
+          setHouseholdChecked(false);
         }
       }
     );
@@ -68,14 +73,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Not logged in → always go to login
     if (session === null) {
       const inAuth = segments[0] === "(auth)";
       if (!inAuth) router.replace("/(auth)/login");
-    } else {
-      const inApp = segments[0] === "(app)";
-      if (!inApp) router.replace("/(app)/(tasks)");
+      return;
     }
-  }, [session, segments]);
+
+    // Logged in but household check still in flight → wait
+    if (!householdChecked) return;
+
+    // Logged in, no household → onboarding
+    if (!household) {
+      const inOnboarding =
+        segments[0] === "(auth)" && (segments as string[])[1] === "onboarding";
+      if (!inOnboarding) router.replace("/(auth)/onboarding");
+      return;
+    }
+
+    // Logged in + has household → main app
+    const inApp = segments[0] === "(app)";
+    if (!inApp) router.replace("/(app)/(tasks)");
+  }, [session, segments, householdChecked, household]);
 
   return <>{children}</>;
 }

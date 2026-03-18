@@ -1,4 +1,9 @@
-export function centsToDisplay(cents: number): string {
+export function centsToDisplay(cents: number, compact = false): string {
+  if (compact) {
+    const dollars = cents / 100;
+    if (dollars >= 1000) return `$${(dollars / 1000).toFixed(1)}k`;
+    return `$${Math.round(dollars)}`;
+  }
   return `$${(cents / 100).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",")}`;
 }
 

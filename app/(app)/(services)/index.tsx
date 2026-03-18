@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -8,17 +8,24 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { getYear } from "date-fns";
-import { parseISO } from "date-fns";
+import { getYear, parseISO } from "date-fns";
 import { useHouseholdStore } from "@/stores/householdStore";
-import { useServiceRecords } from "@/hooks/useServices";
+import { useServiceRecords, useDeleteServiceRecord } from "@/hooks/useServices";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SpendChart } from "@/components/ui/SpendChart";
+import { showConfirm } from "@/lib/alert";
 import { formatDate } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
 import type { ServiceRecord } from "@/types/app.types";
 
-function ServiceRow({ record }: { record: ServiceRecord }) {
+function ServiceRow({
+  record,
+  onDelete,
+}: {
+  record: ServiceRecord;
+  onDelete: () => void;
+}) {
   return (
     <Card className="mb-2">
       <View className="flex-row items-start justify-between">
@@ -30,16 +37,21 @@ function ServiceRow({ record }: { record: ServiceRecord }) {
           <Text className="text-xs text-gray-400 mt-0.5">
             {formatDate(record.service_date)}
           </Text>
+          {record.notes && (
+            <Text className="text-sm text-gray-400 mt-1" numberOfLines={2}>
+              {record.notes}
+            </Text>
+          )}
         </View>
-        <Text className="text-base font-semibold text-gray-800">
-          {centsToDisplay(record.cost_cents)}
-        </Text>
+        <View className="items-end gap-2">
+          <Text className="text-base font-semibold text-gray-800">
+            {centsToDisplay(record.cost_cents)}
+          </Text>
+          <TouchableOpacity onPress={onDelete}>
+            <Text className="text-gray-300 text-lg">🗑️</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      {record.notes && (
-        <Text className="text-sm text-gray-400 mt-2" numberOfLines={2}>
-          {record.notes}
-        </Text>
-      )}
     </Card>
   );
 }
@@ -48,6 +60,8 @@ export default function ServicesScreen() {
   const router = useRouter();
   const { household } = useHouseholdStore();
   const { data: records, isLoading, refetch } = useServiceRecords(household?.id);
+  const deleteRecord = useDeleteServiceRecord();
+  const [showChart, setShowChart] = useState(true);
 
   const sections = useMemo(() => {
     if (!records?.length) return [];
@@ -65,6 +79,17 @@ export default function ServicesScreen() {
         data: items,
       }));
   }, [records]);
+
+  const handleDelete = (record: ServiceRecord) => {
+    showConfirm(
+      "Delete record?",
+      `Remove ${record.vendor_name} — ${centsToDisplay(record.cost_cents)}?`,
+      () => deleteRecord.mutate({ id: record.id, householdId: record.household_id }),
+      true
+    );
+  };
+
+  const totalAllTime = (records ?? []).reduce((s, r) => s + r.cost_cents, 0);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -85,17 +110,56 @@ export default function ServicesScreen() {
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={refetch} />
         }
+        ListHeaderComponent={
+          records && records.length > 0 ? (
+            <View className="mb-4">
+              {/* Summary bar */}
+              <View className="flex-row mb-3">
+                <Card className="flex-1 mr-2 items-center">
+                  <Text className="text-xs text-gray-400 mb-1">All-time</Text>
+                  <Text className="text-lg font-bold text-gray-900">
+                    {centsToDisplay(totalAllTime)}
+                  </Text>
+                </Card>
+                <Card className="flex-1 items-center">
+                  <Text className="text-xs text-gray-400 mb-1">Records</Text>
+                  <Text className="text-lg font-bold text-gray-900">
+                    {records.length}
+                  </Text>
+                </Card>
+              </View>
+
+              {/* Chart */}
+              <Card>
+                <TouchableOpacity
+                  onPress={() => setShowChart((v) => !v)}
+                  className="flex-row items-center justify-between mb-2"
+                >
+                  <Text className="text-sm font-semibold text-gray-700">
+                    Monthly Spend (12 mo)
+                  </Text>
+                  <Text className="text-xs text-blue-500">
+                    {showChart ? "Hide" : "Show"}
+                  </Text>
+                </TouchableOpacity>
+                {showChart && <SpendChart records={records} />}
+              </Card>
+            </View>
+          ) : null
+        }
         renderSectionHeader={({ section }) => (
           <View className="flex-row items-center justify-between py-2 bg-gray-50">
             <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
               {section.title}
             </Text>
             <Text className="text-sm font-semibold text-gray-600">
-              Total: {centsToDisplay(section.total)}
+              {centsToDisplay(section.total)}
             </Text>
           </View>
         )}
-        renderItem={({ item }) => <ServiceRow record={item} />}
+        renderItem={({ item }) => (
+          <ServiceRow record={item} onDelete={() => handleDelete(item)} />
+        )}
         ListEmptyComponent={
           !isLoading ? (
             <EmptyState
