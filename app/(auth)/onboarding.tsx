@@ -15,6 +15,9 @@ import { Button } from "@/components/ui/Button";
 import { WebForm } from "@/components/ui/WebForm";
 import { useCreateHousehold } from "@/hooks/useHousehold";
 import { useAuthStore } from "@/stores/authStore";
+import { useHouseholdStore } from "@/stores/householdStore";
+import { supabase } from "@/lib/supabase";
+import type { HouseholdMember } from "@/types/app.types";
 
 const schema = z.object({
   householdName: z.string().min(1, "Enter a household name"),
@@ -28,6 +31,7 @@ export default function OnboardingScreen() {
   const router = useRouter();
   const { user } = useAuthStore();
   const createHousehold = useCreateHousehold();
+  const { setHousehold, setCurrentMember, setMembers, setHouseholdChecked } = useHouseholdStore();
   const [error, setError] = useState<string | null>(null);
 
   const {
@@ -40,12 +44,29 @@ export default function OnboardingScreen() {
     if (!user) return;
     setError(null);
     try {
-      await createHousehold.mutateAsync({
+      const household = await createHousehold.mutateAsync({
         name: data.householdName,
         zipCode: data.zipCode,
         userId: user.id,
         displayName: data.displayName,
       });
+
+      // Populate the store so AuthGate sees the household immediately
+      setHousehold(household);
+
+      const { data: member } = await supabase
+        .from("household_members")
+        .select("*")
+        .eq("household_id", household.id)
+        .eq("user_id", user.id)
+        .single();
+
+      if (member) {
+        setCurrentMember(member as HouseholdMember);
+        setMembers([member as HouseholdMember]);
+      }
+      setHouseholdChecked(true);
+
       router.replace("/(app)/(tasks)");
     } catch (e: any) {
       setError(e.message);
