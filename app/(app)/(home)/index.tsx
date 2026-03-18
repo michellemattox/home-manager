@@ -54,21 +54,14 @@ function OverdueProjectCard({ project, onPress }: { project: ProjectWithOwners; 
     : 0;
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      className="bg-red-50 border border-red-200 rounded-xl p-3 mb-2"
-    >
+    <TouchableOpacity onPress={onPress} className="bg-red-50 border border-red-200 rounded-xl p-3 mb-2">
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-2">
           <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{project.title}</Text>
-          {project.category && (
-            <Text className="text-xs text-gray-500 mt-0.5">{project.category}</Text>
-          )}
+          {project.category && <Text className="text-xs text-gray-500 mt-0.5">{project.category}</Text>}
         </View>
         <View className="bg-red-100 rounded-lg px-2 py-0.5">
-          <Text className="text-red-700 text-xs font-semibold">
-            {daysOverdue}d overdue
-          </Text>
+          <Text className="text-red-700 text-xs font-semibold">{daysOverdue}d overdue</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -81,16 +74,11 @@ function DueSoonProjectCard({ project, onPress }: { project: ProjectWithOwners; 
     : 0;
 
   return (
-    <TouchableOpacity
-      onPress={onPress}
-      className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2"
-    >
+    <TouchableOpacity onPress={onPress} className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-2">
           <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{project.title}</Text>
-          {project.category && (
-            <Text className="text-xs text-gray-500 mt-0.5">{project.category}</Text>
-          )}
+          {project.category && <Text className="text-xs text-gray-500 mt-0.5">{project.category}</Text>}
         </View>
         <View className="bg-amber-100 rounded-lg px-2 py-0.5">
           <Text className="text-amber-700 text-xs font-semibold">
@@ -102,48 +90,63 @@ function DueSoonProjectCard({ project, onPress }: { project: ProjectWithOwners; 
   );
 }
 
-function OverdueTaskRow({ task, onComplete }: { task: RecurringTask; onComplete: () => void }) {
+function OverdueTaskRow({
+  task,
+  onComplete,
+  onPress,
+}: { task: RecurringTask; onComplete: () => void; onPress: () => void }) {
   return (
-    <View className="flex-row items-center bg-red-50 border border-red-200 rounded-xl p-3 mb-2">
-      <View className="flex-1 mr-2">
-        <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
-        <Text className="text-xs text-red-600 mt-0.5">Due {formatDate(task.next_due_date)}</Text>
+    <TouchableOpacity onPress={onPress} className="bg-red-50 border border-red-200 rounded-xl p-3 mb-2">
+      <View className="flex-row items-center">
+        <View className="flex-1 mr-2">
+          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
+          <Text className="text-xs text-red-600 mt-0.5">Due {formatDate(task.next_due_date)}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation(); onComplete(); }}
+          className="bg-green-100 rounded-lg px-3 py-1.5"
+        >
+          <Text className="text-green-700 text-xs font-semibold">Done</Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity
-        onPress={onComplete}
-        className="bg-green-100 rounded-lg px-3 py-1.5"
-      >
-        <Text className="text-green-700 text-xs font-semibold">Done</Text>
-      </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-function DueSoonTaskRow({ task, onComplete }: { task: RecurringTask; onComplete: () => void }) {
+function DueSoonTaskRow({
+  task,
+  onComplete,
+  onPress,
+}: { task: RecurringTask; onComplete: () => void; onPress: () => void }) {
   return (
-    <View className="flex-row items-center bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
-      <View className="flex-1 mr-2">
-        <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
-        <Text className="text-xs text-amber-700 mt-0.5">Due {formatDate(task.next_due_date)}</Text>
+    <TouchableOpacity onPress={onPress} className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
+      <View className="flex-row items-center">
+        <View className="flex-1 mr-2">
+          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
+          <Text className="text-xs text-amber-700 mt-0.5">Due {formatDate(task.next_due_date)}</Text>
+        </View>
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation(); onComplete(); }}
+          className="bg-green-100 rounded-lg px-3 py-1.5"
+        >
+          <Text className="text-green-700 text-xs font-semibold">Done</Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity
-        onPress={onComplete}
-        className="bg-green-100 rounded-lg px-3 py-1.5"
-      >
-        <Text className="text-green-700 text-xs font-semibold">Done</Text>
-      </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
-function StatCard({ label, value, sub, color }: { label: string; value: string; sub?: string; color: string }) {
-  return (
+function StatCard({ label, value, sub, color, onPress }: {
+  label: string; value: string; sub?: string; color: string; onPress?: () => void;
+}) {
+  const content = (
     <View className={`flex-1 rounded-xl p-3 ${color}`}>
       <Text className="text-2xl font-bold text-gray-900">{value}</Text>
       <Text className="text-xs font-semibold text-gray-700 mt-0.5">{label}</Text>
       {sub && <Text className="text-xs text-gray-500 mt-0.5">{sub}</Text>}
     </View>
   );
+  return onPress ? <TouchableOpacity className="flex-1" onPress={onPress}>{content}</TouchableOpacity> : content;
 }
 
 export default function HomeScreen() {
@@ -184,13 +187,11 @@ export default function HomeScreen() {
     (t) => !isOverdue(t.next_due_date) && isDueSoon(t.next_due_date, 7)
   );
 
-  // Stats
+  // Stats — year-to-date spend (Jan 1 of current year)
   const totalAlerts = overdueProjects.length + overdueTasks.length;
-  const thisMonthStart = new Date();
-  thisMonthStart.setDate(1);
-  thisMonthStart.setHours(0, 0, 0, 0);
-  const monthlySpend = (serviceRecords ?? [])
-    .filter((r) => new Date(r.service_date) >= thisMonthStart)
+  const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
+  const yearlySpend = (serviceRecords ?? [])
+    .filter((r) => new Date(r.service_date) >= thisYearStart)
     .reduce((sum, r) => sum + r.cost_cents, 0);
 
   // Recent services
@@ -231,27 +232,27 @@ export default function HomeScreen() {
             label="Active Projects"
             value={String(activeProjects.length)}
             color="bg-blue-50"
+            onPress={() => router.push("/(app)/(projects)")}
           />
           <StatCard
             label="Overdue"
             value={String(totalAlerts)}
             sub={totalAlerts > 0 ? "needs attention" : "all clear"}
             color={totalAlerts > 0 ? "bg-red-50" : "bg-green-50"}
+            onPress={() => router.push("/(app)/(tasks)")}
           />
           <StatCard
-            label="Spent This Month"
-            value={centsToDisplay(monthlySpend, true)}
+            label={`Spent ${new Date().getFullYear()}`}
+            value={centsToDisplay(yearlySpend, true)}
             color="bg-purple-50"
+            onPress={() => router.push("/(app)/(services)")}
           />
         </View>
 
         {/* Needs Attention */}
         {hasAlerts && (
           <>
-            <SectionHeader
-              title="Needs Attention"
-              count={totalAlerts}
-            />
+            <SectionHeader title="Needs Attention" count={totalAlerts} />
             {overdueProjects.map((p) => (
               <OverdueProjectCard
                 key={p.id}
@@ -263,6 +264,7 @@ export default function HomeScreen() {
               <OverdueTaskRow
                 key={t.id}
                 task={t}
+                onPress={() => router.push("/(app)/(tasks)")}
                 onComplete={() => handleCompleteTask(t)}
               />
             ))}
@@ -272,9 +274,7 @@ export default function HomeScreen() {
         {/* Coming Up */}
         {hasUpcoming && (
           <>
-            <SectionHeader
-              title="Coming Up"
-            />
+            <SectionHeader title="Coming Up" />
             {dueSoonProjects.map((p) => (
               <DueSoonProjectCard
                 key={p.id}
@@ -286,6 +286,7 @@ export default function HomeScreen() {
               <DueSoonTaskRow
                 key={t.id}
                 task={t}
+                onPress={() => router.push("/(app)/(tasks)")}
                 onComplete={() => handleCompleteTask(t)}
               />
             ))}
@@ -342,13 +343,17 @@ export default function HomeScreen() {
               onSeeAll={() => router.push("/(app)/(services)")}
             />
             {recentServices.map((r) => (
-              <View key={r.id} className="bg-white border border-gray-100 rounded-xl p-3 mb-2 flex-row items-center justify-between">
+              <TouchableOpacity
+                key={r.id}
+                onPress={() => router.push("/(app)/(services)")}
+                className="bg-white border border-gray-100 rounded-xl p-3 mb-2 flex-row items-center justify-between"
+              >
                 <View className="flex-1 mr-2">
                   <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{r.vendor_name}</Text>
                   <Text className="text-xs text-gray-500 mt-0.5">{r.service_type} · {formatDateShort(r.service_date)}</Text>
                 </View>
                 <Text className="text-sm font-semibold text-gray-700">{centsToDisplay(r.cost_cents)}</Text>
-              </View>
+              </TouchableOpacity>
             ))}
           </>
         )}

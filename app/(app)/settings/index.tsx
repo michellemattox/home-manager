@@ -28,6 +28,7 @@ export default function SettingsScreen() {
     overdueEnabled, setOverdueEnabled,
     dueSoonEnabled, setDueSoonEnabled,
     reminderHour, setReminderHour,
+    reminderFrequency, setReminderFrequency,
   } = useNotificationStore();
 
   const handleSignOut = async () => {
@@ -140,7 +141,7 @@ export default function SettingsScreen() {
             />
           </View>
           <Text className="text-sm font-semibold text-gray-700 mb-2">Reminder time</Text>
-          <View className="flex-row flex-wrap gap-2">
+          <View className="flex-row flex-wrap gap-2 mb-4">
             {[7, 8, 9, 12, 17, 20].map((h) => (
               <TouchableOpacity
                 key={h}
@@ -151,6 +152,26 @@ export default function SettingsScreen() {
               >
                 <Text className={`text-sm font-medium ${reminderHour === h ? "text-white" : "text-gray-700"}`}>
                   {h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text className="text-sm font-semibold text-gray-700 mb-2">Frequency</Text>
+          <View className="flex-row gap-2">
+            {([
+              { label: "Daily", value: "daily" },
+              { label: "Every 2 Days", value: "every_other_day" },
+              { label: "Weekly", value: "weekly" },
+            ] as const).map((f) => (
+              <TouchableOpacity
+                key={f.value}
+                onPress={() => setReminderFrequency(f.value)}
+                className={`flex-1 py-2 rounded-xl border items-center ${
+                  reminderFrequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-xs font-medium ${reminderFrequency === f.value ? "text-white" : "text-gray-700"}`}>
+                  {f.label}
                 </Text>
               </TouchableOpacity>
             ))}

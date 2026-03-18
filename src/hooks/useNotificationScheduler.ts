@@ -8,7 +8,7 @@ import { isOverdue, isDueSoon } from "@/utils/dateUtils";
 
 export function useNotificationScheduler() {
   const { household } = useHouseholdStore();
-  const { overdueEnabled, dueSoonEnabled, reminderHour } = useNotificationStore();
+  const { overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency } = useNotificationStore();
 
   const { data: projects } = useProjects(household?.id);
   const { data: tasks } = useRecurringTasks(household?.id);
@@ -31,6 +31,6 @@ export function useNotificationScheduler() {
       ).length,
     };
 
-    scheduleItemReminders(counts, { overdueEnabled, dueSoonEnabled, reminderHour });
-  }, [projects, tasks, overdueEnabled, dueSoonEnabled, reminderHour]);
+    scheduleItemReminders(counts, { overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency });
+  }, [projects, tasks, overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency]);
 }
