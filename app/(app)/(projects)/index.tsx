@@ -15,7 +15,9 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { MemberAvatarGroup } from "@/components/ui/MemberAvatar";
-import { formatDate, formatDateTime } from "@/utils/dateUtils";
+import { formatDate, formatDateTime, isOverdue, isDueSoon } from "@/utils/dateUtils";
+import { centsToDisplay } from "@/utils/currencyUtils";
+import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectWithOwners, ProjectStatus, ProjectPriority } from "@/types/app.types";
 
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; variant: any }> = {
@@ -34,7 +36,8 @@ const PRIORITY_CONFIG: Record<ProjectPriority, { label: string; variant: any }> 
 
 const OPEN_STATUSES: ProjectStatus[] = ["in_progress", "planned", "on_hold"];
 
-type SortOption = "newest" | "oldest" | "priority";
+type SortOption = "newest" | "oldest" | "priority" | "due_date";
+type DueFilter = "overdue" | "due_soon" | null;
 
 function ProjectCard({ project }: { project: ProjectWithOwners }) {
   const router = useRouter();
@@ -55,12 +58,13 @@ function ProjectCard({ project }: { project: ProjectWithOwners }) {
   const sc = STATUS_CONFIG[project.status];
   const pc = PRIORITY_CONFIG[project.priority];
 
+  const overdue = project.expected_date && isOverdue(project.expected_date);
+  const dueSoon = project.expected_date && !overdue && isDueSoon(project.expected_date);
+
   return (
-    <TouchableOpacity
-      onPress={() => router.push(`/(app)/(projects)/${project.id}`)}
-    >
+    <TouchableOpacity onPress={() => router.push(`/(app)/(projects)/${project.id}`)}>
       <Card className="mb-3">
-        {/* Header row */}
+        {/* Header */}
         <View className="flex-row items-start justify-between mb-2">
           <Text className="text-base font-semibold text-gray-900 flex-1 mr-2" numberOfLines={2}>
             {project.title}
@@ -72,12 +76,20 @@ function ProjectCard({ project }: { project: ProjectWithOwners }) {
         <View className="flex-row gap-2 flex-wrap mb-2">
           <Badge label={sc.label} variant={sc.variant} size="sm" />
           <Badge label={pc.label} variant={pc.variant} size="sm" />
-          {project.expected_date && (
-            <Badge
-              label={`Due ${formatDate(project.expected_date)}`}
-              variant="default"
-              size="sm"
-            />
+          {project.category && (
+            <Badge label={project.category} variant="default" size="sm" />
+          )}
+          {overdue && (
+            <Badge label="Overdue" variant="danger" size="sm" />
+          )}
+          {dueSoon && (
+            <Badge label="Due Soon" variant="warning" size="sm" />
+          )}
+          {project.expected_date && !overdue && !dueSoon && (
+            <Badge label={`Due ${formatDate(project.expected_date)}`} variant="default" size="sm" />
+          )}
+          {project.estimated_cost_cents > 0 && (
+            <Badge label={centsToDisplay(project.estimated_cost_cents, true)} variant="default" size="sm" />
           )}
         </View>
 
@@ -111,6 +123,26 @@ export default function ProjectsScreen() {
   const [sortBy, setSortBy] = useState<SortOption>("newest");
   const [filterOwner, setFilterOwner] = useState<string | null>(null);
   const [filterPriority, setFilterPriority] = useState<ProjectPriority | null>(null);
+  const [filterCategory, setFilterCategory] = useState<string | null>(null);
+  const [filterDue, setFilterDue] = useState<DueFilter>(null);
+
+  const openCount = (projects ?? []).filter((p) =>
+    OPEN_STATUSES.includes(p.status as ProjectStatus)
+  ).length;
+
+  const finishedCount = (projects ?? []).filter(
+    (p) => p.status === "finished" || p.status === "completed"
+  ).length;
+
+  const overdueCount = (projects ?? []).filter(
+    (p) => OPEN_STATUSES.includes(p.status as ProjectStatus) && p.expected_date && isOverdue(p.expected_date)
+  ).length;
+
+  const usedCategories = useMemo(() => {
+    const cats = new Set<string>();
+    (projects ?? []).forEach((p) => { if (p.category) cats.add(p.category); });
+    return Array.from(cats).sort();
+  }, [projects]);
 
   const filtered = useMemo(() => {
     if (!projects) return [];
@@ -128,21 +160,31 @@ export default function ProjectsScreen() {
     if (filterPriority) {
       list = list.filter((p) => p.priority === filterPriority);
     }
+    if (filterCategory) {
+      list = list.filter((p) => p.category === filterCategory);
+    }
+    if (filterDue === "overdue") {
+      list = list.filter((p) => p.expected_date && isOverdue(p.expected_date));
+    } else if (filterDue === "due_soon") {
+      list = list.filter((p) => p.expected_date && isDueSoon(p.expected_date));
+    }
 
     return [...list].sort((a, b) => {
       if (sortBy === "newest")
         return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
       if (sortBy === "oldest")
         return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+      if (sortBy === "due_date") {
+        if (!a.expected_date && !b.expected_date) return 0;
+        if (!a.expected_date) return 1;
+        if (!b.expected_date) return -1;
+        return new Date(a.expected_date).getTime() - new Date(b.expected_date).getTime();
+      }
       // priority: high > medium > low
       const ORDER = { high: 0, medium: 1, low: 2 };
       return ORDER[a.priority] - ORDER[b.priority];
     });
-  }, [projects, showFinished, sortBy, filterOwner, filterPriority]);
-
-  const openCount = (projects ?? []).filter((p) =>
-    OPEN_STATUSES.includes(p.status as ProjectStatus)
-  ).length;
+  }, [projects, showFinished, sortBy, filterOwner, filterPriority, filterCategory, filterDue]);
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -150,9 +192,14 @@ export default function ProjectsScreen() {
       <View className="flex-row items-center justify-between px-4 py-3">
         <View>
           <Text className="text-2xl font-bold text-gray-900">Projects</Text>
-          {openCount > 0 && (
-            <Text className="text-xs text-gray-400">{openCount} open</Text>
-          )}
+          <View className="flex-row gap-3">
+            {openCount > 0 && (
+              <Text className="text-xs text-gray-400">{openCount} open</Text>
+            )}
+            {overdueCount > 0 && (
+              <Text className="text-xs text-red-500 font-medium">{overdueCount} overdue</Text>
+            )}
+          </View>
         </View>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(projects)/new")}
@@ -187,15 +234,41 @@ export default function ProjectsScreen() {
           }`}
         >
           <Text className={`text-sm font-medium ${showFinished ? "text-white" : "text-gray-600"}`}>
-            Finished
+            Finished{finishedCount > 0 ? ` (${finishedCount})` : ""}
           </Text>
         </TouchableOpacity>
 
-        {/* Divider */}
         <View className="w-px bg-gray-200 mx-1" />
 
+        {/* Due date filters — only meaningful on open tab */}
+        {!showFinished && (
+          <>
+            <TouchableOpacity
+              onPress={() => setFilterDue(filterDue === "overdue" ? null : "overdue")}
+              className={`px-3 py-1.5 rounded-full border ${
+                filterDue === "overdue" ? "bg-red-500 border-red-500" : "bg-white border-gray-200"
+              }`}
+            >
+              <Text className={`text-sm font-medium ${filterDue === "overdue" ? "text-white" : "text-gray-600"}`}>
+                Overdue
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setFilterDue(filterDue === "due_soon" ? null : "due_soon")}
+              className={`px-3 py-1.5 rounded-full border ${
+                filterDue === "due_soon" ? "bg-amber-500 border-amber-500" : "bg-white border-gray-200"
+              }`}
+            >
+              <Text className={`text-sm font-medium ${filterDue === "due_soon" ? "text-white" : "text-gray-600"}`}>
+                Due Soon
+              </Text>
+            </TouchableOpacity>
+            <View className="w-px bg-gray-200 mx-1" />
+          </>
+        )}
+
         {/* Sort */}
-        {(["newest", "oldest", "priority"] as SortOption[]).map((s) => (
+        {(["newest", "oldest", "priority", "due_date"] as SortOption[]).map((s) => (
           <TouchableOpacity
             key={s}
             onPress={() => setSortBy(s)}
@@ -204,12 +277,11 @@ export default function ProjectsScreen() {
             }`}
           >
             <Text className={`text-sm font-medium ${sortBy === s ? "text-white" : "text-gray-600"}`}>
-              {s === "newest" ? "Newest" : s === "oldest" ? "Oldest" : "Priority"}
+              {s === "newest" ? "Newest" : s === "oldest" ? "Oldest" : s === "priority" ? "Priority" : "Due Date"}
             </Text>
           </TouchableOpacity>
         ))}
 
-        {/* Divider */}
         <View className="w-px bg-gray-200 mx-1" />
 
         {/* Priority filter */}
@@ -236,10 +308,27 @@ export default function ProjectsScreen() {
           );
         })}
 
-        {/* Divider */}
-        {members.length > 0 && <View className="w-px bg-gray-200 mx-1" />}
+        {/* Category filter — only show categories that exist */}
+        {usedCategories.length > 0 && <View className="w-px bg-gray-200 mx-1" />}
+        {usedCategories.map((cat) => {
+          const active = filterCategory === cat;
+          return (
+            <TouchableOpacity
+              key={cat}
+              onPress={() => setFilterCategory(active ? null : cat)}
+              className={`px-3 py-1.5 rounded-full border ${
+                active ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
+              }`}
+            >
+              <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-600"}`}>
+                {cat}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
 
         {/* Owner filter */}
+        {members.length > 0 && <View className="w-px bg-gray-200 mx-1" />}
         {members.map((m) => {
           const active = filterOwner === m.id;
           return (
@@ -262,9 +351,7 @@ export default function ProjectsScreen() {
         data={filtered}
         keyExtractor={(p) => p.id}
         contentContainerClassName="px-4 pt-3 pb-8"
-        refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
-        }
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
         renderItem={({ item }) => <ProjectCard project={item} />}
         ListEmptyComponent={
           !isLoading ? (
@@ -272,15 +359,11 @@ export default function ProjectsScreen() {
               title={showFinished ? "No finished projects" : "No open projects"}
               subtitle={
                 showFinished
-                  ? "Finished projects will appear here."
+                  ? "Projects you mark as Finished will appear here."
                   : "Add a project to start tracking home improvements."
               }
               actionLabel={showFinished ? undefined : "Add Project"}
-              onAction={
-                showFinished
-                  ? undefined
-                  : () => router.push("/(app)/(projects)/new")
-              }
+              onAction={showFinished ? undefined : () => router.push("/(app)/(projects)/new")}
               icon="🏗️"
             />
           ) : null

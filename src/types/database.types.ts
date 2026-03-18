@@ -83,6 +83,8 @@ export interface Database {
           completed_at: string | null;
           created_by: string;
           created_at: string;
+          category: string | null;
+          estimated_cost_cents: number;
         };
         Insert: {
           id?: string;
@@ -95,6 +97,8 @@ export interface Database {
           completed_at?: string | null;
           created_by: string;
           created_at?: string;
+          category?: string | null;
+          estimated_cost_cents?: number;
         };
         Update: {
           id?: string;
@@ -107,6 +111,8 @@ export interface Database {
           completed_at?: string | null;
           created_by?: string;
           created_at?: string;
+          category?: string | null;
+          estimated_cost_cents?: number;
         };
         Relationships: Rel;
       };

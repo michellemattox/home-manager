@@ -12,11 +12,28 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { showAlert, showConfirm } from "@/lib/alert";
+import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCreateProject } from "@/hooks/useProjects";
+import { displayToCents } from "@/utils/currencyUtils";
+import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority } from "@/types/app.types";
+
+// Accepts MM/DD/YYYY or YYYY-MM-DD, returns YYYY-MM-DD or null
+function parseDateInput(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  // Already ISO
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  // MM/DD/YYYY
+  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    const [, m, d, y] = match;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return null;
+}
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -24,6 +41,9 @@ const schema = z.object({
   status: z.enum(["planned", "in_progress", "completed", "on_hold"]),
   priority: z.enum(["low", "medium", "high"]),
   ownerIds: z.array(z.string()),
+  category: z.string().optional(),
+  dueDate: z.string().optional(),
+  estimatedCost: z.string().optional(),
 });
 
 type FormData = z.infer<typeof schema>;
@@ -58,20 +78,37 @@ export default function NewProjectScreen() {
       status: "planned",
       priority: "medium",
       ownerIds: currentMember ? [currentMember.id] : [],
+      category: undefined,
+      dueDate: "",
+      estimatedCost: "",
     },
   });
 
   const onSubmit = async (data: FormData) => {
     if (!household || !currentMember) return;
+
+    const isoDate = data.dueDate ? parseDateInput(data.dueDate) : null;
+    if (data.dueDate && !isoDate) {
+      showAlert("Invalid date", "Use MM/DD/YYYY format, e.g. 06/15/2025");
+      return;
+    }
+
+    const estimatedCents =
+      data.estimatedCost && data.estimatedCost.trim()
+        ? displayToCents(data.estimatedCost)
+        : 0;
+
     try {
-      const newProject = await createProject.mutateAsync({
+      await createProject.mutateAsync({
         project: {
           household_id: household.id,
           title: data.title,
           description: data.description ?? null,
           status: data.status,
           priority: data.priority,
-          expected_date: null,
+          expected_date: isoDate,
+          category: data.category ?? null,
+          estimated_cost_cents: estimatedCents,
           created_by: currentMember.id,
         },
         ownerIds: data.ownerIds,
@@ -128,6 +165,37 @@ export default function NewProjectScreen() {
           )}
         />
 
+        {/* Category */}
+        <Text className="text-sm font-medium text-gray-700 mb-2">Category</Text>
+        <Controller
+          control={control}
+          name="category"
+          render={({ field: { onChange, value } }) => (
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {PROJECT_CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => onChange(value === cat ? undefined : cat)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    value === cat
+                      ? "bg-indigo-600 border-indigo-600"
+                      : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text
+                    className={`text-sm font-medium ${
+                      value === cat ? "text-white" : "text-gray-600"
+                    }`}
+                  >
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        />
+
+        {/* Status */}
         <Text className="text-sm font-medium text-gray-700 mb-2">Status</Text>
         <Controller
           control={control}
@@ -157,6 +225,7 @@ export default function NewProjectScreen() {
           )}
         />
 
+        {/* Priority */}
         <Text className="text-sm font-medium text-gray-700 mb-2">Priority</Text>
         <Controller
           control={control}
@@ -186,6 +255,41 @@ export default function NewProjectScreen() {
           )}
         />
 
+        {/* Due Date */}
+        <Controller
+          control={control}
+          name="dueDate"
+          render={({ field: { onChange, value, onBlur } }) => (
+            <Input
+              label="Due Date (optional)"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              placeholder="MM/DD/YYYY"
+              keyboardType="numbers-and-punctuation"
+              hint="When do you want this done by?"
+            />
+          )}
+        />
+
+        {/* Estimated Cost */}
+        <Controller
+          control={control}
+          name="estimatedCost"
+          render={({ field: { onChange, value, onBlur } }) => (
+            <Input
+              label="Estimated Cost (optional)"
+              value={value}
+              onChangeText={onChange}
+              onBlur={onBlur}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+              hint="Your budget for this project"
+            />
+          )}
+        />
+
+        {/* Owners */}
         <Text className="text-sm font-medium text-gray-700 mb-2">Owners</Text>
         <Controller
           control={control}

@@ -53,6 +53,23 @@ export interface IdeaTopicWithIdeas extends IdeaTopic {
   ideas: IdeaWithAuthor[];
 }
 
+export const PROJECT_CATEGORIES = [
+  "General",
+  "Kitchen",
+  "Bathroom",
+  "HVAC",
+  "Plumbing",
+  "Electrical",
+  "Landscaping",
+  "Exterior",
+  "Flooring",
+  "Painting",
+  "Structural",
+  "Other",
+] as const;
+
+export type ProjectCategory = (typeof PROJECT_CATEGORIES)[number];
+
 export const TASK_CATEGORIES = [
   "HVAC",
   "Plumbing",

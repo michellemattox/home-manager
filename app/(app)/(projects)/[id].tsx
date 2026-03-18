@@ -21,11 +21,30 @@ import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { Button } from "@/components/ui/Button";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { MemberAvatar, MemberAvatarGroup } from "@/components/ui/MemberAvatar";
 import { formatDateTime, formatDate } from "@/utils/dateUtils";
+import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
+import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority } from "@/types/app.types";
+
+// Accepts MM/DD/YYYY or YYYY-MM-DD, returns YYYY-MM-DD or null
+function parseDateInput(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) return trimmed;
+  const match = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (match) {
+    const [, m, d, y] = match;
+    return `${y}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
+  }
+  return null;
+}
+
+function isoToDisplay(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return `${m}/${d}/${y}`;
+}
 
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; variant: any }> = {
   planned: { label: "Planned", variant: "default" },
@@ -72,10 +91,13 @@ export default function ProjectDetailScreen() {
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editPriority, setEditPriority] = useState<ProjectPriority>("medium");
+  const [editCategory, setEditCategory] = useState<string | undefined>(undefined);
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editCost, setEditCost] = useState("");
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  // Realtime subscription for project updates
+  // Realtime subscription
   useEffect(() => {
     if (!id) return;
     const channel = supabase
@@ -95,6 +117,9 @@ export default function ProjectDetailScreen() {
       setEditTitle(project.title);
       setEditDescription(project.description ?? "");
       setEditPriority(project.priority as ProjectPriority);
+      setEditCategory(project.category ?? undefined);
+      setEditDueDate(project.expected_date ? isoToDisplay(project.expected_date) : "");
+      setEditCost(project.estimated_cost_cents ? (project.estimated_cost_cents / 100).toFixed(2) : "");
     }
   }, [showEditModal]);
 
@@ -130,6 +155,12 @@ export default function ProjectDetailScreen() {
 
   const handleSaveEditProject = async () => {
     if (!editTitle.trim() || !id) return;
+    const isoDate = editDueDate ? parseDateInput(editDueDate) : null;
+    if (editDueDate && !isoDate) {
+      showAlert("Invalid date", "Use MM/DD/YYYY format");
+      return;
+    }
+    const estimatedCents = editCost.trim() ? displayToCents(editCost) : 0;
     try {
       await updateProject.mutateAsync({
         id,
@@ -137,6 +168,9 @@ export default function ProjectDetailScreen() {
           title: editTitle.trim(),
           description: editDescription.trim() || null,
           priority: editPriority,
+          category: editCategory ?? null,
+          expected_date: isoDate,
+          estimated_cost_cents: estimatedCents,
         },
       });
       setShowEditModal(false);
@@ -187,8 +221,7 @@ export default function ProjectDetailScreen() {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  const isFinished =
-    project.status === "finished" || project.status === "completed";
+  const isFinished = project.status === "finished" || project.status === "completed";
   const sc = STATUS_CONFIG[project.status];
 
   return (
@@ -221,6 +254,9 @@ export default function ProjectDetailScreen() {
                 label={project.priority.charAt(0).toUpperCase() + project.priority.slice(1)}
                 variant={project.priority === "high" ? "danger" : project.priority === "medium" ? "warning" : "default"}
               />
+              {project.category && (
+                <Badge label={project.category} variant="default" />
+              )}
             </View>
             <MemberAvatarGroup members={owners} />
           </View>
@@ -229,14 +265,19 @@ export default function ProjectDetailScreen() {
             <Text className="text-gray-600 mb-3">{project.description}</Text>
           )}
 
-          {/* Dates */}
+          {/* Dates + cost */}
           <View className="gap-1 mb-3">
             <Text className="text-xs text-gray-400">
               Added {formatDateTime(project.created_at)}
             </Text>
             {project.expected_date && (
-              <Text className="text-xs text-gray-400">
-                Target date: {formatDate(project.expected_date)}
+              <Text className="text-xs text-gray-500 font-medium">
+                Due {formatDate(project.expected_date)}
+              </Text>
+            )}
+            {project.estimated_cost_cents > 0 && (
+              <Text className="text-xs text-gray-500">
+                Budget: {centsToDisplay(project.estimated_cost_cents)}
               </Text>
             )}
             {isFinished && project.completed_at && (
@@ -246,7 +287,7 @@ export default function ProjectDetailScreen() {
             )}
           </View>
 
-          {/* Status chips — only show on open projects */}
+          {/* Status chips */}
           {!isFinished && (
             <View>
               <Text className="text-xs font-medium text-gray-500 mb-2">Change status</Text>
@@ -259,24 +300,15 @@ export default function ProjectDetailScreen() {
                       key={s}
                       onPress={() => !active && handleStatusChange(s)}
                       className={`px-3 py-1.5 rounded-xl border ${
-                        active
-                          ? "bg-blue-600 border-blue-600"
-                          : s === "finished"
-                          ? "bg-green-50 border-green-300"
-                          : "bg-white border-gray-200"
+                        active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                       }`}
                     >
                       <Text
                         className={`text-sm font-medium ${
-                          active
-                            ? "text-white"
-                            : s === "finished"
-                            ? "text-green-700"
-                            : "text-gray-700"
+                          active ? "text-white" : "text-gray-700"
                         }`}
                       >
                         {cfg.label}
-                        {s === "finished" ? " ✓" : ""}
                       </Text>
                     </TouchableOpacity>
                   );
@@ -285,7 +317,6 @@ export default function ProjectDetailScreen() {
             </View>
           )}
 
-          {/* Reopen button for finished projects */}
           {isFinished && (
             <TouchableOpacity
               onPress={() => handleStatusChange("in_progress")}
@@ -296,7 +327,7 @@ export default function ProjectDetailScreen() {
           )}
         </Card>
 
-        {/* Updates section */}
+        {/* Updates */}
         <View className="flex-row items-center justify-between mb-3">
           <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
             Updates ({sortedUpdates.length})
@@ -351,7 +382,6 @@ export default function ProjectDetailScreen() {
         )}
       </ScrollView>
 
-      {/* FAB — only on open projects */}
       {!isFinished && (
         <TouchableOpacity
           onPress={() => setShowUpdateModal(true)}
@@ -362,28 +392,15 @@ export default function ProjectDetailScreen() {
       )}
 
       {/* Add Update modal */}
-      <Modal
-        visible={showUpdateModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
+      <Modal visible={showUpdateModal} animationType="slide" presentationStyle="pageSheet">
         <View className="flex-1 bg-gray-50 px-4 pt-6">
           <View className="flex-row items-center mb-4">
             <TouchableOpacity onPress={() => { setShowUpdateModal(false); setUpdateText(""); }}>
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
-            <Text className="flex-1 text-center text-lg font-semibold">
-              Add Update
-            </Text>
-            <TouchableOpacity
-              onPress={handleAddUpdate}
-              disabled={!updateText.trim() || addUpdate.isPending}
-            >
-              <Text
-                className={`text-base font-semibold ${
-                  updateText.trim() ? "text-blue-600" : "text-gray-300"
-                }`}
-              >
+            <Text className="flex-1 text-center text-lg font-semibold">Add Update</Text>
+            <TouchableOpacity onPress={handleAddUpdate} disabled={!updateText.trim() || addUpdate.isPending}>
+              <Text className={`text-base font-semibold ${updateText.trim() ? "text-blue-600" : "text-gray-300"}`}>
                 Post
               </Text>
             </TouchableOpacity>
@@ -404,28 +421,15 @@ export default function ProjectDetailScreen() {
       </Modal>
 
       {/* Edit Update modal */}
-      <Modal
-        visible={!!editingUpdate}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
+      <Modal visible={!!editingUpdate} animationType="slide" presentationStyle="pageSheet">
         <View className="flex-1 bg-gray-50 px-4 pt-6">
           <View className="flex-row items-center mb-4">
             <TouchableOpacity onPress={() => { setEditingUpdate(null); setEditUpdateText(""); }}>
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
-            <Text className="flex-1 text-center text-lg font-semibold">
-              Edit Update
-            </Text>
-            <TouchableOpacity
-              onPress={handleSaveEditUpdate}
-              disabled={!editUpdateText.trim() || editUpdate.isPending}
-            >
-              <Text
-                className={`text-base font-semibold ${
-                  editUpdateText.trim() ? "text-blue-600" : "text-gray-300"
-                }`}
-              >
+            <Text className="flex-1 text-center text-lg font-semibold">Edit Update</Text>
+            <TouchableOpacity onPress={handleSaveEditUpdate} disabled={!editUpdateText.trim() || editUpdate.isPending}>
+              <Text className={`text-base font-semibold ${editUpdateText.trim() ? "text-blue-600" : "text-gray-300"}`}>
                 Save
               </Text>
             </TouchableOpacity>
@@ -442,28 +446,15 @@ export default function ProjectDetailScreen() {
       </Modal>
 
       {/* Edit Project modal */}
-      <Modal
-        visible={showEditModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
+      <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet">
         <View className="flex-1 bg-gray-50 px-4 pt-6">
           <View className="flex-row items-center mb-6">
             <TouchableOpacity onPress={() => setShowEditModal(false)}>
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
-            <Text className="flex-1 text-center text-lg font-semibold">
-              Edit Project
-            </Text>
-            <TouchableOpacity
-              onPress={handleSaveEditProject}
-              disabled={!editTitle.trim() || updateProject.isPending}
-            >
-              <Text
-                className={`text-base font-semibold ${
-                  editTitle.trim() ? "text-blue-600" : "text-gray-300"
-                }`}
-              >
+            <Text className="flex-1 text-center text-lg font-semibold">Edit Project</Text>
+            <TouchableOpacity onPress={handleSaveEditProject} disabled={!editTitle.trim() || updateProject.isPending}>
+              <Text className={`text-base font-semibold ${editTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>
                 Save
               </Text>
             </TouchableOpacity>
@@ -488,6 +479,23 @@ export default function ProjectDetailScreen() {
               placeholder="Optional"
             />
 
+            <Text className="text-sm font-medium text-gray-700 mb-2">Category</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {PROJECT_CATEGORIES.map((cat) => (
+                <TouchableOpacity
+                  key={cat}
+                  onPress={() => setEditCategory(editCategory === cat ? undefined : cat)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    editCategory === cat ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${editCategory === cat ? "text-white" : "text-gray-700"}`}>
+                    {cat}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <Text className="text-sm font-medium text-gray-700 mb-2">Priority</Text>
             <View className="flex-row gap-2 mb-4">
               {PRIORITIES.map((p) => (
@@ -495,21 +503,33 @@ export default function ProjectDetailScreen() {
                   key={p.value}
                   onPress={() => setEditPriority(p.value)}
                   className={`px-3 py-1.5 rounded-xl border flex-1 items-center ${
-                    editPriority === p.value
-                      ? "bg-blue-600 border-blue-600"
-                      : "bg-white border-gray-200"
+                    editPriority === p.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text
-                    className={`text-sm font-medium ${
-                      editPriority === p.value ? "text-white" : "text-gray-700"
-                    }`}
-                  >
+                  <Text className={`text-sm font-medium ${editPriority === p.value ? "text-white" : "text-gray-700"}`}>
                     {p.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Due Date</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+              value={editDueDate}
+              onChangeText={setEditDueDate}
+              placeholder="MM/DD/YYYY"
+              keyboardType="numbers-and-punctuation"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Estimated Cost</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-6"
+              value={editCost}
+              onChangeText={setEditCost}
+              placeholder="0.00"
+              keyboardType="decimal-pad"
+            />
           </ScrollView>
         </View>
       </Modal>
