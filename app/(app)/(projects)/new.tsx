@@ -4,7 +4,6 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -65,7 +64,7 @@ export default function NewProjectScreen() {
   const onSubmit = async (data: FormData) => {
     if (!household || !currentMember) return;
     try {
-      await createProject.mutateAsync({
+      const newProject = await createProject.mutateAsync({
         project: {
           household_id: household.id,
           title: data.title,
@@ -77,7 +76,8 @@ export default function NewProjectScreen() {
         },
         ownerIds: data.ownerIds,
       });
-      router.back();
+      // Navigate to detail so owner is prompted to add the first update
+      router.replace(`/(app)/(projects)/${newProject.id}`);
     } catch (e: any) {
       showAlert("Error", e.message);
     }

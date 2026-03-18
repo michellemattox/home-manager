@@ -77,7 +77,7 @@ export interface Database {
           household_id: string;
           title: string;
           description: string | null;
-          status: "planned" | "in_progress" | "completed" | "on_hold";
+          status: "planned" | "in_progress" | "completed" | "on_hold" | "finished";
           priority: "low" | "medium" | "high";
           expected_date: string | null;
           completed_at: string | null;
@@ -89,7 +89,7 @@ export interface Database {
           household_id: string;
           title: string;
           description?: string | null;
-          status?: "planned" | "in_progress" | "completed" | "on_hold";
+          status?: "planned" | "in_progress" | "completed" | "on_hold" | "finished";
           priority?: "low" | "medium" | "high";
           expected_date?: string | null;
           completed_at?: string | null;
@@ -101,7 +101,7 @@ export interface Database {
           household_id?: string;
           title?: string;
           description?: string | null;
-          status?: "planned" | "in_progress" | "completed" | "on_hold";
+          status?: "planned" | "in_progress" | "completed" | "on_hold" | "finished";
           priority?: "low" | "medium" | "high";
           expected_date?: string | null;
           completed_at?: string | null;

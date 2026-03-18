@@ -9,11 +9,11 @@ export function useProjects(householdId: string | undefined) {
       if (!householdId) return [];
       const { data, error } = await supabase
         .from("projects")
-        .select("*, project_owners(member_id)")
+        .select("*, project_owners(member_id), project_updates(id, body, author_id, created_at)")
         .eq("household_id", householdId)
         .order("created_at", { ascending: false });
       if (error) throw error;
-      return (data ?? []) as Project[];
+      return (data ?? []) as ProjectWithOwners[];
     },
     enabled: !!householdId,
   });
@@ -104,7 +104,22 @@ export function useAddProjectUpdate() {
       if (error) throw error;
       return data as ProjectUpdate;
     },
-    onSuccess: (data) =>
-      qc.invalidateQueries({ queryKey: ["project", data.project_id] }),
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["project", data.project_id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
+      const { error } = await supabase.from("projects").delete().eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["projects", householdId] }),
   });
 }
