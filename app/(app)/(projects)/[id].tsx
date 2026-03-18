@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -18,9 +18,13 @@ import {
 } from "@/hooks/useProjects";
 import {
   useAddProjectTask,
-  useToggleProjectTask,
+  useCompleteProjectChecklistItem,
   useDeleteProjectTask,
 } from "@/hooks/useProjectTasks";
+import {
+  useCompletedChecklistItems,
+  useDeleteCompletedChecklistItem,
+} from "@/hooks/useChecklistItems";
 import { useServiceRecords } from "@/hooks/useServices";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -30,7 +34,7 @@ import { Badge } from "@/components/ui/Badge";
 import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { MemberAvatar, MemberAvatarGroup } from "@/components/ui/MemberAvatar";
-import { formatDateTime, formatDate } from "@/utils/dateUtils";
+import { formatDateTime, formatDate, formatDateShort } from "@/utils/dateUtils";
 import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority, ProjectTask } from "@/types/app.types";
@@ -104,8 +108,10 @@ export default function ProjectDetailScreen() {
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const addTask = useAddProjectTask();
-  const toggleTask = useToggleProjectTask();
+  const completeTask = useCompleteProjectChecklistItem();
   const deleteTask = useDeleteProjectTask();
+  const deleteCompleted = useDeleteCompletedChecklistItem();
+  const { data: completedItems = [] } = useCompletedChecklistItems("project", id);
   const { data: serviceRecords } = useServiceRecords(household?.id);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -125,8 +131,15 @@ export default function ProjectDetailScreen() {
   const [editingUpdate, setEditingUpdate] = useState<{ id: string; body: string } | null>(null);
   const [editUpdateText, setEditUpdateText] = useState("");
 
-  // Inline task add
-  const [newTaskText, setNewTaskText] = useState("");
+  // Checklist state
+  const [localChecklists, setLocalChecklists] = useState<string[]>(["General"]);
+  const [showAddChecklist, setShowAddChecklist] = useState(false);
+  const [newChecklistName, setNewChecklistName] = useState("");
+  const [addItemChecklist, setAddItemChecklist] = useState<string | null>(null);
+  const [addItemTitle, setAddItemTitle] = useState("");
+  const [addItemMember, setAddItemMember] = useState<string | null>(null);
+  const [addItemDate, setAddItemDate] = useState("");
+  const [showCompleted, setShowCompleted] = useState(false);
 
   // Edit project modal state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -237,13 +250,45 @@ export default function ProjectDetailScreen() {
     );
   };
 
-  const handleAddTask = async () => {
-    if (!newTaskText.trim() || !id) return;
-    const sortedTasks = [...(project?.project_tasks ?? [])].sort((a, b) => a.sort_order - b.sort_order);
-    const nextOrder = sortedTasks.length > 0 ? sortedTasks[sortedTasks.length - 1].sort_order + 1 : 0;
+  const handleAddChecklist = () => {
+    const name = newChecklistName.trim();
+    if (!name) return;
+    if (!localChecklists.includes(name)) {
+      setLocalChecklists((prev) => [...prev, name]);
+    }
+    setNewChecklistName("");
+    setShowAddChecklist(false);
+  };
+
+  const handleAddChecklistItem = async () => {
+    if (!addItemTitle.trim() || !addItemChecklist || !id) return;
+    const tasks = (project?.project_tasks ?? []) as ProjectTask[];
+    const groupTasks = tasks.filter((t) => (t.checklist_name ?? "General") === addItemChecklist);
+    const nextOrder = groupTasks.length > 0
+      ? Math.max(...groupTasks.map((t) => t.sort_order)) + 1
+      : 0;
     try {
-      await addTask.mutateAsync({ project_id: id, title: newTaskText.trim(), sort_order: nextOrder });
-      setNewTaskText("");
+      await addTask.mutateAsync({
+        project_id: id,
+        title: addItemTitle.trim(),
+        sort_order: nextOrder,
+        checklist_name: addItemChecklist,
+        assigned_member_id: addItemMember,
+        due_date: addItemDate || null,
+      });
+      setAddItemTitle("");
+      setAddItemMember(null);
+      setAddItemDate("");
+      setAddItemChecklist(null);
+    } catch (e: any) { showAlert("Error", e.message); }
+  };
+
+  const handleCompleteTask = async (task: ProjectTask) => {
+    try {
+      await completeTask.mutateAsync({
+        task,
+        completedByMemberId: currentMember?.id ?? null,
+      });
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
@@ -257,11 +302,18 @@ export default function ProjectDetailScreen() {
     (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
   );
 
-  const sortedTasks: ProjectTask[] = [...((project as any).project_tasks ?? [])].sort(
-    (a: ProjectTask, b: ProjectTask) => a.sort_order - b.sort_order
-  );
+  const allTasks: ProjectTask[] = [...((project as any).project_tasks ?? [])];
 
-  const completedTasks = sortedTasks.filter((t) => t.is_completed).length;
+  // Merge server-side checklist names with local
+  const serverChecklistNames = Array.from(new Set(allTasks.map((t) => t.checklist_name ?? "General")));
+  const checklistNames = Array.from(new Set([...localChecklists, ...serverChecklistNames]));
+
+  const tasksByChecklist: Record<string, ProjectTask[]> = {};
+  for (const name of checklistNames) {
+    tasksByChecklist[name] = allTasks
+      .filter((t) => (t.checklist_name ?? "General") === name)
+      .sort((a, b) => a.sort_order - b.sort_order);
+  }
 
   const isFinished = project.status === "finished" || project.status === "completed";
   const sc = STATUS_CONFIG[project.status];
@@ -388,79 +440,146 @@ export default function ProjectDetailScreen() {
           </Card>
         )}
 
-        {/* Checklist */}
-        <View className="mb-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
-              Checklist{sortedTasks.length > 0 ? ` (${completedTasks}/${sortedTasks.length})` : ""}
-            </Text>
-          </View>
-
-          <Card>
-            {sortedTasks.map((task) => (
-              <View key={task.id} className="flex-row items-center py-2 border-b border-gray-50">
+        {/* Checklists */}
+        {checklistNames.map((name) => (
+          <View key={name} className="mb-4">
+            <View className="flex-row items-center justify-between mb-2">
+              <Text className="text-sm font-bold text-gray-500 uppercase tracking-wider">{name}</Text>
+              {!isFinished && (
                 <TouchableOpacity
-                  onPress={() =>
-                    toggleTask.mutate({
-                      id: task.id,
-                      project_id: id!,
-                      is_completed: !task.is_completed,
-                    })
-                  }
-                  className={`w-5 h-5 rounded-full border-2 mr-3 items-center justify-center ${
-                    task.is_completed ? "bg-green-500 border-green-500" : "border-gray-300"
-                  }`}
+                  onPress={() => setAddItemChecklist(name)}
+                  className="bg-blue-600 rounded-full px-3 py-0.5"
                 >
-                  {task.is_completed && (
-                    <Text className="text-white text-xs">✓</Text>
-                  )}
+                  <Text className="text-white text-xs font-semibold">+ Add</Text>
                 </TouchableOpacity>
-                <Text
-                  className={`flex-1 text-sm ${
-                    task.is_completed ? "text-gray-400 line-through" : "text-gray-700"
-                  }`}
-                >
-                  {task.title}
+              )}
+            </View>
+            <Card>
+              {tasksByChecklist[name].length === 0 ? (
+                <Text className="text-gray-400 text-sm text-center py-3">
+                  {isFinished ? "No tasks" : "Tap + Add to add items"}
                 </Text>
-                {!isFinished && (
-                  <TouchableOpacity
-                    onPress={() =>
-                      showConfirm("Remove task?", task.title, () =>
-                        deleteTask.mutate({ id: task.id, project_id: id! })
-                      )
-                    }
-                    className="ml-2 p-1"
-                  >
-                    <Text className="text-gray-300 text-sm">✕</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            ))}
+              ) : (
+                tasksByChecklist[name].map((task) => {
+                  const assignedMember = task.assigned_member_id
+                    ? members.find((m) => m.id === task.assigned_member_id)
+                    : null;
+                  return (
+                    <View key={task.id} className="flex-row items-start py-2.5 border-b border-gray-50">
+                      <TouchableOpacity
+                        onPress={() => handleCompleteTask(task)}
+                        className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3 mt-0.5 items-center justify-center"
+                      />
+                      <View className="flex-1">
+                        <Text className="text-sm text-gray-700">{task.title}</Text>
+                        <View className="flex-row items-center gap-2 mt-0.5 flex-wrap">
+                          {assignedMember && (
+                            <View className="flex-row items-center gap-1">
+                              <MemberAvatar member={assignedMember} size="sm" />
+                              <Text className="text-xs text-gray-400">{assignedMember.display_name.split(" ")[0]}</Text>
+                            </View>
+                          )}
+                          {task.due_date && (
+                            <Text className="text-xs text-gray-400">{formatDateShort(task.due_date)}</Text>
+                          )}
+                        </View>
+                      </View>
+                      {!isFinished && (
+                        <TouchableOpacity
+                          onPress={() =>
+                            showConfirm("Remove task?", task.title, () =>
+                              deleteTask.mutate({ id: task.id, project_id: id! })
+                            )
+                          }
+                          className="ml-2 p-1 mt-0.5"
+                        >
+                          <Text className="text-gray-300 text-sm">✕</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
+                  );
+                })
+              )}
+            </Card>
+          </View>
+        ))}
 
-            {!isFinished && (
-              <View className="flex-row items-center pt-2">
-                <TextInput
-                  className="flex-1 text-sm text-gray-900 py-1"
-                  placeholder="Add a task..."
-                  placeholderTextColor="#9ca3af"
-                  value={newTaskText}
-                  onChangeText={setNewTaskText}
-                  onSubmitEditing={handleAddTask}
-                  returnKeyType="done"
-                />
-                {newTaskText.trim().length > 0 && (
-                  <TouchableOpacity onPress={handleAddTask} className="ml-2">
-                    <Text className="text-blue-600 text-sm font-medium">Add</Text>
-                  </TouchableOpacity>
-                )}
-              </View>
-            )}
+        {/* Add Checklist */}
+        {!isFinished && (
+          showAddChecklist ? (
+            <View className="flex-row items-center gap-2 mb-4">
+              <TextInput
+                className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900"
+                placeholder="Checklist name (e.g. Materials)"
+                value={newChecklistName}
+                onChangeText={setNewChecklistName}
+                onSubmitEditing={handleAddChecklist}
+                autoFocus
+                returnKeyType="done"
+                placeholderTextColor="#9ca3af"
+              />
+              <TouchableOpacity
+                onPress={handleAddChecklist}
+                disabled={!newChecklistName.trim()}
+                className={`px-3 py-2 rounded-xl ${newChecklistName.trim() ? "bg-blue-600" : "bg-gray-200"}`}
+              >
+                <Text className={`text-sm font-semibold ${newChecklistName.trim() ? "text-white" : "text-gray-400"}`}>
+                  Create
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setShowAddChecklist(false); setNewChecklistName(""); }}>
+                <Text className="text-gray-400 text-sm">Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity
+              onPress={() => setShowAddChecklist(true)}
+              className="flex-row items-center gap-2 mb-4 py-2"
+            >
+              <Text className="text-blue-600 text-sm font-medium">+ Add Checklist</Text>
+            </TouchableOpacity>
+          )
+        )}
 
-            {sortedTasks.length === 0 && isFinished && (
-              <Text className="text-gray-400 text-sm text-center py-2">No checklist items</Text>
+        {/* Completed items */}
+        {completedItems.length > 0 && (
+          <View className="mb-4">
+            <TouchableOpacity
+              onPress={() => setShowCompleted(!showCompleted)}
+              className="flex-row items-center justify-between mb-2"
+            >
+              <Text className="text-sm font-bold text-gray-400 uppercase tracking-wider">
+                Completed ({completedItems.length})
+              </Text>
+              <Text className="text-gray-400 text-xs">{showCompleted ? "Hide" : "Show"}</Text>
+            </TouchableOpacity>
+            {showCompleted && (
+              <Card>
+                {completedItems.map((item) => (
+                  <View key={item.id} className="flex-row items-center py-2 border-b border-gray-50">
+                    <View className="w-5 h-5 rounded-full bg-green-500 mr-3 items-center justify-center">
+                      <Text className="text-white text-xs font-bold">✓</Text>
+                    </View>
+                    <View className="flex-1">
+                      <Text className="text-sm text-gray-400 line-through">{item.title}</Text>
+                      {item.checklist_name && item.checklist_name !== "General" && (
+                        <Text className="text-xs text-gray-300">{item.checklist_name}</Text>
+                      )}
+                    </View>
+                    <TouchableOpacity
+                      onPress={() =>
+                        deleteCompleted.mutate({ id: item.id, sourceType: "project", sourceId: id! })
+                      }
+                      className="ml-2 p-1"
+                    >
+                      <Text className="text-gray-300 text-sm">×</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </Card>
             )}
-          </Card>
-        </View>
+          </View>
+        )}
 
         {/* Updates */}
         <View className="flex-row items-center justify-between mb-3">
@@ -695,6 +814,68 @@ export default function ProjectDetailScreen() {
               multiline
               textAlignVertical="top"
               placeholder="Paint color codes, model numbers, permit info..."
+            />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Add Checklist Item Modal */}
+      <Modal
+        visible={addItemChecklist !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setAddItemChecklist(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity
+              onPress={() => { setAddItemChecklist(null); setAddItemTitle(""); setAddItemMember(null); setAddItemDate(""); }}
+              className="mr-4"
+            >
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-base font-semibold text-gray-900">
+              Add to "{addItemChecklist}"
+            </Text>
+            <TouchableOpacity onPress={handleAddChecklistItem} disabled={!addItemTitle.trim() || addTask.isPending}>
+              <Text className={`text-base font-semibold ${addItemTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>
+                Add
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Text className="text-sm font-medium text-gray-700 mb-1">Task</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+              value={addItemTitle}
+              onChangeText={setAddItemTitle}
+              placeholder="e.g. Get permits"
+              autoFocus
+              placeholderTextColor="#9ca3af"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Assign to (optional)</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {members.map((m) => (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => setAddItemMember(addItemMember === m.id ? null : m.id)}
+                  className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${
+                    addItemMember === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <MemberAvatar member={m} size="sm" />
+                  <Text className={`text-sm font-medium ${addItemMember === m.id ? "text-white" : "text-gray-700"}`}>
+                    {m.display_name.split(" ")[0]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <DateInput
+              label="Due Date (optional)"
+              value={addItemDate}
+              onChange={setAddItemDate}
             />
           </ScrollView>
         </SafeAreaView>

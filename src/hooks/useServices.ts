@@ -41,18 +41,24 @@ export function useCreateServiceRecord() {
 export function useUpdateServiceRecord() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, updates }: { id: string; updates: Partial<ServiceRecord> }) => {
-      const { data, error } = await supabase
+    mutationFn: async ({
+      id,
+      householdId,
+      updates,
+    }: {
+      id: string;
+      householdId: string;
+      updates: Partial<ServiceRecord>;
+    }) => {
+      const { error } = await supabase
         .from("service_records")
         .update(updates)
-        .eq("id", id)
-        .select()
-        .single();
+        .eq("id", id);
       if (error) throw error;
-      return data as ServiceRecord;
+      return householdId;
     },
-    onSuccess: (data) =>
-      qc.invalidateQueries({ queryKey: ["service_records", data.household_id] }),
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["service_records", householdId] }),
   });
 }
 

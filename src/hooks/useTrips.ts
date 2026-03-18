@@ -57,16 +57,51 @@ export function useCreateTripTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (task: Omit<TripTask, "id">) => {
-      const { data, error } = await supabase
-        .from("trip_tasks")
-        .insert(task)
-        .select()
-        .single();
+      const { error } = await supabase.from("trip_tasks").insert(task);
       if (error) throw error;
-      return data as TripTask;
+      return { trip_id: task.trip_id };
     },
-    onSuccess: (data) =>
-      qc.invalidateQueries({ queryKey: ["trip", data.trip_id] }),
+    onSuccess: ({ trip_id }) =>
+      qc.invalidateQueries({ queryKey: ["trip", trip_id] }),
+  });
+}
+
+export function useCompleteTripChecklistItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      task,
+      completedByMemberId,
+    }: {
+      task: TripTask;
+      completedByMemberId: string | null;
+    }) => {
+      const { error: archiveError } = await supabase
+        .from("completed_checklist_items")
+        .insert({
+          source_type: "trip",
+          source_id: task.trip_id,
+          original_task_id: task.id,
+          title: task.title,
+          checklist_name: task.checklist_name ?? "General",
+          assigned_member_id: task.assigned_member_id,
+          due_date: task.due_date,
+          completed_by: completedByMemberId,
+        });
+      if (archiveError) throw archiveError;
+
+      const { error: deleteError } = await supabase
+        .from("trip_tasks")
+        .delete()
+        .eq("id", task.id);
+      if (deleteError) throw deleteError;
+
+      return { trip_id: task.trip_id };
+    },
+    onSuccess: ({ trip_id }) => {
+      qc.invalidateQueries({ queryKey: ["trip", trip_id] });
+      qc.invalidateQueries({ queryKey: ["completed_checklist", "trip", trip_id] });
+    },
   });
 }
 

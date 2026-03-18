@@ -164,6 +164,9 @@ export interface Database {
           completed_at: string | null;
           sort_order: number;
           created_at: string;
+          checklist_name: string;
+          assigned_member_id: string | null;
+          due_date: string | null;
         };
         Insert: {
           id?: string;
@@ -173,6 +176,9 @@ export interface Database {
           completed_at?: string | null;
           sort_order?: number;
           created_at?: string;
+          checklist_name?: string;
+          assigned_member_id?: string | null;
+          due_date?: string | null;
         };
         Update: {
           id?: string;
@@ -182,6 +188,9 @@ export interface Database {
           completed_at?: string | null;
           sort_order?: number;
           created_at?: string;
+          checklist_name?: string;
+          assigned_member_id?: string | null;
+          due_date?: string | null;
         };
         Relationships: Rel;
       };
@@ -229,6 +238,9 @@ export interface Database {
           is_completed: boolean;
           completed_at: string | null;
           sort_order: number;
+          checklist_name: string;
+          assigned_member_id: string | null;
+          due_date: string | null;
         };
         Insert: {
           id?: string;
@@ -237,6 +249,9 @@ export interface Database {
           is_completed?: boolean;
           completed_at?: string | null;
           sort_order?: number;
+          checklist_name?: string;
+          assigned_member_id?: string | null;
+          due_date?: string | null;
         };
         Update: {
           id?: string;
@@ -245,6 +260,48 @@ export interface Database {
           is_completed?: boolean;
           completed_at?: string | null;
           sort_order?: number;
+          checklist_name?: string;
+          assigned_member_id?: string | null;
+          due_date?: string | null;
+        };
+        Relationships: Rel;
+      };
+      completed_checklist_items: {
+        Row: {
+          id: string;
+          source_type: "project" | "trip";
+          source_id: string;
+          original_task_id: string | null;
+          title: string;
+          checklist_name: string;
+          assigned_member_id: string | null;
+          due_date: string | null;
+          completed_by: string | null;
+          completed_at: string;
+        };
+        Insert: {
+          id?: string;
+          source_type: "project" | "trip";
+          source_id: string;
+          original_task_id?: string | null;
+          title: string;
+          checklist_name?: string;
+          assigned_member_id?: string | null;
+          due_date?: string | null;
+          completed_by?: string | null;
+          completed_at?: string;
+        };
+        Update: {
+          id?: string;
+          source_type?: "project" | "trip";
+          source_id?: string;
+          original_task_id?: string | null;
+          title?: string;
+          checklist_name?: string;
+          assigned_member_id?: string | null;
+          due_date?: string | null;
+          completed_by?: string | null;
+          completed_at?: string;
         };
         Relationships: Rel;
       };

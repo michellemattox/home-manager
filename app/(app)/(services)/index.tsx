@@ -97,6 +97,7 @@ export default function ServicesScreen() {
     try {
       await updateRecord.mutateAsync({
         id: editingRecord.id,
+        householdId: editingRecord.household_id,
         updates: {
           vendor_name: editVendor.trim(),
           service_type: editServiceType,
