@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
+import { impactLight } from "@/lib/haptics";
 import { useTrip, useCreateTripTask, useToggleTripTask, useDeleteTripTask } from "@/hooks/useTrips";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -107,7 +107,7 @@ export default function TripDetailScreen() {
   };
 
   const handleToggle = async (task: TripTask, isCompleted: boolean) => {
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await impactLight();
     toggleTask.mutate({ taskId: task.id, tripId: task.trip_id, isCompleted });
   };
 

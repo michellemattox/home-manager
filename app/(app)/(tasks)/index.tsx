@@ -9,7 +9,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
+import { notificationSuccess } from "@/lib/haptics";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
 import { useAuthStore } from "@/stores/authStore";
@@ -72,7 +72,7 @@ export default function TasksScreen() {
   const completeTask = useCompleteRecurringTask();
 
   const handleComplete = async (task: RecurringTask) => {
-    await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    await notificationSuccess();
     const currentMember = members.find((m) => m.user_id === user?.id);
     if (!currentMember) return;
 

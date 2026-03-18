@@ -1,25 +1,26 @@
-import * as Device from "expo-device";
-import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 import { supabase } from "./supabase";
 
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowAlert: true,
-    shouldPlaySound: true,
-    shouldSetBadge: true,
-    shouldShowBanner: true,
-    shouldShowList: true,
-  }),
-});
-
+// No-op on web — push notifications require a native device
 export async function registerForPushNotificationsAsync(
   userId: string
 ): Promise<string | null> {
-  if (!Device.isDevice) {
-    console.log("Push notifications require a physical device");
-    return null;
-  }
+  if (Platform.OS === "web") return null;
+
+  const Device = require("expo-device");
+  const Notifications = require("expo-notifications");
+
+  Notifications.setNotificationHandler({
+    handleNotification: async () => ({
+      shouldShowAlert: true,
+      shouldPlaySound: true,
+      shouldSetBadge: true,
+      shouldShowBanner: true,
+      shouldShowList: true,
+    }),
+  });
+
+  if (!Device.isDevice) return null;
 
   const { status: existingStatus } = await Notifications.getPermissionsAsync();
   let finalStatus = existingStatus;
@@ -29,10 +30,7 @@ export async function registerForPushNotificationsAsync(
     finalStatus = status;
   }
 
-  if (finalStatus !== "granted") {
-    console.log("Push notification permission not granted");
-    return null;
-  }
+  if (finalStatus !== "granted") return null;
 
   if (Platform.OS === "android") {
     await Notifications.setNotificationChannelAsync("default", {
@@ -44,7 +42,6 @@ export async function registerForPushNotificationsAsync(
 
   const token = (await Notifications.getExpoPushTokenAsync()).data;
 
-  // Upsert device token in Supabase
   await supabase.from("device_tokens").upsert(
     {
       user_id: userId,

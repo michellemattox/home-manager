@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import * as Haptics from "expo-haptics";
+import { impactLight } from "@/lib/haptics";
 import { useIdeas, useCreateIdea, useToggleIdeaPin, useDeleteIdea } from "@/hooks/useIdeas";
 import { useIdeaTopics } from "@/hooks/useIdeas";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -81,7 +81,7 @@ export default function TopicIdeasScreen() {
 
   const handleAdd = async () => {
     if (!newIdeaText.trim() || !topicId || !currentMember) return;
-    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    await impactLight();
     try {
       await createIdea.mutateAsync({
         topic_id: topicId,
