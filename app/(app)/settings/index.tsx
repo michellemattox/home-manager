@@ -5,11 +5,13 @@ import {
   ScrollView,
   TouchableOpacity,
   Share,
+  Switch,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useNotificationStore } from "@/stores/notificationStore";
 import { useGenerateInvite } from "@/hooks/useHousehold";
 import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
@@ -22,6 +24,11 @@ export default function SettingsScreen() {
   const { user } = useAuthStore();
   const generateInvite = useGenerateInvite();
   const [inviteLoading, setInviteLoading] = useState(false);
+  const {
+    overdueEnabled, setOverdueEnabled,
+    dueSoonEnabled, setDueSoonEnabled,
+    reminderHour, setReminderHour,
+  } = useNotificationStore();
 
   const handleSignOut = async () => {
     showConfirm(
@@ -101,6 +108,53 @@ export default function SettingsScreen() {
             loading={inviteLoading}
             className="mt-2"
           />
+        </Card>
+
+        {/* Notifications */}
+        <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          Notifications
+        </Text>
+        <Card className="mb-6">
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-1 mr-3">
+              <Text className="text-sm font-semibold text-gray-900">Overdue alerts</Text>
+              <Text className="text-xs text-gray-400 mt-0.5">Notify when projects or tasks are past due</Text>
+            </View>
+            <Switch
+              value={overdueEnabled}
+              onValueChange={setOverdueEnabled}
+              trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
+              thumbColor="#fff"
+            />
+          </View>
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-1 mr-3">
+              <Text className="text-sm font-semibold text-gray-900">Due soon alerts</Text>
+              <Text className="text-xs text-gray-400 mt-0.5">Notify for items due within 7–14 days</Text>
+            </View>
+            <Switch
+              value={dueSoonEnabled}
+              onValueChange={setDueSoonEnabled}
+              trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
+              thumbColor="#fff"
+            />
+          </View>
+          <Text className="text-sm font-semibold text-gray-700 mb-2">Reminder time</Text>
+          <View className="flex-row flex-wrap gap-2">
+            {[7, 8, 9, 12, 17, 20].map((h) => (
+              <TouchableOpacity
+                key={h}
+                onPress={() => setReminderHour(h)}
+                className={`px-3 py-1.5 rounded-xl border ${
+                  reminderHour === h ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-sm font-medium ${reminderHour === h ? "text-white" : "text-gray-700"}`}>
+                  {h === 12 ? "12 PM" : h < 12 ? `${h} AM` : `${h - 12} PM`}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
         </Card>
 
         {/* Account */}

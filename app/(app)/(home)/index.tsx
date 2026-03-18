@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
 import { useServiceRecords } from "@/hooks/useServices";
@@ -150,6 +151,8 @@ export default function HomeScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
+
+  useNotificationScheduler();
 
   const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useProjects(household?.id);
   const { data: tasks, isLoading: loadingTasks, refetch: refetchTasks } = useRecurringTasks(household?.id);
