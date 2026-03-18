@@ -39,7 +39,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             .select("*")
             .eq("user_id", newSession.user.id)
             .is("invite_token", null)
-            .single();
+            .maybeSingle();
 
           if (member) {
             const m = member as HouseholdMember;
@@ -51,7 +51,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
               .from("households")
               .select("*")
               .eq("id", m.household_id)
-              .single();
+              .maybeSingle();
             if (household) setHousehold(household as any);
 
             const { data: members } = await supabase
