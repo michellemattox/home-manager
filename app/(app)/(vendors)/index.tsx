@@ -24,15 +24,19 @@ import {
   buildYelpUrl,
   getServiceTypeKeyword,
 } from "@/lib/vendorLinks";
-import type { PreferredVendor } from "@/types/app.types";
+import { formatDate } from "@/utils/dateUtils";
+import { centsToDisplay } from "@/utils/currencyUtils";
+import type { PreferredVendor, ServiceRecord } from "@/types/app.types";
 
 type TabType = "my" | "find";
 
 function VendorCard({
   vendor,
+  lastService,
   onEdit,
 }: {
   vendor: PreferredVendor;
+  lastService?: ServiceRecord;
   onEdit: () => void;
 }) {
   return (
@@ -48,6 +52,17 @@ function VendorCard({
           )}
           {vendor.notes && (
             <Text className="text-xs text-gray-400 mt-1" numberOfLines={2}>{vendor.notes}</Text>
+          )}
+          {lastService && (
+            <View className="mt-2 pt-2 border-t border-gray-100">
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Last Service</Text>
+              <Text className="text-xs text-gray-600">
+                {formatDate(lastService.service_date)} · {centsToDisplay(lastService.cost_cents)}
+              </Text>
+              {lastService.notes && (
+                <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{lastService.notes}</Text>
+              )}
+            </View>
           )}
         </View>
         <TouchableOpacity onPress={onEdit} className="p-1">
@@ -140,6 +155,18 @@ export default function VendorsScreen() {
     );
   };
 
+  // Last service record per vendor name (for preferred vendor cards)
+  const lastServiceByVendor = useMemo(() => {
+    const map: Record<string, ServiceRecord> = {};
+    (serviceRecords ?? []).forEach((r) => {
+      const key = r.vendor_name.toLowerCase();
+      if (!map[key] || r.service_date > map[key].service_date) {
+        map[key] = r;
+      }
+    });
+    return map;
+  }, [serviceRecords]);
+
   // Vendors from service history not already in preferred vendors
   const preferredNames = new Set((preferredVendors ?? []).map((v) => v.name.toLowerCase()));
   const historyVendors = useMemo(() => {
@@ -206,7 +233,12 @@ export default function VendorsScreen() {
             />
           ) : (
             (preferredVendors ?? []).map((v) => (
-              <VendorCard key={v.id} vendor={v} onEdit={() => openEdit(v)} />
+              <VendorCard
+                key={v.id}
+                vendor={v}
+                lastService={lastServiceByVendor[v.name.toLowerCase()]}
+                onEdit={() => openEdit(v)}
+              />
             ))
           )}
 

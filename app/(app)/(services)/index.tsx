@@ -160,7 +160,7 @@ export default function ServicesScreen() {
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}
-        contentContainerClassName="px-4 pb-8"
+        contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
         refreshControl={
           <RefreshControl refreshing={isLoading} onRefresh={refetch} />
         }

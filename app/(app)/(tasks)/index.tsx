@@ -21,7 +21,8 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
-import { isOverdue, isDueSoon, formatDate } from "@/utils/dateUtils";
+import { DateInput } from "@/components/ui/DateInput";
+import { isOverdue, isDueSoon, formatDate, toISODateString } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
 import { TASK_CATEGORIES } from "@/types/app.types";
 import type { RecurringTask, FrequencyType } from "@/types/app.types";
@@ -90,6 +91,7 @@ export default function TasksScreen() {
   const [editingTask, setEditingTask] = useState<RecurringTask | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editCategory, setEditCategory] = useState<string | undefined>(undefined);
+  const [editAnchorDate, setEditAnchorDate] = useState("");
   const [editFreqType, setEditFreqType] = useState<FrequencyType>("monthly");
   const [editCustomDays, setEditCustomDays] = useState("");
   const [editAssignedId, setEditAssignedId] = useState<string | undefined>(undefined);
@@ -98,6 +100,7 @@ export default function TasksScreen() {
     setEditingTask(task);
     setEditTitle(task.title);
     setEditCategory(task.category ?? undefined);
+    setEditAnchorDate(task.anchor_date);
     setEditFreqType(task.frequency_type);
     setEditCustomDays(String(task.frequency_days));
     setEditAssignedId(task.assigned_member_id ?? undefined);
@@ -126,6 +129,8 @@ export default function TasksScreen() {
         updates: {
           title: editTitle.trim(),
           category: editCategory ?? null,
+          anchor_date: editAnchorDate || toISODateString(new Date()),
+          next_due_date: editAnchorDate || toISODateString(new Date()),
           frequency_type: editFreqType,
           frequency_days: freqDays,
           assigned_member_id: editAssignedId ?? null,
@@ -244,6 +249,13 @@ export default function TasksScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+
+            <DateInput
+              label="Start / Due Date"
+              value={editAnchorDate}
+              onChange={setEditAnchorDate}
+              hint="First occurrence — frequency repeats from this date"
+            />
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Frequency</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">

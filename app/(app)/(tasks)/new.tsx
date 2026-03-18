@@ -12,6 +12,7 @@ import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
+import { DateInput } from "@/components/ui/DateInput";
 import { Button } from "@/components/ui/Button";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -23,6 +24,7 @@ import { frequencyToDays } from "@/utils/scheduleUtils";
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
   category: z.string().optional(),
+  anchorDate: z.string().optional(),
   frequencyType: z.enum(["daily", "weekly", "monthly", "yearly", "custom"]),
   customDays: z.string().optional(),
   assignedMemberId: z.string().optional(),
@@ -50,7 +52,7 @@ export default function NewTaskScreen() {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { frequencyType: "monthly" },
+    defaultValues: { frequencyType: "monthly", anchorDate: toISODateString(new Date()) },
   });
 
   const frequencyType = watch("frequencyType");
@@ -58,6 +60,7 @@ export default function NewTaskScreen() {
   const onSubmit = async (data: FormData) => {
     if (!household) return;
     const today = toISODateString(new Date());
+    const anchorDate = data.anchorDate || today;
     const freqDays =
       data.frequencyType === "custom"
         ? parseInt(data.customDays ?? "30", 10)
@@ -71,8 +74,8 @@ export default function NewTaskScreen() {
         category: data.category ?? null,
         frequency_type: data.frequencyType,
         frequency_days: freqDays,
-        anchor_date: today,
-        next_due_date: today,
+        anchor_date: anchorDate,
+        next_due_date: anchorDate,
         assigned_member_id: data.assignedMemberId ?? null,
         is_active: true,
       });
@@ -138,6 +141,19 @@ export default function NewTaskScreen() {
                 </TouchableOpacity>
               ))}
             </ScrollView>
+          )}
+        />
+
+        <Controller
+          control={control}
+          name="anchorDate"
+          render={({ field: { onChange, value } }) => (
+            <DateInput
+              label="Start / Due Date"
+              value={value ?? ""}
+              onChange={onChange}
+              hint="First occurrence — frequency repeats from this date"
+            />
           )}
         />
 

@@ -93,7 +93,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
     // Logged in + has household → main app
     const inApp = segments[0] === "(app)";
-    if (!inApp) router.replace("/(app)/(tasks)");
+    if (!inApp) router.replace("/(app)/(home)");
   }, [session, segments, householdChecked, household]);
 
   return <>{children}</>;
