@@ -41,7 +41,7 @@ export default function NewServiceScreen() {
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
-    defaultValues: { serviceDate: new Date().toISOString().slice(0, 10) },
+    defaultValues: { serviceDate: new Date().toISOString().slice(0, 10), serviceType: "Other" },
   });
 
   const onSubmit = async (data: FormData) => {
@@ -99,31 +99,37 @@ export default function NewServiceScreen() {
           control={control}
           name="serviceType"
           render={({ field: { onChange, value } }) => (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              className="mb-4"
-            >
-              {SERVICE_TYPES.map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => onChange(type)}
-                  className={`mr-2 px-3 py-1.5 rounded-full border ${
-                    value === type
-                      ? "bg-blue-600 border-blue-600"
-                      : "bg-white border-gray-200"
-                  }`}
-                >
-                  <Text
-                    className={`text-sm font-medium ${
-                      value === type ? "text-white" : "text-gray-700"
+            <>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                className="mb-1"
+              >
+                {SERVICE_TYPES.map((type) => (
+                  <TouchableOpacity
+                    key={type}
+                    onPress={() => onChange(type)}
+                    className={`mr-2 px-3 py-1.5 rounded-full border ${
+                      value === type
+                        ? "bg-blue-600 border-blue-600"
+                        : "bg-white border-gray-200"
                     }`}
                   >
-                    {type}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                    <Text
+                      className={`text-sm font-medium ${
+                        value === type ? "text-white" : "text-gray-700"
+                      }`}
+                    >
+                      {type}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {errors.serviceType && (
+                <Text className="text-red-500 text-xs mb-3">{errors.serviceType.message}</Text>
+              )}
+              {!errors.serviceType && <View className="mb-3" />}
+            </>
           )}
         />
 

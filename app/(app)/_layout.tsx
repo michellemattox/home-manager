@@ -52,6 +52,14 @@ export default function AppLayout() {
       }}
     >
       <Tabs.Screen
+        name="(home)"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="🏠" label="Home" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="(tasks)"
         options={{
           tabBarIcon: ({ focused }) => <TasksTabIcon focused={focused} />,
