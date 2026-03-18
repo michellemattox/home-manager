@@ -440,6 +440,36 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      preferred_vendors: {
+        Row: {
+          id: string;
+          household_id: string;
+          name: string;
+          service_type: string | null;
+          phone: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          name: string;
+          service_type?: string | null;
+          phone?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          name?: string;
+          service_type?: string | null;
+          phone?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

@@ -5,16 +5,20 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Modal,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { impactLight } from "@/lib/haptics";
-import { useTrip, useCreateTripTask, useToggleTripTask, useDeleteTripTask } from "@/hooks/useTrips";
+import { useTrip, useCreateTripTask, useToggleTripTask, useDeleteTripTask, useUpdateTrip, useDeleteTrip } from "@/hooks/useTrips";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
+import { Input } from "@/components/ui/Input";
+import { Button } from "@/components/ui/Button";
+import { DateInput } from "@/components/ui/DateInput";
 import { formatDateShort } from "@/utils/dateUtils";
 import type { TripTask } from "@/types/app.types";
 
@@ -64,8 +68,16 @@ export default function TripDetailScreen() {
   const createTask = useCreateTripTask();
   const toggleTask = useToggleTripTask();
   const deleteTask = useDeleteTripTask();
+  const updateTrip = useUpdateTrip();
+  const deleteTrip = useDeleteTrip();
 
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDestination, setEditDestination] = useState("");
+  const [editDeparture, setEditDeparture] = useState("");
+  const [editReturn, setEditReturn] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   // Realtime subscription
   useEffect(() => {
@@ -85,6 +97,52 @@ export default function TripDetailScreen() {
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id]);
+
+  const openEdit = () => {
+    if (!trip) return;
+    setEditTitle(trip.title);
+    setEditDestination(trip.destination);
+    setEditDeparture(trip.departure_date);
+    setEditReturn(trip.return_date);
+    setEditNotes(trip.notes ?? "");
+    setShowEditModal(true);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!trip || !editTitle.trim()) return;
+    try {
+      await updateTrip.mutateAsync({
+        id: trip.id,
+        updates: {
+          title: editTitle.trim(),
+          destination: editDestination.trim(),
+          departure_date: editDeparture,
+          return_date: editReturn,
+          notes: editNotes.trim() || null,
+        },
+      });
+      setShowEditModal(false);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleDeleteTrip = () => {
+    if (!trip) return;
+    showConfirm(
+      "Delete trip?",
+      `Remove "${trip.title}"? This cannot be undone.`,
+      async () => {
+        try {
+          await deleteTrip.mutateAsync({ id: trip.id, householdId: trip.household_id });
+          router.back();
+        } catch (e: any) {
+          showAlert("Error", e.message);
+        }
+      },
+      true
+    );
+  };
 
   const handleAddTask = async () => {
     if (!newTaskTitle.trim() || !id) return;
@@ -142,6 +200,9 @@ export default function TripDetailScreen() {
             {formatDateShort(trip.return_date)}
           </Text>
         </View>
+        <TouchableOpacity onPress={openEdit} className="ml-2">
+          <Text className="text-blue-600 text-base">Edit</Text>
+        </TouchableOpacity>
       </View>
 
       <ScrollView contentContainerClassName="px-4 py-4 pb-8">
@@ -189,6 +250,74 @@ export default function TripDetailScreen() {
           </View>
         </Card>
       </ScrollView>
+
+      {/* Edit Modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowEditModal(false)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setShowEditModal(false)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Trip</Text>
+            <TouchableOpacity onPress={handleSaveEdit}>
+              <Text className="text-blue-600 text-base font-semibold">Save</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Input
+              label="Trip Title"
+              value={editTitle}
+              onChangeText={setEditTitle}
+              placeholder="e.g. Summer Vacation"
+            />
+
+            <Input
+              label="Destination"
+              value={editDestination}
+              onChangeText={setEditDestination}
+              placeholder="e.g. Paris, France"
+            />
+
+            <DateInput
+              label="Departure Date"
+              value={editDeparture}
+              onChange={setEditDeparture}
+            />
+
+            <DateInput
+              label="Return Date"
+              value={editReturn}
+              onChange={setEditReturn}
+            />
+
+            <Input
+              label="Notes (optional)"
+              value={editNotes}
+              onChangeText={setEditNotes}
+              multiline
+              numberOfLines={3}
+              placeholder="Packing notes, reservations, etc..."
+            />
+
+            <Button
+              title="Save Changes"
+              onPress={handleSaveEdit}
+              loading={updateTrip.isPending}
+            />
+            <TouchableOpacity
+              onPress={handleDeleteTrip}
+              className="mt-3 items-center py-3"
+            >
+              <Text className="text-red-500 font-medium">Delete Trip</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }

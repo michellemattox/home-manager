@@ -92,6 +92,35 @@ export function useCompleteRecurringTask() {
   });
 }
 
+export function useUpdateRecurringTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, updates, householdId }: { id: string; updates: Partial<RecurringTask>; householdId: string }) => {
+      const { error } = await supabase
+        .from("recurring_tasks")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] }),
+  });
+}
+
+export function useDeleteRecurringTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
+      const { error } = await supabase.from("recurring_tasks").update({ is_active: false }).eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] }),
+  });
+}
+
 export function useTaskCompletions(taskId: string | undefined) {
   return useQuery({
     queryKey: ["task_completions", taskId],

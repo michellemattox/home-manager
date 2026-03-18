@@ -38,6 +38,24 @@ export function useCreateServiceRecord() {
   });
 }
 
+export function useUpdateServiceRecord() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<ServiceRecord> }) => {
+      const { data, error } = await supabase
+        .from("service_records")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as ServiceRecord;
+    },
+    onSuccess: (data) =>
+      qc.invalidateQueries({ queryKey: ["service_records", data.household_id] }),
+  });
+}
+
 export function useDeleteServiceRecord() {
   const qc = useQueryClient();
   return useMutation({

@@ -112,3 +112,36 @@ export function useDeleteTripTask() {
       qc.invalidateQueries({ queryKey: ["trip", tripId] }),
   });
 }
+
+export function useUpdateTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, updates }: { id: string; updates: Partial<Trip> }) => {
+      const { data, error } = await supabase
+        .from("trips")
+        .update(updates)
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Trip;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["trip", data.id] });
+      qc.invalidateQueries({ queryKey: ["trips", data.household_id] });
+    },
+  });
+}
+
+export function useDeleteTrip() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
+      const { error } = await supabase.from("trips").delete().eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["trips", householdId] }),
+  });
+}

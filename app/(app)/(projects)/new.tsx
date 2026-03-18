@@ -18,6 +18,7 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCreateProject } from "@/hooks/useProjects";
 import { useServiceRecords } from "@/hooks/useServices";
+import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 import { displayToCents } from "@/utils/currencyUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority } from "@/types/app.types";
@@ -56,15 +57,17 @@ export default function NewProjectScreen() {
   const { user } = useAuthStore();
   const createProject = useCreateProject();
   const { data: serviceRecords } = useServiceRecords(household?.id);
+  const { data: preferredVendors } = usePreferredVendors(household?.id);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  // Unique vendor names for quick-pick
+  // Unique vendor names for quick-pick (preferred vendors + service record vendors, deduplicated)
   const vendorNames = React.useMemo(() => {
     const names = new Set<string>();
+    (preferredVendors ?? []).forEach((v) => names.add(v.name));
     (serviceRecords ?? []).forEach((r) => names.add(r.vendor_name));
     return Array.from(names).sort();
-  }, [serviceRecords]);
+  }, [serviceRecords, preferredVendors]);
 
   const {
     control,

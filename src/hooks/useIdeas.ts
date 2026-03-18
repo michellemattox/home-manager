@@ -107,3 +107,19 @@ export function useDeleteIdea() {
       qc.invalidateQueries({ queryKey: ["ideas", topicId] }),
   });
 }
+
+export function useEditIdea() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body, topicId }: { id: string; body: string; topicId: string }) => {
+      const { error } = await supabase
+        .from("ideas")
+        .update({ body })
+        .eq("id", id);
+      if (error) throw error;
+      return topicId;
+    },
+    onSuccess: (topicId) =>
+      qc.invalidateQueries({ queryKey: ["ideas", topicId] }),
+  });
+}

@@ -17,6 +17,7 @@ import { Button } from "@/components/ui/Button";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useCreateServiceRecord } from "@/hooks/useServices";
+import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 import { SERVICE_TYPES } from "@/types/app.types";
 import { displayToCents } from "@/utils/currencyUtils";
 
@@ -34,15 +35,20 @@ export default function NewServiceScreen() {
   const router = useRouter();
   const { household } = useHouseholdStore();
   const createRecord = useCreateServiceRecord();
+  const { data: preferredVendors } = usePreferredVendors(household?.id);
 
   const {
     control,
     handleSubmit,
+    setValue,
+    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: { serviceDate: new Date().toISOString().slice(0, 10), serviceType: "Other" },
   });
+
+  const vendorName = watch("vendorName");
 
   const onSubmit = async (data: FormData) => {
     if (!household) return;
@@ -91,6 +97,29 @@ export default function NewServiceScreen() {
             />
           )}
         />
+
+        {(preferredVendors ?? []).length > 0 && (
+          <View className="flex-row flex-wrap gap-2 mb-4 -mt-2">
+            {(preferredVendors ?? []).map((pv) => (
+              <TouchableOpacity
+                key={pv.id}
+                onPress={() => {
+                  setValue("vendorName", vendorName === pv.name ? "" : pv.name);
+                  if (pv.service_type) {
+                    setValue("serviceType", pv.service_type);
+                  }
+                }}
+                className={`px-3 py-1 rounded-full border ${
+                  vendorName === pv.name ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-xs font-medium ${vendorName === pv.name ? "text-white" : "text-gray-600"}`}>
+                  {pv.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
 
         <Text className="text-sm font-medium text-gray-700 mb-2">
           Service Type

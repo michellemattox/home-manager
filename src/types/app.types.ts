@@ -101,3 +101,5 @@ export const SERVICE_TYPES = [
 ] as const;
 
 export type ServiceType = (typeof SERVICE_TYPES)[number];
+
+export type PreferredVendor = Database["public"]["Tables"]["preferred_vendors"]["Row"];

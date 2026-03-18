@@ -6,16 +6,18 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { impactLight } from "@/lib/haptics";
-import { useIdeas, useCreateIdea, useToggleIdeaPin, useDeleteIdea } from "@/hooks/useIdeas";
+import { useIdeas, useCreateIdea, useToggleIdeaPin, useDeleteIdea, useEditIdea } from "@/hooks/useIdeas";
 import { useIdeaTopics } from "@/hooks/useIdeas";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { Card } from "@/components/ui/Card";
+import { Button } from "@/components/ui/Button";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { formatDateTime } from "@/utils/dateUtils";
 import type { Idea } from "@/types/app.types";
@@ -24,10 +26,12 @@ function IdeaCard({
   idea,
   onPin,
   onDelete,
+  onEdit,
 }: {
   idea: Idea;
   onPin: () => void;
   onDelete: () => void;
+  onEdit: () => void;
 }) {
   const { members } = useHouseholdStore();
   const author = members.find((m) => m.id === idea.author_id);
@@ -52,6 +56,9 @@ function IdeaCard({
               📌
             </Text>
           </TouchableOpacity>
+          <TouchableOpacity onPress={onEdit}>
+            <Text className="text-gray-300">✏️</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={onDelete}>
             <Text className="text-gray-200">🗑️</Text>
           </TouchableOpacity>
@@ -73,8 +80,11 @@ export default function TopicIdeasScreen() {
   const createIdea = useCreateIdea();
   const togglePin = useToggleIdeaPin();
   const deleteIdea = useDeleteIdea();
+  const editIdea = useEditIdea();
 
   const [newIdeaText, setNewIdeaText] = useState("");
+  const [editingIdea, setEditingIdea] = useState<Idea | null>(null);
+  const [editBody, setEditBody] = useState("");
 
   const topic = topics?.find((t) => t.id === topicId);
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -102,6 +112,25 @@ export default function TopicIdeasScreen() {
       () => deleteIdea.mutate({ id: idea.id, topicId: idea.topic_id }),
       true
     );
+  };
+
+  const openEdit = (idea: Idea) => {
+    setEditingIdea(idea);
+    setEditBody(idea.body);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingIdea || !editBody.trim()) return;
+    try {
+      await editIdea.mutateAsync({
+        id: editingIdea.id,
+        body: editBody.trim(),
+        topicId: editingIdea.topic_id,
+      });
+      setEditingIdea(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
   };
 
   return (
@@ -155,6 +184,7 @@ export default function TopicIdeasScreen() {
               })
             }
             onDelete={() => handleDelete(item)}
+            onEdit={() => openEdit(item)}
           />
         )}
         ListEmptyComponent={
@@ -168,6 +198,44 @@ export default function TopicIdeasScreen() {
           ) : null
         }
       />
+
+      {/* Edit Modal */}
+      <Modal
+        visible={!!editingIdea}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditingIdea(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setEditingIdea(null)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Idea</Text>
+            <TouchableOpacity onPress={handleSaveEdit}>
+              <Text className="text-blue-600 text-base font-semibold">Save</Text>
+            </TouchableOpacity>
+          </View>
+          <View className="px-4 py-4">
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 min-h-32"
+              value={editBody}
+              onChangeText={setEditBody}
+              multiline
+              placeholder="Your idea..."
+              placeholderTextColor="#9ca3af"
+              textAlignVertical="top"
+            />
+            <View className="mt-4">
+              <Button
+                title="Save Changes"
+                onPress={handleSaveEdit}
+                loading={editIdea.isPending}
+              />
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
