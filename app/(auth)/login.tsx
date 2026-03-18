@@ -14,6 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { WebForm } from "@/components/ui/WebForm";
 
 const schema = z.object({
   email: z.string().email("Enter a valid email"),
@@ -56,47 +57,49 @@ export default function LoginScreen() {
           <Text className="text-gray-500 mt-1">Sign in to your account</Text>
         </View>
 
-        <Controller
-          control={control}
-          name="email"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Email"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              autoComplete="email"
-              error={errors.email?.message}
-              placeholder="you@example.com"
-            />
-          )}
-        />
+        <WebForm onSubmit={handleSubmit(onLogin)}>
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="Email"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                error={errors.email?.message}
+                placeholder="you@example.com"
+              />
+            )}
+          />
 
-        <Controller
-          control={control}
-          name="password"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Password"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              secureTextEntry
-              autoComplete="password"
-              error={errors.password?.message}
-              placeholder="••••••••"
-            />
-          )}
-        />
+          <Controller
+            control={control}
+            name="password"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="Password"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                secureTextEntry
+                autoComplete="current-password"
+                error={errors.password?.message}
+                placeholder="••••••••"
+              />
+            )}
+          />
 
-        <Button
-          title="Sign In"
-          onPress={handleSubmit(onLogin)}
-          loading={loading}
-          className="mt-2"
-        />
+          <Button
+            title="Sign In"
+            onPress={handleSubmit(onLogin)}
+            loading={loading}
+            className="mt-2"
+          />
+        </WebForm>
 
         <View className="flex-row justify-center mt-6">
           <Text className="text-gray-500">Don't have an account? </Text>

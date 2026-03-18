@@ -14,6 +14,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { supabase } from "@/lib/supabase";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+import { WebForm } from "@/components/ui/WebForm";
 
 const schema = z
   .object({
@@ -49,8 +50,8 @@ export default function SignupScreen() {
       Alert.alert("Sign up failed", error.message);
     } else {
       Alert.alert(
-        "Check your email",
-        "We sent a confirmation link. After verifying, you'll be taken to set up your household.",
+        "Account created!",
+        "You can now sign in and set up your household.",
         [{ text: "OK", onPress: () => router.replace("/(auth)/login") }]
       );
     }
@@ -72,61 +73,66 @@ export default function SignupScreen() {
           </Text>
         </View>
 
-        <Controller
-          control={control}
-          name="email"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Email"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              keyboardType="email-address"
-              autoCapitalize="none"
-              error={errors.email?.message}
-              placeholder="you@example.com"
-            />
-          )}
-        />
+        <WebForm onSubmit={handleSubmit(onSignup)}>
+          <Controller
+            control={control}
+            name="email"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="Email"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                keyboardType="email-address"
+                autoCapitalize="none"
+                autoComplete="email"
+                error={errors.email?.message}
+                placeholder="you@example.com"
+              />
+            )}
+          />
 
-        <Controller
-          control={control}
-          name="password"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Password"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              secureTextEntry
-              error={errors.password?.message}
-              placeholder="••••••••"
-            />
-          )}
-        />
+          <Controller
+            control={control}
+            name="password"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="Password"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                secureTextEntry
+                autoComplete="new-password"
+                error={errors.password?.message}
+                placeholder="••••••••"
+              />
+            )}
+          />
 
-        <Controller
-          control={control}
-          name="confirmPassword"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Confirm Password"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              secureTextEntry
-              error={errors.confirmPassword?.message}
-              placeholder="••••••••"
-            />
-          )}
-        />
+          <Controller
+            control={control}
+            name="confirmPassword"
+            render={({ field: { onChange, value, onBlur } }) => (
+              <Input
+                label="Confirm Password"
+                value={value}
+                onChangeText={onChange}
+                onBlur={onBlur}
+                secureTextEntry
+                autoComplete="new-password"
+                error={errors.confirmPassword?.message}
+                placeholder="••••••••"
+              />
+            )}
+          />
 
-        <Button
-          title="Create Account"
-          onPress={handleSubmit(onSignup)}
-          loading={loading}
-          className="mt-2"
-        />
+          <Button
+            title="Create Account"
+            onPress={handleSubmit(onSignup)}
+            loading={loading}
+            className="mt-2"
+          />
+        </WebForm>
 
         <View className="flex-row justify-center mt-6">
           <Text className="text-gray-500">Already have an account? </Text>
