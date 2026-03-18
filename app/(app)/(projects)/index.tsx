@@ -221,11 +221,11 @@ export default function ProjectsScreen() {
               onPress={() => setFilterPriority(active ? null : p)}
               className={`px-3 py-1.5 rounded-full border ${
                 active
-                  ? PRIORITY_CONFIG[p].variant === "danger"
+                  ? p === "high"
                     ? "bg-red-500 border-red-500"
-                    : PRIORITY_CONFIG[p].variant === "warning"
-                    ? "bg-amber-400 border-amber-400"
-                    : "bg-gray-400 border-gray-400"
+                    : p === "medium"
+                    ? "bg-amber-500 border-amber-500"
+                    : "bg-gray-600 border-gray-600"
                   : "bg-white border-gray-200"
               }`}
             >

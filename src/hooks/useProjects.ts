@@ -111,6 +111,34 @@ export function useAddProjectUpdate() {
   });
 }
 
+export function useEditProjectUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      body,
+      projectId,
+    }: {
+      id: string;
+      body: string;
+      projectId: string;
+    }) => {
+      const { data, error } = await supabase
+        .from("project_updates")
+        .update({ body })
+        .eq("id", id)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as ProjectUpdate;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["project", data.project_id] });
+      qc.invalidateQueries({ queryKey: ["projects"] });
+    },
+  });
+}
+
 export function useDeleteProject() {
   const qc = useQueryClient();
   return useMutation({

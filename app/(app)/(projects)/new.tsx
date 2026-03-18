@@ -76,8 +76,7 @@ export default function NewProjectScreen() {
         },
         ownerIds: data.ownerIds,
       });
-      // Navigate to detail so owner is prompted to add the first update
-      router.replace(`/(app)/(projects)/${newProject.id}`);
+      router.replace("/(app)/(projects)");
     } catch (e: any) {
       showAlert("Error", e.message);
     }

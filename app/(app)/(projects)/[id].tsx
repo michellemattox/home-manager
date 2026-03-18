@@ -9,7 +9,13 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useProject, useAddProjectUpdate, useUpdateProject, useDeleteProject } from "@/hooks/useProjects";
+import {
+  useProject,
+  useAddProjectUpdate,
+  useEditProjectUpdate,
+  useUpdateProject,
+  useDeleteProject,
+} from "@/hooks/useProjects";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
@@ -19,7 +25,7 @@ import { Button } from "@/components/ui/Button";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { MemberAvatar, MemberAvatarGroup } from "@/components/ui/MemberAvatar";
 import { formatDateTime, formatDate } from "@/utils/dateUtils";
-import type { ProjectStatus } from "@/types/app.types";
+import type { ProjectStatus, ProjectPriority } from "@/types/app.types";
 
 const STATUS_CONFIG: Record<ProjectStatus, { label: string; variant: any }> = {
   planned: { label: "Planned", variant: "default" },
@@ -29,12 +35,17 @@ const STATUS_CONFIG: Record<ProjectStatus, { label: string; variant: any }> = {
   finished: { label: "Finished", variant: "success" },
 };
 
-// Statuses the user can switch to from the detail screen
 const EDITABLE_STATUSES: ProjectStatus[] = [
   "planned",
   "in_progress",
   "on_hold",
   "finished",
+];
+
+const PRIORITIES: { label: string; value: ProjectPriority }[] = [
+  { label: "Low", value: "low" },
+  { label: "Medium", value: "medium" },
+  { label: "High", value: "high" },
 ];
 
 export default function ProjectDetailScreen() {
@@ -44,11 +55,23 @@ export default function ProjectDetailScreen() {
   const { members } = useHouseholdStore();
   const { user } = useAuthStore();
   const addUpdate = useAddProjectUpdate();
+  const editUpdate = useEditProjectUpdate();
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
 
+  // Add update modal
   const [showUpdateModal, setShowUpdateModal] = useState(false);
   const [updateText, setUpdateText] = useState("");
+
+  // Edit update modal
+  const [editingUpdate, setEditingUpdate] = useState<{ id: string; body: string } | null>(null);
+  const [editUpdateText, setEditUpdateText] = useState("");
+
+  // Edit project modal
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+  const [editPriority, setEditPriority] = useState<ProjectPriority>("medium");
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
@@ -66,15 +89,14 @@ export default function ProjectDetailScreen() {
     return () => { supabase.removeChannel(channel); };
   }, [id]);
 
-  // Auto-open update modal for newly created projects with no updates yet
+  // Seed edit fields when modal opens
   useEffect(() => {
-    if (project && (project.project_updates ?? []).length === 0) {
-      const created = new Date(project.created_at).getTime();
-      const age = Date.now() - created;
-      // Only prompt if project was created in the last 60 seconds
-      if (age < 60_000) setShowUpdateModal(true);
+    if (showEditModal && project) {
+      setEditTitle(project.title);
+      setEditDescription(project.description ?? "");
+      setEditPriority(project.priority as ProjectPriority);
     }
-  }, [project?.id]);
+  }, [showEditModal]);
 
   const handleAddUpdate = async () => {
     if (!updateText.trim() || !currentMember || !id) return;
@@ -91,13 +113,44 @@ export default function ProjectDetailScreen() {
     }
   };
 
+  const handleSaveEditUpdate = async () => {
+    if (!editingUpdate || !editUpdateText.trim()) return;
+    try {
+      await editUpdate.mutateAsync({
+        id: editingUpdate.id,
+        body: editUpdateText.trim(),
+        projectId: id!,
+      });
+      setEditingUpdate(null);
+      setEditUpdateText("");
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleSaveEditProject = async () => {
+    if (!editTitle.trim() || !id) return;
+    try {
+      await updateProject.mutateAsync({
+        id,
+        updates: {
+          title: editTitle.trim(),
+          description: editDescription.trim() || null,
+          priority: editPriority,
+        },
+      });
+      setShowEditModal(false);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
   const handleStatusChange = async (newStatus: ProjectStatus) => {
     if (!id || !project) return;
     const updates: any = { status: newStatus };
     if (newStatus === "finished" || newStatus === "completed") {
       updates.completed_at = new Date().toISOString();
     } else {
-      // Reopening — clear the completion date
       updates.completed_at = null;
     }
     try {
@@ -148,6 +201,11 @@ export default function ProjectDetailScreen() {
         <Text className="flex-1 text-lg font-semibold text-gray-900" numberOfLines={1}>
           {project.title}
         </Text>
+        {!isFinished && (
+          <TouchableOpacity onPress={() => setShowEditModal(true)} className="ml-3">
+            <Text className="text-blue-600 text-sm font-medium">Edit</Text>
+          </TouchableOpacity>
+        )}
         <TouchableOpacity onPress={handleDelete} className="ml-3">
           <Text className="text-gray-300 text-lg">🗑️</Text>
         </TouchableOpacity>
@@ -157,7 +215,13 @@ export default function ProjectDetailScreen() {
         {/* Meta card */}
         <Card className="mb-4">
           <View className="flex-row items-start justify-between mb-3">
-            <Badge label={sc.label} variant={sc.variant} />
+            <View className="flex-row gap-2 flex-wrap flex-1 mr-2">
+              <Badge label={sc.label} variant={sc.variant} />
+              <Badge
+                label={project.priority.charAt(0).toUpperCase() + project.priority.slice(1)}
+                variant={project.priority === "high" ? "danger" : project.priority === "medium" ? "warning" : "default"}
+              />
+            </View>
             <MemberAvatarGroup members={owners} />
           </View>
 
@@ -256,6 +320,7 @@ export default function ProjectDetailScreen() {
         ) : (
           sortedUpdates.map((update: any) => {
             const author = members.find((m) => m.id === update.author_id);
+            const isMyUpdate = currentMember && update.author_id === currentMember.id;
             return (
               <Card key={update.id} className="mb-3">
                 <View className="flex-row items-center mb-2">
@@ -266,6 +331,16 @@ export default function ProjectDetailScreen() {
                       {author ? ` · ${author.display_name}` : ""}
                     </Text>
                   </View>
+                  {isMyUpdate && !isFinished && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditingUpdate({ id: update.id, body: update.body });
+                        setEditUpdateText(update.body);
+                      }}
+                    >
+                      <Text className="text-blue-500 text-xs font-medium">Edit</Text>
+                    </TouchableOpacity>
+                  )}
                 </View>
                 <Text className="text-gray-700 text-sm leading-relaxed">
                   {update.body}
@@ -286,7 +361,7 @@ export default function ProjectDetailScreen() {
         </TouchableOpacity>
       )}
 
-      {/* Update modal */}
+      {/* Add Update modal */}
       <Modal
         visible={showUpdateModal}
         animationType="slide"
@@ -325,6 +400,117 @@ export default function ProjectDetailScreen() {
             autoFocus
             textAlignVertical="top"
           />
+        </View>
+      </Modal>
+
+      {/* Edit Update modal */}
+      <Modal
+        visible={!!editingUpdate}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View className="flex-1 bg-gray-50 px-4 pt-6">
+          <View className="flex-row items-center mb-4">
+            <TouchableOpacity onPress={() => { setEditingUpdate(null); setEditUpdateText(""); }}>
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-center text-lg font-semibold">
+              Edit Update
+            </Text>
+            <TouchableOpacity
+              onPress={handleSaveEditUpdate}
+              disabled={!editUpdateText.trim() || editUpdate.isPending}
+            >
+              <Text
+                className={`text-base font-semibold ${
+                  editUpdateText.trim() ? "text-blue-600" : "text-gray-300"
+                }`}
+              >
+                Save
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            className="bg-white border border-gray-200 rounded-2xl p-4 text-base text-gray-900 min-h-[120px]"
+            value={editUpdateText}
+            onChangeText={setEditUpdateText}
+            multiline
+            autoFocus
+            textAlignVertical="top"
+          />
+        </View>
+      </Modal>
+
+      {/* Edit Project modal */}
+      <Modal
+        visible={showEditModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+      >
+        <View className="flex-1 bg-gray-50 px-4 pt-6">
+          <View className="flex-row items-center mb-6">
+            <TouchableOpacity onPress={() => setShowEditModal(false)}>
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-center text-lg font-semibold">
+              Edit Project
+            </Text>
+            <TouchableOpacity
+              onPress={handleSaveEditProject}
+              disabled={!editTitle.trim() || updateProject.isPending}
+            >
+              <Text
+                className={`text-base font-semibold ${
+                  editTitle.trim() ? "text-blue-600" : "text-gray-300"
+                }`}
+              >
+                Save
+              </Text>
+            </TouchableOpacity>
+          </View>
+
+          <ScrollView keyboardShouldPersistTaps="handled">
+            <Text className="text-sm font-medium text-gray-700 mb-1">Title</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+              value={editTitle}
+              onChangeText={setEditTitle}
+              autoFocus
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Description</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4 min-h-[80px]"
+              value={editDescription}
+              onChangeText={setEditDescription}
+              multiline
+              textAlignVertical="top"
+              placeholder="Optional"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Priority</Text>
+            <View className="flex-row gap-2 mb-4">
+              {PRIORITIES.map((p) => (
+                <TouchableOpacity
+                  key={p.value}
+                  onPress={() => setEditPriority(p.value)}
+                  className={`px-3 py-1.5 rounded-xl border flex-1 items-center ${
+                    editPriority === p.value
+                      ? "bg-blue-600 border-blue-600"
+                      : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text
+                    className={`text-sm font-medium ${
+                      editPriority === p.value ? "text-white" : "text-gray-700"
+                    }`}
+                  >
+                    {p.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          </ScrollView>
         </View>
       </Modal>
     </SafeAreaView>
