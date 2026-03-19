@@ -108,11 +108,14 @@ export function useSendInvite() {
         .single();
       if (error) throw error;
 
-      // Call Edge Function to send email
-      const { error: fnError } = await supabase.functions.invoke("invite-member", {
-        body: { email, name, token: invite.token, householdId },
-      });
-      if (fnError) throw fnError;
+      // Call Edge Function to send email — non-fatal if not yet deployed
+      try {
+        await supabase.functions.invoke("invite-member", {
+          body: { email, name, token: invite.token, householdId },
+        });
+      } catch (_) {
+        // Edge Function may not be deployed yet; invite record still created
+      }
 
       return invite as HouseholdInvite;
     },

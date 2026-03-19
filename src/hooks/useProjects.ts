@@ -9,7 +9,7 @@ export function useProjects(householdId: string | undefined) {
       if (!householdId) return [];
       const { data, error } = await supabase
         .from("projects")
-        .select("*, project_owners(member_id), project_updates(id, body, author_id, created_at)")
+        .select("*, project_owners(member_id), project_updates(id, body, author_id, created_at), project_tasks(id, checklist_name)")
         .eq("household_id", householdId)
         .order("created_at", { ascending: false });
       if (error) throw error;

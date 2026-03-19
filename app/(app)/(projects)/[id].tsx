@@ -266,6 +266,8 @@ export default function ProjectDetailScreen() {
     }
     setNewChecklistName("");
     setShowAddChecklist(false);
+    // Immediately open the add-task modal so the checklist is saved via a task
+    setAddItemChecklist(name);
   };
 
   const handleAddChecklistItem = async () => {

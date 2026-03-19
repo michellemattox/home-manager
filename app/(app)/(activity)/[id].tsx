@@ -270,6 +270,8 @@ export default function TripDetailScreen() {
     }
     setNewChecklistName("");
     setShowAddChecklist(false);
+    // Immediately open the add-task modal so the checklist is saved via a task
+    setAddItemChecklist(name);
   };
 
   const handleAddItem = async (
