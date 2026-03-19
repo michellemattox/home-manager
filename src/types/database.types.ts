@@ -88,6 +88,8 @@ export interface Database {
           notes: string | null;
           contractor_name: string | null;
           total_cost_cents: number;
+          uses_vendor: boolean;
+          primary_vendor_id: string | null;
         };
         Insert: {
           id?: string;
@@ -105,6 +107,8 @@ export interface Database {
           notes?: string | null;
           contractor_name?: string | null;
           total_cost_cents?: number;
+          uses_vendor?: boolean;
+          primary_vendor_id?: string | null;
         };
         Update: {
           id?: string;
@@ -122,6 +126,8 @@ export interface Database {
           notes?: string | null;
           contractor_name?: string | null;
           total_cost_cents?: number;
+          uses_vendor?: boolean;
+          primary_vendor_id?: string | null;
         };
         Relationships: Rel;
       };
@@ -205,6 +211,8 @@ export interface Database {
           notes: string | null;
           created_by: string;
           created_at: string;
+          uses_vendor: boolean;
+          primary_vendor_id: string | null;
         };
         Insert: {
           id?: string;
@@ -216,6 +224,8 @@ export interface Database {
           notes?: string | null;
           created_by: string;
           created_at?: string;
+          uses_vendor?: boolean;
+          primary_vendor_id?: string | null;
         };
         Update: {
           id?: string;
@@ -227,6 +237,8 @@ export interface Database {
           notes?: string | null;
           created_by?: string;
           created_at?: string;
+          uses_vendor?: boolean;
+          primary_vendor_id?: string | null;
         };
         Relationships: Rel;
       };
@@ -326,6 +338,8 @@ export interface Database {
           assigned_member_id: string | null;
           is_active: boolean;
           created_at: string;
+          linked_event_type: "project" | "activity" | null;
+          linked_event_id: string | null;
         };
         Insert: {
           id?: string;
@@ -341,6 +355,8 @@ export interface Database {
           assigned_member_id?: string | null;
           is_active?: boolean;
           created_at?: string;
+          linked_event_type?: "project" | "activity" | null;
+          linked_event_id?: string | null;
         };
         Update: {
           id?: string;
@@ -356,6 +372,8 @@ export interface Database {
           assigned_member_id?: string | null;
           is_active?: boolean;
           created_at?: string;
+          linked_event_type?: "project" | "activity" | null;
+          linked_event_id?: string | null;
         };
         Relationships: Rel;
       };
@@ -394,6 +412,8 @@ export interface Database {
           notes: string | null;
           receipt_url: string | null;
           created_at: string;
+          event_type: "project" | "activity" | null;
+          event_id: string | null;
         };
         Insert: {
           id?: string;
@@ -405,6 +425,8 @@ export interface Database {
           notes?: string | null;
           receipt_url?: string | null;
           created_at?: string;
+          event_type?: "project" | "activity" | null;
+          event_id?: string | null;
         };
         Update: {
           id?: string;
@@ -416,6 +438,8 @@ export interface Database {
           notes?: string | null;
           receipt_url?: string | null;
           created_at?: string;
+          event_type?: "project" | "activity" | null;
+          event_id?: string | null;
         };
         Relationships: Rel;
       };
@@ -454,14 +478,24 @@ export interface Database {
           author_id: string;
           is_pinned: boolean;
           created_at: string;
+          subject: string | null;
+          description: string | null;
+          status: "new" | "waitlisted" | "converted";
+          converted_to_type: "task" | "project" | "activity" | null;
+          converted_to_id: string | null;
         };
         Insert: {
           id?: string;
           topic_id: string;
-          body: string;
+          body?: string;
           author_id: string;
           is_pinned?: boolean;
           created_at?: string;
+          subject?: string | null;
+          description?: string | null;
+          status?: "new" | "waitlisted" | "converted";
+          converted_to_type?: "task" | "project" | "activity" | null;
+          converted_to_id?: string | null;
         };
         Update: {
           id?: string;
@@ -469,6 +503,56 @@ export interface Database {
           body?: string;
           author_id?: string;
           is_pinned?: boolean;
+          created_at?: string;
+          subject?: string | null;
+          description?: string | null;
+          status?: "new" | "waitlisted" | "converted";
+          converted_to_type?: "task" | "project" | "activity" | null;
+          converted_to_id?: string | null;
+        };
+        Relationships: Rel;
+      };
+      tasks: {
+        Row: {
+          id: string;
+          household_id: string;
+          title: string;
+          notes: string | null;
+          due_date: string | null;
+          due_time: string | null;
+          assigned_member_id: string | null;
+          linked_event_type: "project" | "activity" | null;
+          linked_event_id: string | null;
+          is_completed: boolean;
+          completed_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          title: string;
+          notes?: string | null;
+          due_date?: string | null;
+          due_time?: string | null;
+          assigned_member_id?: string | null;
+          linked_event_type?: "project" | "activity" | null;
+          linked_event_id?: string | null;
+          is_completed?: boolean;
+          completed_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          title?: string;
+          notes?: string | null;
+          due_date?: string | null;
+          due_time?: string | null;
+          assigned_member_id?: string | null;
+          linked_event_type?: "project" | "activity" | null;
+          linked_event_id?: string | null;
+          is_completed?: boolean;
+          completed_at?: string | null;
           created_at?: string;
         };
         Relationships: Rel;

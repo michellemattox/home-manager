@@ -19,6 +19,27 @@ export function useServiceRecords(householdId: string | undefined) {
   });
 }
 
+export function useEventServiceRecords(
+  eventType: "project" | "activity",
+  eventId: string | undefined
+) {
+  return useQuery({
+    queryKey: ["service_records_event", eventType, eventId],
+    queryFn: async () => {
+      if (!eventId) return [];
+      const { data, error } = await supabase
+        .from("service_records")
+        .select("*")
+        .eq("event_type", eventType)
+        .eq("event_id", eventId)
+        .order("service_date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as ServiceRecord[];
+    },
+    enabled: !!eventId,
+  });
+}
+
 export function useCreateServiceRecord() {
   const qc = useQueryClient();
   return useMutation({

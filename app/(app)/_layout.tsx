@@ -60,6 +60,14 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="(ideas)"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="💡" label="Ideas" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="(tasks)"
         options={{
           tabBarIcon: ({ focused }) => <TasksTabIcon focused={focused} />,
@@ -74,45 +82,18 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
-        name="(travel)"
+        name="(activity)"
         options={{
           tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="✈️" label="Travel" focused={focused} />
+            <TabIcon emoji="🗓️" label="Activity" focused={focused} />
           ),
         }}
       />
-      <Tabs.Screen
-        name="(services)"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="🔧" label="Services" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="(ideas)"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="💡" label="Ideas" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="(vendors)"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="🔍" label="Vendors" focused={focused} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          tabBarIcon: ({ focused }) => (
-            <TabIcon emoji="⚙️" label="Settings" focused={focused} />
-          ),
-        }}
-      />
+      {/* Hidden tabs — content moved into Projects sub-tabs or Home settings */}
+      <Tabs.Screen name="(travel)" options={{ href: null }} />
+      <Tabs.Screen name="(services)" options={{ href: null }} />
+      <Tabs.Screen name="(vendors)" options={{ href: null }} />
+      <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
   );
 }

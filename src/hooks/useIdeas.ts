@@ -1,66 +1,52 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { IdeaTopic, Idea } from "@/types/app.types";
+import type { Idea } from "@/types/app.types";
 
-export function useIdeaTopics(householdId: string | undefined) {
+// Fetch active (new) and waitlisted ideas for the household.
+// topic_id column stores household_id for backward compatibility.
+export function useIdeas(householdId: string | undefined) {
   return useQuery({
-    queryKey: ["idea_topics", householdId],
+    queryKey: ["ideas", householdId],
     queryFn: async () => {
       if (!householdId) return [];
       const { data, error } = await supabase
-        .from("idea_topics")
-        .select("*")
-        .eq("household_id", householdId)
-        .order("sort_order");
-      if (error) throw error;
-      return (data ?? []) as IdeaTopic[];
-    },
-    enabled: !!householdId,
-  });
-}
-
-export function useIdeas(topicId: string | undefined) {
-  return useQuery({
-    queryKey: ["ideas", topicId],
-    queryFn: async () => {
-      if (!topicId) return [];
-      const { data, error } = await supabase
         .from("ideas")
         .select("*")
-        .eq("topic_id", topicId)
-        .order("is_pinned", { ascending: false })
+        .eq("topic_id", householdId)
+        .in("status", ["new", "waitlisted"])
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Idea[];
     },
-    enabled: !!topicId,
-  });
-}
-
-export function useCreateIdeaTopic() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async (topic: Omit<IdeaTopic, "id" | "created_at">) => {
-      const { data, error } = await supabase
-        .from("idea_topics")
-        .insert(topic)
-        .select()
-        .single();
-      if (error) throw error;
-      return data as IdeaTopic;
-    },
-    onSuccess: (data) =>
-      qc.invalidateQueries({ queryKey: ["idea_topics", data.household_id] }),
+    enabled: !!householdId,
   });
 }
 
 export function useCreateIdea() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (idea: Omit<Idea, "id" | "created_at">) => {
+    mutationFn: async ({
+      householdId,
+      subject,
+      description,
+      authorId,
+    }: {
+      householdId: string;
+      subject: string;
+      description?: string;
+      authorId: string;
+    }) => {
       const { data, error } = await supabase
         .from("ideas")
-        .insert(idea)
+        .insert({
+          topic_id: householdId,
+          body: subject,
+          subject,
+          description: description ?? null,
+          author_id: authorId,
+          status: "new",
+          is_pinned: false,
+        })
         .select()
         .single();
       if (error) throw error;
@@ -71,55 +57,86 @@ export function useCreateIdea() {
   });
 }
 
-export function useToggleIdeaPin() {
+export function useUpdateIdea() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({
       id,
-      topicId,
-      isPinned,
+      householdId,
+      updates,
     }: {
       id: string;
-      topicId: string;
-      isPinned: boolean;
+      householdId: string;
+      updates: Partial<Pick<Idea, "subject" | "description" | "status" | "converted_to_type" | "converted_to_id">>;
+    }) => {
+      const bodyUpdate = updates.subject ? { body: updates.subject } : {};
+      const { error } = await supabase
+        .from("ideas")
+        .update({ ...updates, ...bodyUpdate })
+        .eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["ideas", householdId] }),
+  });
+}
+
+export function useWaitlistIdea() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
+      const { error } = await supabase
+        .from("ideas")
+        .update({ status: "waitlisted" })
+        .eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["ideas", householdId] }),
+  });
+}
+
+export function useConvertIdea() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      householdId,
+      convertedToType,
+      convertedToId,
+    }: {
+      id: string;
+      householdId: string;
+      convertedToType: "task" | "project" | "activity";
+      convertedToId: string;
     }) => {
       const { error } = await supabase
         .from("ideas")
-        .update({ is_pinned: isPinned })
+        .update({
+          status: "converted",
+          converted_to_type: convertedToType,
+          converted_to_id: convertedToId,
+        })
         .eq("id", id);
       if (error) throw error;
-      return topicId;
+      return householdId;
     },
-    onSuccess: (topicId) =>
-      qc.invalidateQueries({ queryKey: ["ideas", topicId] }),
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["ideas", householdId] }),
   });
 }
 
 export function useDeleteIdea() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, topicId }: { id: string; topicId: string }) => {
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
       const { error } = await supabase.from("ideas").delete().eq("id", id);
       if (error) throw error;
-      return topicId;
+      return householdId;
     },
-    onSuccess: (topicId) =>
-      qc.invalidateQueries({ queryKey: ["ideas", topicId] }),
-  });
-}
-
-export function useEditIdea() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: async ({ id, body, topicId }: { id: string; body: string; topicId: string }) => {
-      const { error } = await supabase
-        .from("ideas")
-        .update({ body })
-        .eq("id", id);
-      if (error) throw error;
-      return topicId;
-    },
-    onSuccess: (topicId) =>
-      qc.invalidateQueries({ queryKey: ["ideas", topicId] }),
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["ideas", householdId] }),
   });
 }

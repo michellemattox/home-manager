@@ -2,159 +2,379 @@ import React, { useState } from "react";
 import {
   View,
   Text,
-  FlatList,
+  ScrollView,
   TouchableOpacity,
-  RefreshControl,
-  Modal,
   TextInput,
-  Alert,
+  RefreshControl,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
-import { useIdeaTopics, useCreateIdeaTopic } from "@/hooks/useIdeas";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { Button } from "@/components/ui/Button";
+import { useAuthStore } from "@/stores/authStore";
+import {
+  useIdeas,
+  useCreateIdea,
+  useUpdateIdea,
+  useWaitlistIdea,
+  useConvertIdea,
+  useDeleteIdea,
+} from "@/hooks/useIdeas";
+import { useCreateTask } from "@/hooks/useTasks";
+import { useCreateProject } from "@/hooks/useProjects";
+import { useCreateTrip } from "@/hooks/useTrips";
+import { Card } from "@/components/ui/Card";
 import { showAlert, showConfirm } from "@/lib/alert";
-import type { IdeaTopic } from "@/types/app.types";
+import { formatDateShort } from "@/utils/dateUtils";
+import type { Idea } from "@/types/app.types";
 
-const TOPIC_COLORS = [
-  "#3b82f6", "#8b5cf6", "#ec4899", "#f59e0b",
-  "#10b981", "#ef4444", "#06b6d4", "#84cc16",
-];
-
-function TopicCard({ topic }: { topic: IdeaTopic }) {
-  const router = useRouter();
+function IdeaCard({
+  idea,
+  householdId,
+  onWaitlist,
+  onConvert,
+  onEdit,
+  onDelete,
+}: {
+  idea: Idea;
+  householdId: string;
+  onWaitlist: () => void;
+  onConvert: (type: "task" | "project" | "activity") => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   return (
-    <TouchableOpacity
-      onPress={() => router.push(`/(app)/(ideas)/${topic.id}`)}
-      className="flex-1 m-1.5 rounded-2xl p-4 aspect-square items-start justify-end min-h-[120px]"
-      style={{ backgroundColor: topic.color_hex }}
-    >
-      <Text className="text-white font-bold text-base" numberOfLines={2}>
-        {topic.title}
-      </Text>
-    </TouchableOpacity>
+    <Card className="mb-3">
+      <View className="flex-row items-start justify-between mb-1">
+        <Text className="text-sm font-semibold text-gray-900 flex-1 mr-2">
+          {idea.subject ?? idea.body}
+        </Text>
+        <Text className="text-xs text-gray-400">
+          {formatDateShort(idea.created_at)}
+        </Text>
+      </View>
+      {idea.description ? (
+        <Text className="text-sm text-gray-600 mb-3">{idea.description}</Text>
+      ) : null}
+
+      <View className="flex-row flex-wrap gap-2 mt-1">
+        <TouchableOpacity
+          onPress={() => onConvert("task")}
+          className="px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200"
+        >
+          <Text className="text-xs font-semibold text-amber-700">→ Task</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => onConvert("project")}
+          className="px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200"
+        >
+          <Text className="text-xs font-semibold text-blue-700">→ Project</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => onConvert("activity")}
+          className="px-3 py-1.5 rounded-full bg-purple-50 border border-purple-200"
+        >
+          <Text className="text-xs font-semibold text-purple-700">→ Activity</Text>
+        </TouchableOpacity>
+        {idea.status === "new" && (
+          <TouchableOpacity
+            onPress={onWaitlist}
+            className="px-3 py-1.5 rounded-full bg-gray-50 border border-gray-200"
+          >
+            <Text className="text-xs font-semibold text-gray-500">Waitlist</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={onEdit} className="px-3 py-1.5">
+          <Text className="text-xs text-gray-400">Edit</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={onDelete} className="px-3 py-1.5">
+          <Text className="text-xs text-red-400">Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </Card>
   );
 }
 
 export default function IdeasScreen() {
   const router = useRouter();
-  const { household } = useHouseholdStore();
-  const { data: topics, isLoading, refetch } = useIdeaTopics(household?.id);
-  const createTopic = useCreateIdeaTopic();
+  const { household, members } = useHouseholdStore();
+  const { user } = useAuthStore();
+  const currentMember = members.find((m) => m.user_id === user?.id);
 
-  const [showModal, setShowModal] = useState(false);
-  const [topicName, setTopicName] = useState("");
-  const [selectedColor, setSelectedColor] = useState(TOPIC_COLORS[0]);
+  const { data: ideas = [], isLoading, refetch } = useIdeas(household?.id);
+  const createIdea = useCreateIdea();
+  const updateIdea = useUpdateIdea();
+  const waitlistIdea = useWaitlistIdea();
+  const convertIdea = useConvertIdea();
+  const deleteIdea = useDeleteIdea();
+  const createTask = useCreateTask();
+  const createProject = useCreateProject();
+  const createTrip = useCreateTrip();
 
-  const handleCreate = async () => {
-    if (!topicName.trim() || !household) return;
+  // Intake form
+  const [subject, setSubject] = useState("");
+  const [description, setDescription] = useState("");
+
+  // Edit state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editSubject, setEditSubject] = useState("");
+  const [editDescription, setEditDescription] = useState("");
+
+  // Collapsed waitlist
+  const [showWaitlisted, setShowWaitlisted] = useState(false);
+
+  const activeIdeas = ideas.filter((i) => i.status === "new");
+  const waitlistedIdeas = ideas.filter((i) => i.status === "waitlisted");
+
+  const handleSaveIdea = async () => {
+    if (!subject.trim() || !household || !currentMember) return;
     try {
-      await createTopic.mutateAsync({
-        household_id: household.id,
-        title: topicName.trim(),
-        color_hex: selectedColor,
-        sort_order: (topics?.length ?? 0) + 1,
+      await createIdea.mutateAsync({
+        householdId: household.id,
+        subject: subject.trim(),
+        description: description.trim() || undefined,
+        authorId: currentMember.id,
       });
-      setTopicName("");
-      setShowModal(false);
+      setSubject("");
+      setDescription("");
     } catch (e: any) {
       showAlert("Error", e.message);
     }
   };
 
-  const pairs = [];
-  if (topics) {
-    for (let i = 0; i < topics.length; i += 2) {
-      pairs.push(topics.slice(i, i + 2));
+  const handleConvert = async (idea: Idea, type: "task" | "project" | "activity") => {
+    if (!household || !currentMember) return;
+    const title = idea.subject ?? idea.body ?? "Untitled";
+    const desc = idea.description ?? undefined;
+    try {
+      let convertedId = "";
+
+      if (type === "task") {
+        const task = await createTask.mutateAsync({
+          household_id: household.id,
+          title,
+          notes: desc ?? null,
+          due_date: null,
+          due_time: null,
+          assigned_member_id: null,
+          linked_event_type: null,
+          linked_event_id: null,
+        });
+        convertedId = task.id;
+      } else if (type === "project") {
+        const project = await createProject.mutateAsync({
+          household_id: household.id,
+          title,
+          description: desc ?? null,
+          status: "planned",
+          priority: "medium",
+          created_by: currentMember.id,
+          estimated_cost_cents: 0,
+          total_cost_cents: 0,
+        });
+        convertedId = project.id;
+        // Add current member as owner
+        await (await import("@/lib/supabase")).supabase
+          .from("project_owners")
+          .insert({ project_id: project.id, member_id: currentMember.id });
+      } else {
+        const today = new Date().toISOString().slice(0, 10);
+        const trip = await createTrip.mutateAsync({
+          household_id: household.id,
+          title,
+          destination: desc ?? "",
+          departure_date: today,
+          return_date: today,
+          notes: null,
+          created_by: currentMember.id,
+          uses_vendor: false,
+          primary_vendor_id: null,
+        });
+        convertedId = trip.id;
+      }
+
+      await convertIdea.mutateAsync({
+        id: idea.id,
+        householdId: household.id,
+        convertedToType: type,
+        convertedToId: convertedId,
+      });
+    } catch (e: any) {
+      showAlert("Error", e.message);
     }
-  }
+  };
+
+  const handleWaitlist = async (idea: Idea) => {
+    if (!household) return;
+    try {
+      await waitlistIdea.mutateAsync({ id: idea.id, householdId: household.id });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleDelete = (idea: Idea) => {
+    if (!household) return;
+    showConfirm(
+      "Delete idea?",
+      `"${idea.subject ?? idea.body}" will be removed.`,
+      () => deleteIdea.mutate({ id: idea.id, householdId: household.id }),
+      true
+    );
+  };
+
+  const startEdit = (idea: Idea) => {
+    setEditingId(idea.id);
+    setEditSubject(idea.subject ?? idea.body ?? "");
+    setEditDescription(idea.description ?? "");
+  };
+
+  const saveEdit = async (idea: Idea) => {
+    if (!household || !editSubject.trim()) return;
+    try {
+      await updateIdea.mutateAsync({
+        id: idea.id,
+        householdId: household.id,
+        updates: { subject: editSubject.trim(), description: editDescription.trim() || null },
+      });
+      setEditingId(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const renderIdea = (idea: Idea) => {
+    if (editingId === idea.id) {
+      return (
+        <Card key={idea.id} className="mb-3">
+          <TextInput
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 mb-2"
+            value={editSubject}
+            onChangeText={setEditSubject}
+            placeholder="Subject"
+            placeholderTextColor="#9ca3af"
+            autoFocus
+          />
+          <TextInput
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900 mb-3 min-h-[60px]"
+            value={editDescription}
+            onChangeText={setEditDescription}
+            placeholder="Description (optional)"
+            placeholderTextColor="#9ca3af"
+            multiline
+            textAlignVertical="top"
+          />
+          <View className="flex-row gap-2">
+            <TouchableOpacity
+              onPress={() => saveEdit(idea)}
+              disabled={!editSubject.trim()}
+              className={`flex-1 py-2 rounded-xl items-center ${editSubject.trim() ? "bg-blue-600" : "bg-gray-200"}`}
+            >
+              <Text className={`text-sm font-semibold ${editSubject.trim() ? "text-white" : "text-gray-400"}`}>
+                Save
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setEditingId(null)}
+              className="flex-1 py-2 rounded-xl border border-gray-200 items-center"
+            >
+              <Text className="text-sm text-gray-600">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </Card>
+      );
+    }
+
+    return (
+      <IdeaCard
+        key={idea.id}
+        idea={idea}
+        householdId={household?.id ?? ""}
+        onWaitlist={() => handleWaitlist(idea)}
+        onConvert={(type) => handleConvert(idea, type)}
+        onEdit={() => startEdit(idea)}
+        onDelete={() => handleDelete(idea)}
+      />
+    );
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
-      <View className="flex-row items-center justify-between px-4 py-3">
-        <Text className="text-2xl font-bold text-gray-900">Idea Box</Text>
-        <TouchableOpacity
-          onPress={() => setShowModal(true)}
-          className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center"
-        >
-          <Text className="text-white text-xl font-light">+</Text>
-        </TouchableOpacity>
+      <View className="px-4 py-3 border-b border-gray-100 bg-white">
+        <Text className="text-2xl font-bold text-gray-900 mb-1">Ideas</Text>
+        <Text className="text-xs text-gray-400">Capture an idea, then move it where it belongs.</Text>
       </View>
 
-      <FlatList
-        data={pairs}
-        keyExtractor={(_, i) => String(i)}
-        contentContainerClassName="px-2.5 pb-8"
-        refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
-        }
-        renderItem={({ item: pair }) => (
-          <View className="flex-row">
-            {pair.map((t) => (
-              <TopicCard key={t.id} topic={t} />
-            ))}
-            {pair.length === 1 && <View className="flex-1 m-1.5" />}
+      <ScrollView
+        contentContainerClassName="px-4 py-4 pb-12"
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Intake form */}
+        <Card className="mb-5">
+          <TextInput
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-2"
+            value={subject}
+            onChangeText={setSubject}
+            placeholder="Subject *"
+            placeholderTextColor="#9ca3af"
+            returnKeyType="next"
+          />
+          <TextInput
+            className="bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-3 min-h-[70px]"
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Description (optional)"
+            placeholderTextColor="#9ca3af"
+            multiline
+            textAlignVertical="top"
+          />
+          <TouchableOpacity
+            onPress={handleSaveIdea}
+            disabled={!subject.trim() || createIdea.isPending}
+            className={`py-2.5 rounded-xl items-center ${subject.trim() ? "bg-blue-600" : "bg-gray-200"}`}
+          >
+            <Text className={`text-sm font-semibold ${subject.trim() ? "text-white" : "text-gray-400"}`}>
+              Save Idea
+            </Text>
+          </TouchableOpacity>
+        </Card>
+
+        {/* Active ideas */}
+        {activeIdeas.length > 0 && (
+          <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+            Ideas ({activeIdeas.length})
+          </Text>
+        )}
+        {activeIdeas.map(renderIdea)}
+
+        {activeIdeas.length === 0 && waitlistedIdeas.length === 0 && (
+          <View className="items-center py-12">
+            <Text className="text-4xl mb-3">💡</Text>
+            <Text className="text-base font-semibold text-gray-700">No ideas yet</Text>
+            <Text className="text-sm text-gray-400 mt-1 text-center">
+              Use the form above to capture your first idea.
+            </Text>
           </View>
         )}
-        ListEmptyComponent={
-          !isLoading ? (
-            <EmptyState
-              title="No topics yet"
-              subtitle="Create topic boards for your home ideas."
-              actionLabel="Create Topic"
-              onAction={() => setShowModal(true)}
-              icon="💡"
-            />
-          ) : null
-        }
-      />
 
-      <Modal
-        visible={showModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-      >
-        <View className="flex-1 bg-gray-50 px-4 pt-6">
-          <View className="flex-row items-center mb-6">
-            <TouchableOpacity onPress={() => setShowModal(false)}>
-              <Text className="text-blue-600 text-base">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="flex-1 text-center text-lg font-semibold">
-              New Topic
-            </Text>
-            <TouchableOpacity onPress={handleCreate}>
-              <Text className="text-blue-600 text-base font-semibold">
-                Create
+        {/* Waitlisted ideas */}
+        {waitlistedIdeas.length > 0 && (
+          <View className="mt-4">
+            <TouchableOpacity
+              onPress={() => setShowWaitlisted(!showWaitlisted)}
+              className="flex-row items-center justify-between mb-3"
+            >
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                Waitlisted Ideas ({waitlistedIdeas.length})
+              </Text>
+              <Text className="text-gray-400 text-xs">
+                {showWaitlisted ? "Hide" : "Show"}
               </Text>
             </TouchableOpacity>
+            {showWaitlisted && waitlistedIdeas.map(renderIdea)}
           </View>
-
-          <TextInput
-            className="bg-white border border-gray-200 rounded-2xl px-4 py-3 text-base text-gray-900 mb-6"
-            placeholder="Topic name (e.g. Kitchen Remodel)"
-            value={topicName}
-            onChangeText={setTopicName}
-            autoFocus
-            placeholderTextColor="#9ca3af"
-          />
-
-          <Text className="text-sm font-medium text-gray-700 mb-3">Color</Text>
-          <View className="flex-row flex-wrap gap-3">
-            {TOPIC_COLORS.map((c) => (
-              <TouchableOpacity
-                key={c}
-                onPress={() => setSelectedColor(c)}
-                className={`w-10 h-10 rounded-full border-4 ${
-                  selectedColor === c ? "border-gray-700" : "border-transparent"
-                }`}
-                style={{ backgroundColor: c }}
-              />
-            ))}
-          </View>
-        </View>
-      </Modal>
+        )}
+      </ScrollView>
     </SafeAreaView>
   );
 }

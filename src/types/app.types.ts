@@ -21,6 +21,8 @@ export type IdeaTopic = Database["public"]["Tables"]["idea_topics"]["Row"];
 export type Idea = Database["public"]["Tables"]["ideas"]["Row"];
 export type DeviceToken = Database["public"]["Tables"]["device_tokens"]["Row"];
 export type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
+export type Task = Database["public"]["Tables"]["tasks"]["Row"];
+export type PreferredVendor = Database["public"]["Tables"]["preferred_vendors"]["Row"];
 
 export type ProjectStatus = Project["status"];
 export type ProjectPriority = Project["priority"];
@@ -101,5 +103,3 @@ export const SERVICE_TYPES = [
 ] as const;
 
 export type ServiceType = (typeof SERVICE_TYPES)[number];
-
-export type PreferredVendor = Database["public"]["Tables"]["preferred_vendors"]["Row"];

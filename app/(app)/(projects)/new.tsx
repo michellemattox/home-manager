@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -17,7 +17,6 @@ import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCreateProject } from "@/hooks/useProjects";
-import { useServiceRecords } from "@/hooks/useServices";
 import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 import { displayToCents } from "@/utils/currencyUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
@@ -33,7 +32,6 @@ const schema = z.object({
   dueDate: z.string().optional(),        // ISO YYYY-MM-DD or ""
   estimatedCost: z.string().optional(),  // display dollars
   totalCost: z.string().optional(),      // display dollars
-  contractorName: z.string().optional(),
   notes: z.string().optional(),
 });
 
@@ -56,24 +54,16 @@ export default function NewProjectScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const createProject = useCreateProject();
-  const { data: serviceRecords } = useServiceRecords(household?.id);
-  const { data: preferredVendors } = usePreferredVendors(household?.id);
+  const { data: vendors = [] } = usePreferredVendors(household?.id);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  // Unique vendor names for quick-pick (preferred vendors + service record vendors, deduplicated)
-  const vendorNames = React.useMemo(() => {
-    const names = new Set<string>();
-    (preferredVendors ?? []).forEach((v) => names.add(v.name));
-    (serviceRecords ?? []).forEach((r) => names.add(r.vendor_name));
-    return Array.from(names).sort();
-  }, [serviceRecords, preferredVendors]);
+  const [usesVendor, setUsesVendor] = useState<boolean | null>(null);
+  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
-    setValue,
-    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -84,12 +74,9 @@ export default function NewProjectScreen() {
       dueDate: "",
       estimatedCost: "",
       totalCost: "",
-      contractorName: "",
       notes: "",
     },
   });
-
-  const contractorName = watch("contractorName");
 
   const onSubmit = async (data: FormData) => {
     if (!household || !currentMember) return;
@@ -111,9 +98,11 @@ export default function NewProjectScreen() {
           category: data.category ?? null,
           estimated_cost_cents: estimatedCents,
           total_cost_cents: totalCents,
-          contractor_name: data.contractorName?.trim() || null,
+          contractor_name: null,
           notes: data.notes?.trim() || null,
           created_by: currentMember.id,
+          uses_vendor: usesVendor === true,
+          primary_vendor_id: selectedVendorId,
         },
         ownerIds: data.ownerIds,
       });
@@ -285,36 +274,63 @@ export default function NewProjectScreen() {
           )}
         />
 
-        {/* Contractor */}
-        <Controller
-          control={control}
-          name="contractorName"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
-              label="Contractor / Vendor (optional)"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              placeholder="e.g. ABC Plumbing"
-            />
-          )}
-        />
-        {vendorNames.length > 0 && (
-          <View className="flex-row flex-wrap gap-2 mb-4 -mt-2">
-            {vendorNames.map((name) => (
+        {/* Vendor prompt */}
+        <Text className="text-sm font-medium text-gray-700 mb-2 mt-2">
+          Will a Vendor Be Used?
+        </Text>
+        <View className="flex-row gap-3 mb-4">
+          {(["Yes", "No"] as const).map((opt) => {
+            const val = opt === "Yes";
+            const active = usesVendor === val;
+            return (
               <TouchableOpacity
-                key={name}
-                onPress={() => setValue("contractorName", contractorName === name ? "" : name)}
-                className={`px-3 py-1 rounded-full border ${
-                  contractorName === name ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                key={opt}
+                onPress={() => {
+                  setUsesVendor(val);
+                  if (!val) setSelectedVendorId(null);
+                }}
+                className={`flex-1 py-2.5 rounded-xl border items-center ${
+                  active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                 }`}
               >
-                <Text className={`text-xs font-medium ${contractorName === name ? "text-white" : "text-gray-600"}`}>
-                  {name}
+                <Text className={`text-sm font-semibold ${active ? "text-white" : "text-gray-700"}`}>
+                  {opt}
                 </Text>
               </TouchableOpacity>
-            ))}
-          </View>
+            );
+          })}
+        </View>
+
+        {usesVendor && (
+          <>
+            <Text className="text-sm font-medium text-gray-700 mb-2">
+              Select Vendor (optional)
+            </Text>
+            {vendors.length === 0 ? (
+              <Text className="text-sm text-gray-400 mb-4">
+                No vendors saved yet. Add vendors in Projects → Vendors.
+              </Text>
+            ) : (
+              <View className="flex-row flex-wrap gap-2 mb-4">
+                {vendors.map((v) => {
+                  const active = selectedVendorId === v.id;
+                  return (
+                    <TouchableOpacity
+                      key={v.id}
+                      onPress={() => setSelectedVendorId(active ? null : v.id)}
+                      className={`px-3 py-1.5 rounded-full border ${
+                        active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
+                        {v.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </>
         )}
 
         {/* Notes */}

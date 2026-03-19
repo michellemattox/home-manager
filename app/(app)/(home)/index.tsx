@@ -13,13 +13,13 @@ import { useAuthStore } from "@/stores/authStore";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
+import { useTasks, useCompleteTask } from "@/hooks/useTasks";
 import { useServiceRecords } from "@/hooks/useServices";
 import { isOverdue, isDueSoon, formatDate, formatDateShort } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
 import { showAlert } from "@/lib/alert";
 import { notificationSuccess } from "@/lib/haptics";
-import type { ProjectWithOwners } from "@/types/app.types";
-import type { RecurringTask } from "@/types/app.types";
+import type { ProjectWithOwners, RecurringTask, Task } from "@/types/app.types";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -136,6 +136,28 @@ function DueSoonTaskRow({
   );
 }
 
+function OneOffTaskRow({
+  task,
+  onComplete,
+  variant,
+}: { task: Task; onComplete: () => void; variant: "overdue" | "due-soon" }) {
+  const bg = variant === "overdue" ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200";
+  const dateColor = variant === "overdue" ? "text-red-600" : "text-amber-700";
+  return (
+    <View className={`border rounded-xl p-3 mb-2 flex-row items-center ${bg}`}>
+      <View className="flex-1 mr-2">
+        <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
+        {task.due_date && (
+          <Text className={`text-xs mt-0.5 ${dateColor}`}>Due {formatDate(task.due_date)}</Text>
+        )}
+      </View>
+      <TouchableOpacity onPress={onComplete} className="bg-green-100 rounded-lg px-3 py-1.5">
+        <Text className="text-green-700 text-xs font-semibold">Done</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
 function StatCard({ label, value, sub, color, onPress }: {
   label: string; value: string; sub?: string; color: string; onPress?: () => void;
 }) {
@@ -159,14 +181,17 @@ export default function HomeScreen() {
 
   const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useProjects(household?.id);
   const { data: tasks, isLoading: loadingTasks, refetch: refetchTasks } = useRecurringTasks(household?.id);
+  const { data: oneOffTasks = [], refetch: refetchOneOff } = useTasks(household?.id);
   const { data: serviceRecords, refetch: refetchServices } = useServiceRecords(household?.id);
-  const completeTask = useCompleteRecurringTask();
+  const completeRecurring = useCompleteRecurringTask();
+  const completeOneOff = useCompleteTask();
 
   const isLoading = loadingProjects || loadingTasks;
 
   const onRefresh = () => {
     refetchProjects();
     refetchTasks();
+    refetchOneOff();
     refetchServices();
   };
 
@@ -181,14 +206,20 @@ export default function HomeScreen() {
     (p) => p.expected_date && !isOverdue(p.expected_date) && isDueSoon(p.expected_date, 14)
   );
 
-  // Tasks
+  // Recurring tasks
   const overdueTasks = (tasks ?? []).filter((t) => isOverdue(t.next_due_date));
   const dueSoonTasks = (tasks ?? []).filter(
     (t) => !isOverdue(t.next_due_date) && isDueSoon(t.next_due_date, 7)
   );
 
+  // One-off tasks with due dates
+  const overdueOneOff = oneOffTasks.filter((t) => t.due_date && isOverdue(t.due_date));
+  const dueSoonOneOff = oneOffTasks.filter(
+    (t) => t.due_date && !isOverdue(t.due_date) && isDueSoon(t.due_date, 7)
+  );
+
   // Stats — year-to-date spend (Jan 1 of current year)
-  const totalAlerts = overdueProjects.length + overdueTasks.length;
+  const totalAlerts = overdueProjects.length + overdueTasks.length + overdueOneOff.length;
   const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
   const yearlySpend = (serviceRecords ?? [])
     .filter((r) => new Date(r.service_date) >= thisYearStart)
@@ -197,18 +228,27 @@ export default function HomeScreen() {
   // Recent services
   const recentServices = (serviceRecords ?? []).slice(0, 3);
 
-  const handleCompleteTask = async (task: RecurringTask) => {
+  const handleCompleteRecurring = async (task: RecurringTask) => {
     await notificationSuccess();
     if (!currentMember) return;
     try {
-      await completeTask.mutateAsync({ task, completedBy: currentMember.id });
+      await completeRecurring.mutateAsync({ task, completedBy: currentMember.id });
     } catch (e: any) {
       showAlert("Error", e.message);
     }
   };
 
-  const hasAlerts = overdueProjects.length > 0 || overdueTasks.length > 0;
-  const hasUpcoming = dueSoonProjects.length > 0 || dueSoonTasks.length > 0;
+  const handleCompleteOneOff = async (task: Task) => {
+    await notificationSuccess();
+    try {
+      await completeOneOff.mutateAsync({ id: task.id, householdId: household!.id });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const hasAlerts = overdueProjects.length > 0 || overdueTasks.length > 0 || overdueOneOff.length > 0;
+  const hasUpcoming = dueSoonProjects.length > 0 || dueSoonTasks.length > 0 || dueSoonOneOff.length > 0;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -265,7 +305,15 @@ export default function HomeScreen() {
                 key={t.id}
                 task={t}
                 onPress={() => router.push("/(app)/(tasks)")}
-                onComplete={() => handleCompleteTask(t)}
+                onComplete={() => handleCompleteRecurring(t)}
+              />
+            ))}
+            {overdueOneOff.map((t) => (
+              <OneOffTaskRow
+                key={t.id}
+                task={t}
+                variant="overdue"
+                onComplete={() => handleCompleteOneOff(t)}
               />
             ))}
           </>
@@ -287,7 +335,15 @@ export default function HomeScreen() {
                 key={t.id}
                 task={t}
                 onPress={() => router.push("/(app)/(tasks)")}
-                onComplete={() => handleCompleteTask(t)}
+                onComplete={() => handleCompleteRecurring(t)}
+              />
+            ))}
+            {dueSoonOneOff.map((t) => (
+              <OneOffTaskRow
+                key={t.id}
+                task={t}
+                variant="due-soon"
+                onComplete={() => handleCompleteOneOff(t)}
               />
             ))}
           </>
@@ -327,11 +383,11 @@ export default function HomeScreen() {
             <Text className="text-xs font-medium text-gray-700 mt-1">Service</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            onPress={() => router.push("/(app)/(travel)/new")}
+            onPress={() => router.push("/(app)/(activity)/new")}
             className="flex-1 bg-white border border-gray-200 rounded-xl p-3 items-center"
           >
-            <Text className="text-xl">✈️</Text>
-            <Text className="text-xs font-medium text-gray-700 mt-1">Trip</Text>
+            <Text className="text-xl">🗓️</Text>
+            <Text className="text-xs font-medium text-gray-700 mt-1">Activity</Text>
           </TouchableOpacity>
         </View>
 
@@ -357,6 +413,15 @@ export default function HomeScreen() {
             ))}
           </>
         )}
+
+        {/* Settings */}
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/settings")}
+          className="flex-row items-center justify-center mt-6 mb-2 py-3 gap-2"
+        >
+          <Text className="text-base">⚙️</Text>
+          <Text className="text-sm text-gray-400 font-medium">Settings</Text>
+        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );

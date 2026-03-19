@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationSuccess } from "@/lib/haptics";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useRecurringTasks, useCompleteRecurringTask, useUpdateRecurringTask, useDeleteRecurringTask } from "@/hooks/useRecurringTasks";
+import { useTasks, useCompleteTask, useDeleteTask } from "@/hooks/useTasks";
 import { useAuthStore } from "@/stores/authStore";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -22,10 +23,10 @@ import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
-import { isOverdue, isDueSoon, formatDate, toISODateString } from "@/utils/dateUtils";
+import { isOverdue, isDueSoon, formatDate, formatDateShort, toISODateString } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
 import { TASK_CATEGORIES } from "@/types/app.types";
-import type { RecurringTask, FrequencyType } from "@/types/app.types";
+import type { RecurringTask, Task, FrequencyType } from "@/types/app.types";
 
 const FREQUENCIES: { label: string; value: FrequencyType }[] = [
   { label: "Daily", value: "daily" },
@@ -35,18 +36,71 @@ const FREQUENCIES: { label: string; value: FrequencyType }[] = [
   { label: "Custom", value: "custom" },
 ];
 
-function TaskCard({ task, onComplete, onEdit }: { task: RecurringTask; onComplete: () => void; onEdit: () => void }) {
+function OneOffTaskCard({
+  task,
+  onComplete,
+  onDelete,
+}: {
+  task: Task;
+  onComplete: () => void;
+  onDelete: () => void;
+}) {
+  const { members } = useHouseholdStore();
+  const assignee = task.assigned_member_id
+    ? members.find((m) => m.id === task.assigned_member_id)
+    : null;
+  const overdue = task.due_date ? isOverdue(task.due_date) : false;
+  const dueSoon = task.due_date ? isDueSoon(task.due_date) : false;
+
+  return (
+    <Card className="mb-3">
+      <View className="flex-row items-start justify-between">
+        <TouchableOpacity
+          onPress={onComplete}
+          className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3 mt-1 items-center justify-center"
+        />
+        <View className="flex-1 mr-2">
+          <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
+          {task.notes ? (
+            <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>{task.notes}</Text>
+          ) : null}
+          <View className="flex-row items-center mt-1.5 gap-2 flex-wrap">
+            {task.due_date && (
+              <Badge
+                label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDateShort(task.due_date)}
+                variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                size="sm"
+              />
+            )}
+            {assignee && (
+              <View className="flex-row items-center gap-1">
+                <MemberAvatar member={assignee} size="sm" />
+                <Text className="text-xs text-gray-400">{assignee.display_name.split(" ")[0]}</Text>
+              </View>
+            )}
+          </View>
+        </View>
+        <TouchableOpacity onPress={onDelete} className="p-1 mt-0.5">
+          <Text className="text-gray-300 text-sm">✕</Text>
+        </TouchableOpacity>
+      </View>
+    </Card>
+  );
+}
+
+function RecurringTaskCard({
+  task,
+  onComplete,
+  onEdit,
+}: {
+  task: RecurringTask;
+  onComplete: () => void;
+  onEdit: () => void;
+}) {
   const { members } = useHouseholdStore();
   const assignee = members.find((m) => m.id === task.assigned_member_id);
   const overdue = isOverdue(task.next_due_date);
   const dueSoon = isDueSoon(task.next_due_date);
-
-  const badgeVariant = overdue ? "danger" : dueSoon ? "warning" : "default";
-  const badgeLabel = overdue
-    ? "Overdue"
-    : dueSoon
-    ? "Due soon"
-    : formatDate(task.next_due_date);
 
   return (
     <TouchableOpacity onPress={onEdit}>
@@ -58,7 +112,11 @@ function TaskCard({ task, onComplete, onEdit }: { task: RecurringTask; onComplet
               <Text className="text-sm text-gray-400 mt-0.5">{task.category}</Text>
             )}
             <View className="flex-row items-center mt-2 gap-2">
-              <Badge label={badgeLabel} variant={badgeVariant} size="sm" />
+              <Badge
+                label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDate(task.next_due_date)}
+                variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                size="sm"
+              />
               <Text className="text-xs text-gray-400">
                 {getFreqLabel(task.frequency_type, task.frequency_days)}
               </Text>
@@ -83,11 +141,21 @@ export default function TasksScreen() {
   const router = useRouter();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
-  const { data: tasks, isLoading, refetch } = useRecurringTasks(household?.id);
-  const completeTask = useCompleteRecurringTask();
-  const updateTask = useUpdateRecurringTask();
-  const deleteTask = useDeleteRecurringTask();
 
+  // One-off tasks
+  const { data: oneOffTasks = [], isLoading: loadingOneOff, refetch: refetchOneOff } = useTasks(household?.id);
+  const completeOneOff = useCompleteTask();
+  const deleteOneOff = useDeleteTask();
+
+  // Recurring tasks
+  const { data: recurringTasks, isLoading: loadingRecurring, refetch: refetchRecurring } = useRecurringTasks(household?.id);
+  const completeRecurring = useCompleteRecurringTask();
+  const updateRecurring = useUpdateRecurringTask();
+  const deleteRecurring = useDeleteRecurringTask();
+
+  const [showCompleted, setShowCompleted] = useState(false);
+
+  // Edit recurring task modal state
   const [editingTask, setEditingTask] = useState<RecurringTask | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [editCategory, setEditCategory] = useState<string | undefined>(undefined);
@@ -106,24 +174,42 @@ export default function TasksScreen() {
     setEditAssignedId(task.assigned_member_id ?? undefined);
   };
 
-  const handleComplete = async (task: RecurringTask) => {
+  const handleCompleteOneOff = async (task: Task) => {
     await notificationSuccess();
-    const currentMember = members.find((m) => m.user_id === user?.id);
-    if (!currentMember) return;
     try {
-      await completeTask.mutateAsync({ task, completedBy: currentMember.id });
+      await completeOneOff.mutateAsync({ id: task.id, householdId: household!.id });
     } catch (e: any) {
       showAlert("Error", e.message);
     }
   };
 
-  const handleSaveEdit = async () => {
+  const handleDeleteOneOff = (task: Task) => {
+    showConfirm(
+      "Delete task?",
+      `Remove "${task.title}"?`,
+      () => deleteOneOff.mutate({ id: task.id, householdId: household!.id }),
+      true
+    );
+  };
+
+  const handleCompleteRecurring = async (task: RecurringTask) => {
+    await notificationSuccess();
+    const currentMember = members.find((m) => m.user_id === user?.id);
+    if (!currentMember) return;
+    try {
+      await completeRecurring.mutateAsync({ task, completedBy: currentMember.id });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleSaveEditRecurring = async () => {
     if (!editingTask || !editTitle.trim() || !household) return;
     const freqDays = editFreqType === "custom"
       ? parseInt(editCustomDays || "30", 10)
       : frequencyToDays(editFreqType);
     try {
-      await updateTask.mutateAsync({
+      await updateRecurring.mutateAsync({
         id: editingTask.id,
         householdId: household.id,
         updates: {
@@ -142,14 +228,14 @@ export default function TasksScreen() {
     }
   };
 
-  const handleDelete = () => {
+  const handleDeleteRecurring = () => {
     if (!editingTask || !household) return;
     showConfirm(
-      "Delete task?",
+      "Delete recurring task?",
       `Remove "${editingTask.title}"? This cannot be undone.`,
       async () => {
         try {
-          await deleteTask.mutateAsync({ id: editingTask.id, householdId: household.id });
+          await deleteRecurring.mutateAsync({ id: editingTask.id, householdId: household.id });
           setEditingTask(null);
         } catch (e: any) {
           showAlert("Error", e.message);
@@ -159,13 +245,19 @@ export default function TasksScreen() {
     );
   };
 
-  const overdue = tasks?.filter((t) => isOverdue(t.next_due_date)) ?? [];
-  const upcoming = tasks?.filter((t) => !isOverdue(t.next_due_date)) ?? [];
+  const isLoading = loadingOneOff || loadingRecurring;
+  const refetch = () => { refetchOneOff(); refetchRecurring(); };
+
+  const overdueRecurring = recurringTasks?.filter((t) => isOverdue(t.next_due_date)) ?? [];
+  const upcomingRecurring = recurringTasks?.filter((t) => !isOverdue(t.next_due_date)) ?? [];
+
+  const overdueOneOff = oneOffTasks.filter((t) => t.due_date && isOverdue(t.due_date));
+  const otherOneOff = oneOffTasks.filter((t) => !t.due_date || !isOverdue(t.due_date));
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
-      <View className="flex-row items-center justify-between px-4 py-3">
-        <Text className="text-2xl font-bold text-gray-900">Maintenance</Text>
+      <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100 bg-white">
+        <Text className="text-2xl font-bold text-gray-900">Tasks</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tasks)/new")}
           className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center"
@@ -174,41 +266,68 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </View>
 
-      <FlatList
-        data={[...overdue, ...upcoming]}
-        keyExtractor={(item) => item.id}
+      <ScrollView
         contentContainerClassName="px-4 pb-8"
-        refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
-        }
-        ListHeaderComponent={
-          overdue.length > 0 ? (
-            <Text className="text-sm font-semibold text-red-500 mb-2 mt-2">
-              {overdue.length} OVERDUE
-            </Text>
-          ) : null
-        }
-        renderItem={({ item }) => (
-          <TaskCard
-            task={item}
-            onComplete={() => handleComplete(item)}
-            onEdit={() => openEdit(item)}
-          />
-        )}
-        ListEmptyComponent={
-          !isLoading ? (
-            <EmptyState
-              title="No maintenance tasks"
-              subtitle="Add recurring tasks to track home maintenance."
-              actionLabel="Add Task"
-              onAction={() => router.push("/(app)/(tasks)/new")}
-              icon="🔔"
-            />
-          ) : null
-        }
-      />
+        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+      >
+        {/* One-Off Tasks */}
+        <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-3">
+          Tasks
+        </Text>
 
-      {/* Edit Modal */}
+        {overdueOneOff.length > 0 && (
+          <Text className="text-sm font-semibold text-red-500 mb-2">
+            {overdueOneOff.length} OVERDUE
+          </Text>
+        )}
+
+        {[...overdueOneOff, ...otherOneOff].map((task) => (
+          <OneOffTaskCard
+            key={task.id}
+            task={task}
+            onComplete={() => handleCompleteOneOff(task)}
+            onDelete={() => handleDeleteOneOff(task)}
+          />
+        ))}
+
+        {oneOffTasks.length === 0 && (
+          <Card className="mb-4">
+            <Text className="text-gray-400 text-sm text-center py-3">
+              No tasks yet. Tap + to add one.
+            </Text>
+          </Card>
+        )}
+
+        {/* Recurring Tasks */}
+        <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-3">
+          Recurring
+        </Text>
+
+        {overdueRecurring.length > 0 && (
+          <Text className="text-sm font-semibold text-red-500 mb-2">
+            {overdueRecurring.length} OVERDUE
+          </Text>
+        )}
+
+        {[...overdueRecurring, ...upcomingRecurring].map((task) => (
+          <RecurringTaskCard
+            key={task.id}
+            task={task}
+            onComplete={() => handleCompleteRecurring(task)}
+            onEdit={() => openEdit(task)}
+          />
+        ))}
+
+        {(recurringTasks?.length ?? 0) === 0 && (
+          <Card className="mb-4">
+            <Text className="text-gray-400 text-sm text-center py-3">
+              No recurring tasks yet. Tap + to add one.
+            </Text>
+          </Card>
+        )}
+      </ScrollView>
+
+      {/* Edit Recurring Task Modal */}
       <Modal
         visible={!!editingTask}
         animationType="slide"
@@ -220,8 +339,8 @@ export default function TasksScreen() {
             <TouchableOpacity onPress={() => setEditingTask(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
-            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
-            <TouchableOpacity onPress={handleSaveEdit}>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Recurring Task</Text>
+            <TouchableOpacity onPress={handleSaveEditRecurring}>
               <Text className="text-blue-600 text-base font-semibold">Save</Text>
             </TouchableOpacity>
           </View>
@@ -303,11 +422,11 @@ export default function TasksScreen() {
 
             <Button
               title="Save Changes"
-              onPress={handleSaveEdit}
-              loading={updateTask.isPending}
+              onPress={handleSaveEditRecurring}
+              loading={updateRecurring.isPending}
             />
             <TouchableOpacity
-              onPress={handleDelete}
+              onPress={handleDeleteRecurring}
               className="mt-3 items-center py-3"
             >
               <Text className="text-red-500 font-medium">Delete Task</Text>

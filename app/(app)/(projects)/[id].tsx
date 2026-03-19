@@ -25,7 +25,8 @@ import {
   useCompletedChecklistItems,
   useDeleteCompletedChecklistItem,
 } from "@/hooks/useChecklistItems";
-import { useServiceRecords } from "@/hooks/useServices";
+import { useEventServiceRecords } from "@/hooks/useServices";
+import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
@@ -112,16 +113,10 @@ export default function ProjectDetailScreen() {
   const deleteTask = useDeleteProjectTask();
   const deleteCompleted = useDeleteCompletedChecklistItem();
   const { data: completedItems = [] } = useCompletedChecklistItems("project", id);
-  const { data: serviceRecords } = useServiceRecords(household?.id);
+  const { data: eventServiceRecords = [] } = useEventServiceRecords("project", id);
+  const { data: vendors = [] } = usePreferredVendors(household?.id);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
-
-  // Vendor names for contractor quick-pick in edit modal
-  const vendorNames = React.useMemo(() => {
-    const names = new Set<string>();
-    (serviceRecords ?? []).forEach((r) => names.add(r.vendor_name));
-    return Array.from(names).sort();
-  }, [serviceRecords]);
 
   // Add update modal
   const [showUpdateModal, setShowUpdateModal] = useState(false);
@@ -150,7 +145,8 @@ export default function ProjectDetailScreen() {
   const [editDueDate, setEditDueDate] = useState("");
   const [editBudget, setEditBudget] = useState("");
   const [editTotalCost, setEditTotalCost] = useState("");
-  const [editContractor, setEditContractor] = useState("");
+  const [editUsesVendor, setEditUsesVendor] = useState<boolean | null>(null);
+  const [editSelectedVendorId, setEditSelectedVendorId] = useState<string | null>(null);
   const [editNotes, setEditNotes] = useState("");
 
   // Realtime subscription
@@ -178,7 +174,8 @@ export default function ProjectDetailScreen() {
       setEditDueDate(project.expected_date ?? "");
       setEditBudget(project.estimated_cost_cents ? (project.estimated_cost_cents / 100).toFixed(2) : "");
       setEditTotalCost(project.total_cost_cents ? (project.total_cost_cents / 100).toFixed(2) : "");
-      setEditContractor(project.contractor_name ?? "");
+      setEditUsesVendor((project as any).uses_vendor ?? null);
+      setEditSelectedVendorId((project as any).primary_vendor_id ?? null);
       setEditNotes(project.notes ?? "");
     }
   }, [showEditModal]);
@@ -214,7 +211,8 @@ export default function ProjectDetailScreen() {
           expected_date: editDueDate || null,
           estimated_cost_cents: editBudget.trim() ? displayToCents(editBudget) : 0,
           total_cost_cents: editTotalCost.trim() ? displayToCents(editTotalCost) : 0,
-          contractor_name: editContractor.trim() || null,
+          uses_vendor: editUsesVendor === true,
+          primary_vendor_id: editUsesVendor ? editSelectedVendorId : null,
           notes: editNotes.trim() || null,
         },
       });
@@ -372,23 +370,11 @@ export default function ProjectDetailScreen() {
             )}
           </View>
 
-          {/* Contractor link */}
-          {project.contractor_name && (
-            <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: "/(app)/(services)",
-                  params: { vendor: project.contractor_name! },
-                } as any)
-              }
-              className="flex-row items-center py-2 border-t border-gray-100 mt-2"
-            >
-              <Text className="text-xs text-gray-500 mr-1">Contractor:</Text>
-              <Text className="text-xs font-semibold text-blue-600 flex-1">
-                {project.contractor_name}
-              </Text>
-              <Text className="text-blue-400 text-xs">→ View Services</Text>
-            </TouchableOpacity>
+          {/* Vendor indicator */}
+          {(project as any).uses_vendor && (
+            <View className="flex-row items-center py-2 border-t border-gray-100 mt-2">
+              <Text className="text-xs text-blue-500 font-medium">Uses a vendor</Text>
+            </View>
           )}
 
           {/* Budget */}
@@ -439,6 +425,70 @@ export default function ProjectDetailScreen() {
             <Text className="text-sm text-gray-700 leading-relaxed">{project.notes}</Text>
           </Card>
         )}
+
+        {/* Vendor & Service Records */}
+        {(project as any).uses_vendor && (() => {
+          const linkedVendor = (project as any).primary_vendor_id
+            ? vendors.find((v) => v.id === (project as any).primary_vendor_id)
+            : null;
+          const totalSpent = eventServiceRecords.reduce((sum, r) => sum + (r.cost_cents ?? 0), 0);
+          return (
+            <Card className="mb-4">
+              <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                Vendor
+              </Text>
+              {linkedVendor ? (
+                <>
+                  <Text className="text-base font-semibold text-gray-900">{linkedVendor.name}</Text>
+                  {linkedVendor.category && (
+                    <Text className="text-xs text-gray-400 mt-0.5">{linkedVendor.category}</Text>
+                  )}
+                  {linkedVendor.recommendation && (
+                    <Text className="text-sm text-gray-600 mt-2 italic">"{linkedVendor.recommendation}"</Text>
+                  )}
+                  {linkedVendor.notes && (
+                    <Text className="text-sm text-gray-500 mt-1">{linkedVendor.notes}</Text>
+                  )}
+                </>
+              ) : (
+                <Text className="text-sm text-gray-400">No vendor linked yet. Edit project to select one.</Text>
+              )}
+
+              {eventServiceRecords.length > 0 && (
+                <View className="mt-3 pt-3 border-t border-gray-100">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-xs font-semibold text-gray-500">Service Records</Text>
+                    {totalSpent > 0 && (
+                      <Text className="text-xs font-semibold text-gray-700">
+                        Total: {(totalSpent / 100).toFixed(2)}
+                      </Text>
+                    )}
+                  </View>
+                  {eventServiceRecords.map((rec: any) => (
+                    <View key={rec.id} className="py-2 border-b border-gray-50">
+                      <View className="flex-row items-start justify-between">
+                        <Text className="text-sm font-medium text-gray-700 flex-1 mr-2">
+                          {rec.service_type ?? rec.vendor_name}
+                        </Text>
+                        {rec.cost_cents != null && rec.cost_cents > 0 && (
+                          <Text className="text-sm font-semibold text-gray-700">
+                            ${(rec.cost_cents / 100).toFixed(2)}
+                          </Text>
+                        )}
+                      </View>
+                      {rec.service_date && (
+                        <Text className="text-xs text-gray-400 mt-0.5">{formatDateShort(rec.service_date)}</Text>
+                      )}
+                      {rec.notes && (
+                        <Text className="text-xs text-gray-500 mt-0.5">{rec.notes}</Text>
+                      )}
+                    </View>
+                  ))}
+                </View>
+              )}
+            </Card>
+          );
+        })()}
 
         {/* Checklists */}
         {checklistNames.map((name) => (
@@ -781,29 +831,55 @@ export default function ProjectDetailScreen() {
               keyboardType="decimal-pad"
             />
 
-            <Text className="text-sm font-medium text-gray-700 mb-1">Contractor / Vendor</Text>
-            <TextInput
-              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-2"
-              value={editContractor}
-              onChangeText={setEditContractor}
-              placeholder="e.g. ABC Plumbing"
-            />
-            {vendorNames.length > 0 && (
-              <View className="flex-row flex-wrap gap-2 mb-4">
-                {vendorNames.map((name) => (
+            <Text className="text-sm font-medium text-gray-700 mb-2">Will a Vendor Be Used?</Text>
+            <View className="flex-row gap-3 mb-4">
+              {(["Yes", "No"] as const).map((opt) => {
+                const val = opt === "Yes";
+                const active = editUsesVendor === val;
+                return (
                   <TouchableOpacity
-                    key={name}
-                    onPress={() => setEditContractor(editContractor === name ? "" : name)}
-                    className={`px-3 py-1 rounded-full border ${
-                      editContractor === name ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    key={opt}
+                    onPress={() => {
+                      setEditUsesVendor(val);
+                      if (!val) setEditSelectedVendorId(null);
+                    }}
+                    className={`flex-1 py-2.5 rounded-xl border items-center ${
+                      active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                     }`}
                   >
-                    <Text className={`text-xs font-medium ${editContractor === name ? "text-white" : "text-gray-600"}`}>
-                      {name}
+                    <Text className={`text-sm font-semibold ${active ? "text-white" : "text-gray-700"}`}>
+                      {opt}
                     </Text>
                   </TouchableOpacity>
-                ))}
-              </View>
+                );
+              })}
+            </View>
+            {editUsesVendor && (
+              <>
+                <Text className="text-sm font-medium text-gray-700 mb-2">Select Vendor (optional)</Text>
+                {vendors.length === 0 ? (
+                  <Text className="text-sm text-gray-400 mb-4">No vendors saved yet.</Text>
+                ) : (
+                  <View className="flex-row flex-wrap gap-2 mb-4">
+                    {vendors.map((v) => {
+                      const active = editSelectedVendorId === v.id;
+                      return (
+                        <TouchableOpacity
+                          key={v.id}
+                          onPress={() => setEditSelectedVendorId(active ? null : v.id)}
+                          className={`px-3 py-1.5 rounded-full border ${
+                            active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                          }`}
+                        >
+                          <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
+                            {v.name}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                )}
+              </>
             )}
 
             <Text className="text-sm font-medium text-gray-700 mb-1">Notes</Text>
