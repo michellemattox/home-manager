@@ -2,31 +2,42 @@ import React, { useState } from "react";
 import {
   View,
   Text,
-  FlatList,
   TouchableOpacity,
   RefreshControl,
   Modal,
   ScrollView,
+  TextInput,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationSuccess } from "@/lib/haptics";
 import { useHouseholdStore } from "@/stores/householdStore";
-import { useRecurringTasks, useCompleteRecurringTask, useUpdateRecurringTask, useDeleteRecurringTask } from "@/hooks/useRecurringTasks";
+import {
+  useRecurringTasks,
+  useCompleteRecurringTask,
+  useUpdateRecurringTask,
+  useDeleteRecurringTask,
+} from "@/hooks/useRecurringTasks";
 import { useTasks, useCompleteTask, useDeleteTask } from "@/hooks/useTasks";
+import {
+  useAllProjectTasks,
+  useUpdateProjectTask,
+  useDeleteProjectTask,
+  useCompleteProjectChecklistItem,
+} from "@/hooks/useProjectTasks";
 import { useAuthStore } from "@/stores/authStore";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
-import { EmptyState } from "@/components/ui/EmptyState";
-import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
+import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { isOverdue, isDueSoon, formatDate, formatDateShort, toISODateString } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
-import { TASK_CATEGORIES } from "@/types/app.types";
-import type { RecurringTask, Task, FrequencyType } from "@/types/app.types";
+import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
+
+type TaskMode = "low-lift" | "project-adjacent";
 
 const FREQUENCIES: { label: string; value: FrequencyType }[] = [
   { label: "Daily", value: "daily" },
@@ -36,14 +47,52 @@ const FREQUENCIES: { label: string; value: FrequencyType }[] = [
   { label: "Custom", value: "custom" },
 ];
 
-function OneOffTaskCard({
+// ── Low-Lift Card ─────────────────────────────────────────────────────────────
+function LowLiftCard({ task, onPress }: { task: RecurringTask; onPress: () => void }) {
+  const { members } = useHouseholdStore();
+  const assignee = members.find((m) => m.id === task.assigned_member_id);
+  const overdue = isOverdue(task.next_due_date);
+  const dueSoon = isDueSoon(task.next_due_date);
+
+  return (
+    <TouchableOpacity onPress={onPress}>
+      <Card className="mb-3">
+        <View className="flex-row items-start justify-between">
+          <View className="flex-1 mr-3">
+            <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
+            {task.description ? (
+              <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>{task.description}</Text>
+            ) : null}
+            <View className="flex-row items-center mt-1.5 gap-2 flex-wrap">
+              <Badge
+                label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDate(task.next_due_date)}
+                variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                size="sm"
+              />
+              <Text className="text-xs text-gray-400">
+                {getFreqLabel(task.frequency_type, task.frequency_days)}
+              </Text>
+              {(task as any).time_of_day && (
+                <Text className="text-xs text-gray-400">⏰ {(task as any).time_of_day}</Text>
+              )}
+            </View>
+          </View>
+          {assignee && <MemberAvatar member={assignee} size="sm" />}
+        </View>
+      </Card>
+    </TouchableOpacity>
+  );
+}
+
+// ── Project Adjacent Card ─────────────────────────────────────────────────────
+function ProjectAdjacentCard({
   task,
-  onComplete,
-  onDelete,
+  projectTitle,
+  onPress,
 }: {
-  task: Task;
-  onComplete: () => void;
-  onDelete: () => void;
+  task: ProjectTask & { notes?: string | null };
+  projectTitle?: string;
+  onPress: () => void;
 }) {
   const { members } = useHouseholdStore();
   const assignee = task.assigned_member_id
@@ -53,84 +102,67 @@ function OneOffTaskCard({
   const dueSoon = task.due_date ? isDueSoon(task.due_date) : false;
 
   return (
-    <Card className="mb-3">
-      <View className="flex-row items-start justify-between">
-        <TouchableOpacity
-          onPress={onComplete}
-          className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3 mt-1 items-center justify-center"
-        />
-        <View className="flex-1 mr-2">
-          <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
-          {task.notes ? (
-            <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>{task.notes}</Text>
-          ) : null}
-          <View className="flex-row items-center mt-1.5 gap-2 flex-wrap">
-            {task.due_date && (
-              <Badge
-                label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDateShort(task.due_date)}
-                variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
-                size="sm"
-              />
+    <TouchableOpacity onPress={onPress}>
+      <Card className="mb-3">
+        <View className="flex-row items-start justify-between">
+          <View className="flex-1 mr-2">
+            <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
+            {projectTitle && (
+              <Text className="text-xs text-blue-500 mt-0.5 font-medium">
+                {projectTitle} · {task.checklist_name ?? "General"}
+              </Text>
             )}
-            {assignee && (
-              <View className="flex-row items-center gap-1">
-                <MemberAvatar member={assignee} size="sm" />
-                <Text className="text-xs text-gray-400">{assignee.display_name.split(" ")[0]}</Text>
+            {(task as any).notes ? (
+              <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>
+                {(task as any).notes}
+              </Text>
+            ) : null}
+            {task.due_date && (
+              <View className="mt-1.5">
+                <Badge
+                  label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDateShort(task.due_date)}
+                  variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                  size="sm"
+                />
               </View>
             )}
           </View>
+          {assignee && <MemberAvatar member={assignee} size="sm" />}
         </View>
-        <TouchableOpacity onPress={onDelete} className="p-1 mt-0.5">
-          <Text className="text-gray-300 text-sm">✕</Text>
-        </TouchableOpacity>
-      </View>
-    </Card>
+      </Card>
+    </TouchableOpacity>
   );
 }
 
-function RecurringTaskCard({
-  task,
-  onComplete,
-  onEdit,
-}: {
-  task: RecurringTask;
-  onComplete: () => void;
-  onEdit: () => void;
-}) {
+// ── Standalone Task Card ──────────────────────────────────────────────────────
+function StandaloneTaskCard({ task, onPress }: { task: Task; onPress: () => void }) {
   const { members } = useHouseholdStore();
-  const assignee = members.find((m) => m.id === task.assigned_member_id);
-  const overdue = isOverdue(task.next_due_date);
-  const dueSoon = isDueSoon(task.next_due_date);
+  const assignee = task.assigned_member_id
+    ? members.find((m) => m.id === task.assigned_member_id)
+    : null;
+  const overdue = task.due_date ? isOverdue(task.due_date) : false;
+  const dueSoon = task.due_date ? isDueSoon(task.due_date) : false;
 
   return (
-    <TouchableOpacity onPress={onEdit}>
+    <TouchableOpacity onPress={onPress}>
       <Card className="mb-3">
         <View className="flex-row items-start justify-between">
-          <View className="flex-1 mr-3">
+          <View className="flex-1 mr-2">
             <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
-            {task.category && (
-              <Text className="text-sm text-gray-400 mt-0.5">{task.category}</Text>
+            {task.notes ? (
+              <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>{task.notes}</Text>
+            ) : null}
+            {task.due_date && (
+              <View className="mt-1.5">
+                <Badge
+                  label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDateShort(task.due_date)}
+                  variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                  size="sm"
+                />
+              </View>
             )}
-            <View className="flex-row items-center mt-2 gap-2">
-              <Badge
-                label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDate(task.next_due_date)}
-                variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
-                size="sm"
-              />
-              <Text className="text-xs text-gray-400">
-                {getFreqLabel(task.frequency_type, task.frequency_days)}
-              </Text>
-            </View>
           </View>
-          <View className="items-end gap-2">
-            {assignee && <MemberAvatar member={assignee} size="sm" />}
-            <TouchableOpacity
-              onPress={onComplete}
-              className="bg-green-100 rounded-xl px-3 py-1.5"
-            >
-              <Text className="text-green-700 text-sm font-semibold">Done</Text>
-            </TouchableOpacity>
-          </View>
+          {assignee && <MemberAvatar member={assignee} size="sm" />}
         </View>
       </Card>
     </TouchableOpacity>
@@ -142,101 +174,99 @@ export default function TasksScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
 
-  // One-off tasks
-  const { data: oneOffTasks = [], isLoading: loadingOneOff, refetch: refetchOneOff } = useTasks(household?.id);
-  const completeOneOff = useCompleteTask();
-  const deleteOneOff = useDeleteTask();
+  const [mode, setMode] = useState<TaskMode>("low-lift");
 
-  // Recurring tasks
-  const { data: recurringTasks, isLoading: loadingRecurring, refetch: refetchRecurring } = useRecurringTasks(household?.id);
+  // Low-Lift (Recurring)
+  const { data: recurringTasks = [], isLoading: loadingRecurring, refetch: refetchRecurring } =
+    useRecurringTasks(household?.id);
   const completeRecurring = useCompleteRecurringTask();
   const updateRecurring = useUpdateRecurringTask();
   const deleteRecurring = useDeleteRecurringTask();
 
-  const [showCompleted, setShowCompleted] = useState(false);
+  // Project Adjacent — project_tasks across household
+  const { data: projectTasks = [], isLoading: loadingPA, refetch: refetchPA } =
+    useAllProjectTasks(household?.id);
+  const updateProjectTask = useUpdateProjectTask();
+  const deleteProjectTask = useDeleteProjectTask();
+  const completeProjectTask = useCompleteProjectChecklistItem();
 
-  // Edit recurring task modal state
-  const [editingTask, setEditingTask] = useState<RecurringTask | null>(null);
-  const [editTitle, setEditTitle] = useState("");
-  const [editCategory, setEditCategory] = useState<string | undefined>(undefined);
-  const [editAnchorDate, setEditAnchorDate] = useState("");
-  const [editFreqType, setEditFreqType] = useState<FrequencyType>("monthly");
-  const [editCustomDays, setEditCustomDays] = useState("");
-  const [editAssignedId, setEditAssignedId] = useState<string | undefined>(undefined);
+  // Standalone tasks (no project link)
+  const { data: standaloneTasks = [], isLoading: loadingStandalone, refetch: refetchStandalone } =
+    useTasks(household?.id);
+  const completeStandalone = useCompleteTask();
+  const deleteStandalone = useDeleteTask();
 
-  const openEdit = (task: RecurringTask) => {
-    setEditingTask(task);
-    setEditTitle(task.title);
-    setEditCategory(task.category ?? undefined);
-    setEditAnchorDate(task.anchor_date);
-    setEditFreqType(task.frequency_type);
-    setEditCustomDays(String(task.frequency_days));
-    setEditAssignedId(task.assigned_member_id ?? undefined);
+  const isLoading = loadingRecurring || loadingPA || loadingStandalone;
+  const refetch = () => { refetchRecurring(); refetchPA(); refetchStandalone(); };
+
+  // ── Low-Lift edit modal ───────────────────────────────────────────────────
+  const [editingLowLift, setEditingLowLift] = useState<RecurringTask | null>(null);
+  const [llTitle, setLlTitle] = useState("");
+  const [llNotes, setLlNotes] = useState("");
+  const [llAnchorDate, setLlAnchorDate] = useState("");
+  const [llTimeOfDay, setLlTimeOfDay] = useState("");
+  const [llFreqType, setLlFreqType] = useState<FrequencyType>("monthly");
+  const [llCustomDays, setLlCustomDays] = useState("");
+  const [llAssignedId, setLlAssignedId] = useState<string | undefined>(undefined);
+
+  const openLowLiftEdit = (task: RecurringTask) => {
+    setEditingLowLift(task);
+    setLlTitle(task.title);
+    setLlNotes(task.description ?? "");
+    setLlAnchorDate(task.anchor_date);
+    setLlTimeOfDay((task as any).time_of_day ?? "");
+    setLlFreqType(task.frequency_type);
+    setLlCustomDays(String(task.frequency_days));
+    setLlAssignedId(task.assigned_member_id ?? undefined);
   };
 
-  const handleCompleteOneOff = async (task: Task) => {
-    await notificationSuccess();
+  const handleSaveLowLift = async () => {
+    if (!editingLowLift || !llTitle.trim() || !household) return;
+    const freqDays = llFreqType === "custom"
+      ? parseInt(llCustomDays || "30", 10)
+      : frequencyToDays(llFreqType);
     try {
-      await completeOneOff.mutateAsync({ id: task.id, householdId: household!.id });
+      await updateRecurring.mutateAsync({
+        id: editingLowLift.id,
+        householdId: household.id,
+        updates: {
+          title: llTitle.trim(),
+          description: llNotes.trim() || null,
+          anchor_date: llAnchorDate || toISODateString(new Date()),
+          next_due_date: llAnchorDate || toISODateString(new Date()),
+          frequency_type: llFreqType,
+          frequency_days: freqDays,
+          assigned_member_id: llAssignedId ?? null,
+          time_of_day: llTimeOfDay.trim() || null,
+        },
+      });
+      setEditingLowLift(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
   };
 
-  const handleDeleteOneOff = (task: Task) => {
-    showConfirm(
-      "Delete task?",
-      `Remove "${task.title}"?`,
-      () => deleteOneOff.mutate({ id: task.id, householdId: household!.id }),
-      true
-    );
-  };
-
-  const handleCompleteRecurring = async (task: RecurringTask) => {
+  const handleCompleteLowLift = async (task: RecurringTask) => {
     await notificationSuccess();
     const currentMember = members.find((m) => m.user_id === user?.id);
     if (!currentMember) return;
     try {
       await completeRecurring.mutateAsync({ task, completedBy: currentMember.id });
+      setEditingLowLift(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
   };
 
-  const handleSaveEditRecurring = async () => {
-    if (!editingTask || !editTitle.trim() || !household) return;
-    const freqDays = editFreqType === "custom"
-      ? parseInt(editCustomDays || "30", 10)
-      : frequencyToDays(editFreqType);
-    try {
-      await updateRecurring.mutateAsync({
-        id: editingTask.id,
-        householdId: household.id,
-        updates: {
-          title: editTitle.trim(),
-          category: editCategory ?? null,
-          anchor_date: editAnchorDate || toISODateString(new Date()),
-          next_due_date: editAnchorDate || toISODateString(new Date()),
-          frequency_type: editFreqType,
-          frequency_days: freqDays,
-          assigned_member_id: editAssignedId ?? null,
-        },
-      });
-      setEditingTask(null);
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    }
-  };
-
-  const handleDeleteRecurring = () => {
-    if (!editingTask || !household) return;
+  const handleDeleteLowLift = (task: RecurringTask) => {
+    if (!household) return;
     showConfirm(
-      "Delete recurring task?",
-      `Remove "${editingTask.title}"? This cannot be undone.`,
+      "Delete task?",
+      `Remove "${task.title}"?`,
       async () => {
         try {
-          await deleteRecurring.mutateAsync({ id: editingTask.id, householdId: household.id });
-          setEditingTask(null);
+          await deleteRecurring.mutateAsync({ id: task.id, householdId: household.id });
+          setEditingLowLift(null);
         } catch (e: any) {
           showAlert("Error", e.message);
         }
@@ -245,14 +275,127 @@ export default function TasksScreen() {
     );
   };
 
-  const isLoading = loadingOneOff || loadingRecurring;
-  const refetch = () => { refetchOneOff(); refetchRecurring(); };
+  // ── Project Adjacent edit modal ──────────────────────────────────────────
+  const [editingPA, setEditingPA] = useState<(ProjectTask & { notes?: string | null; project_title?: string }) | null>(null);
+  const [paTitle, setPaTitle] = useState("");
+  const [paNotes, setPaNotes] = useState("");
+  const [paDueDate, setPaDueDate] = useState("");
+  const [paAssignedId, setPaAssignedId] = useState<string | undefined>(undefined);
 
-  const overdueRecurring = recurringTasks?.filter((t) => isOverdue(t.next_due_date)) ?? [];
-  const upcomingRecurring = recurringTasks?.filter((t) => !isOverdue(t.next_due_date)) ?? [];
+  // Standalone task edit modal
+  const [editingStandalone, setEditingStandalone] = useState<Task | null>(null);
+  const [stTitle, setStTitle] = useState("");
+  const [stNotes, setStNotes] = useState("");
+  const [stDueDate, setStDueDate] = useState("");
+  const [stAssignedId, setStAssignedId] = useState<string | undefined>(undefined);
 
-  const overdueOneOff = oneOffTasks.filter((t) => t.due_date && isOverdue(t.due_date));
-  const otherOneOff = oneOffTasks.filter((t) => !t.due_date || !isOverdue(t.due_date));
+  const openPAEdit = (task: ProjectTask & { notes?: string | null; project_title?: string }) => {
+    setEditingPA(task);
+    setPaTitle(task.title);
+    setPaNotes((task as any).notes ?? "");
+    setPaDueDate(task.due_date ?? "");
+    setPaAssignedId(task.assigned_member_id ?? undefined);
+  };
+
+  const openStandaloneEdit = (task: Task) => {
+    setEditingStandalone(task);
+    setStTitle(task.title);
+    setStNotes(task.notes ?? "");
+    setStDueDate(task.due_date ?? "");
+    setStAssignedId(task.assigned_member_id ?? undefined);
+  };
+
+  const handleSavePA = async () => {
+    if (!editingPA || !paTitle.trim()) return;
+    try {
+      await updateProjectTask.mutateAsync({
+        id: editingPA.id,
+        project_id: editingPA.project_id,
+        updates: {
+          title: paTitle.trim(),
+          notes: paNotes.trim() || null,
+          due_date: paDueDate || null,
+          assigned_member_id: paAssignedId ?? null,
+        },
+      });
+      setEditingPA(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleCompletePA = async (task: ProjectTask) => {
+    const currentMember = members.find((m) => m.user_id === user?.id);
+    await notificationSuccess();
+    try {
+      await completeProjectTask.mutateAsync({ task, completedByMemberId: currentMember?.id ?? null });
+      setEditingPA(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleDeletePA = (task: ProjectTask) => {
+    showConfirm(
+      "Delete task?",
+      `Remove "${task.title}" from the checklist?`,
+      async () => {
+        try {
+          await deleteProjectTask.mutateAsync({ id: task.id, project_id: task.project_id });
+          setEditingPA(null);
+        } catch (e: any) {
+          showAlert("Error", e.message);
+        }
+      },
+      true
+    );
+  };
+
+  const handleSaveStandalone = async () => {
+    if (!editingStandalone || !stTitle.trim() || !household) return;
+    try {
+      // useUpdateTask from useTasks
+      const { supabase } = await import("@/lib/supabase");
+      const { error } = await supabase
+        .from("tasks")
+        .update({ title: stTitle.trim(), notes: stNotes.trim() || null, due_date: stDueDate || null, assigned_member_id: stAssignedId ?? null })
+        .eq("id", editingStandalone.id);
+      if (error) throw error;
+      refetchStandalone();
+      setEditingStandalone(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleCompleteStandalone = async (task: Task) => {
+    await notificationSuccess();
+    try {
+      await completeStandalone.mutateAsync({ id: task.id, householdId: household!.id });
+      setEditingStandalone(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleDeleteStandalone = (task: Task) => {
+    showConfirm(
+      "Delete task?",
+      `Remove "${task.title}"?`,
+      async () => {
+        try {
+          await deleteStandalone.mutateAsync({ id: task.id, householdId: household!.id });
+          setEditingStandalone(null);
+        } catch (e: any) {
+          showAlert("Error", e.message);
+        }
+      },
+      true
+    );
+  };
+
+  const overdueRecurring = recurringTasks.filter((t) => isOverdue(t.next_due_date));
+  const upcomingRecurring = recurringTasks.filter((t) => !isOverdue(t.next_due_date));
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -266,114 +409,130 @@ export default function TasksScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Tab toggle — Low-Lift left/default */}
+      <View className="flex-row bg-gray-100 rounded-xl mx-4 mt-3 p-1">
+        {(["low-lift", "project-adjacent"] as TaskMode[]).map((m) => (
+          <TouchableOpacity
+            key={m}
+            onPress={() => setMode(m)}
+            className={`flex-1 py-2 rounded-lg items-center ${mode === m ? "bg-white shadow-sm" : ""}`}
+          >
+            <Text className={`text-sm font-semibold ${mode === m ? "text-gray-900" : "text-gray-500"}`}>
+              {m === "low-lift" ? "Low-Lift" : "Project Adjacent"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
       <ScrollView
-        contentContainerClassName="px-4 pb-8"
+        contentContainerClassName="px-4 pt-4 pb-8"
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
       >
-        {/* One-Off Tasks */}
-        <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-3">
-          Tasks
-        </Text>
-
-        {overdueOneOff.length > 0 && (
-          <Text className="text-sm font-semibold text-red-500 mb-2">
-            {overdueOneOff.length} OVERDUE
-          </Text>
+        {/* ── LOW-LIFT TAB ─────────────────────────────────────────────── */}
+        {mode === "low-lift" && (
+          <>
+            {overdueRecurring.length > 0 && (
+              <Text className="text-sm font-semibold text-red-500 mb-2">
+                {overdueRecurring.length} OVERDUE
+              </Text>
+            )}
+            {[...overdueRecurring, ...upcomingRecurring].map((task) => (
+              <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} />
+            ))}
+            {recurringTasks.length === 0 && (
+              <View className="items-center py-12">
+                <Text className="text-4xl mb-3">🔄</Text>
+                <Text className="text-base font-semibold text-gray-700">No low-lift tasks</Text>
+                <Text className="text-sm text-gray-400 mt-1 text-center">
+                  Recurring tasks you can knock out quickly.
+                </Text>
+              </View>
+            )}
+          </>
         )}
 
-        {[...overdueOneOff, ...otherOneOff].map((task) => (
-          <OneOffTaskCard
-            key={task.id}
-            task={task}
-            onComplete={() => handleCompleteOneOff(task)}
-            onDelete={() => handleDeleteOneOff(task)}
-          />
-        ))}
+        {/* ── PROJECT ADJACENT TAB ─────────────────────────────────────── */}
+        {mode === "project-adjacent" && (
+          <>
+            {projectTasks.length > 0 && (
+              <>
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Checklist Items
+                </Text>
+                {projectTasks.map((task) => (
+                  <ProjectAdjacentCard
+                    key={task.id}
+                    task={task as any}
+                    projectTitle={(task as any).project_title}
+                    onPress={() => openPAEdit(task as any)}
+                  />
+                ))}
+              </>
+            )}
 
-        {oneOffTasks.length === 0 && (
-          <Card className="mb-4">
-            <Text className="text-gray-400 text-sm text-center py-3">
-              No tasks yet. Tap + to add one.
-            </Text>
-          </Card>
-        )}
+            {standaloneTasks.length > 0 && (
+              <>
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 mt-2">
+                  Standalone
+                </Text>
+                {standaloneTasks.map((task) => (
+                  <StandaloneTaskCard
+                    key={task.id}
+                    task={task}
+                    onPress={() => openStandaloneEdit(task)}
+                  />
+                ))}
+              </>
+            )}
 
-        {/* Recurring Tasks */}
-        <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mt-4 mb-3">
-          Recurring
-        </Text>
-
-        {overdueRecurring.length > 0 && (
-          <Text className="text-sm font-semibold text-red-500 mb-2">
-            {overdueRecurring.length} OVERDUE
-          </Text>
-        )}
-
-        {[...overdueRecurring, ...upcomingRecurring].map((task) => (
-          <RecurringTaskCard
-            key={task.id}
-            task={task}
-            onComplete={() => handleCompleteRecurring(task)}
-            onEdit={() => openEdit(task)}
-          />
-        ))}
-
-        {(recurringTasks?.length ?? 0) === 0 && (
-          <Card className="mb-4">
-            <Text className="text-gray-400 text-sm text-center py-3">
-              No recurring tasks yet. Tap + to add one.
-            </Text>
-          </Card>
+            {projectTasks.length === 0 && standaloneTasks.length === 0 && (
+              <View className="items-center py-12">
+                <Text className="text-4xl mb-3">📋</Text>
+                <Text className="text-base font-semibold text-gray-700">No project adjacent tasks</Text>
+                <Text className="text-sm text-gray-400 mt-1 text-center">
+                  Tasks tied to projects or activities.
+                </Text>
+              </View>
+            )}
+          </>
         )}
       </ScrollView>
 
-      {/* Edit Recurring Task Modal */}
+      {/* ── LOW-LIFT EDIT MODAL ─────────────────────────────────────────── */}
       <Modal
-        visible={!!editingTask}
+        visible={!!editingLowLift}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setEditingTask(null)}
+        onRequestClose={() => setEditingLowLift(null)}
       >
         <SafeAreaView className="flex-1 bg-gray-50">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setEditingTask(null)} className="mr-4">
+            <TouchableOpacity onPress={() => setEditingLowLift(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
-            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Recurring Task</Text>
-            <TouchableOpacity onPress={handleSaveEditRecurring}>
-              <Text className="text-blue-600 text-base font-semibold">Save</Text>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
+            <TouchableOpacity onPress={handleSaveLowLift} disabled={!llTitle.trim() || updateRecurring.isPending}>
+              <Text className={`text-base font-semibold ${llTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
             </TouchableOpacity>
           </View>
           <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Input label="Task Name" value={llTitle} onChangeText={setLlTitle} placeholder="e.g. Change HVAC filter" />
             <Input
-              label="Task Name"
-              value={editTitle}
-              onChangeText={setEditTitle}
-              placeholder="e.g. Change HVAC filter"
+              label="Notes (optional)"
+              value={llNotes}
+              onChangeText={setLlNotes}
+              multiline
+              numberOfLines={3}
+              placeholder="Add details..."
             />
-
-            <Text className="text-sm font-medium text-gray-700 mb-2">Category</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-              {TASK_CATEGORIES.map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setEditCategory(editCategory === cat ? undefined : cat)}
-                  className={`mr-2 px-3 py-1.5 rounded-full border ${
-                    editCategory === cat ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                  }`}
-                >
-                  <Text className={`text-sm font-medium ${editCategory === cat ? "text-white" : "text-gray-700"}`}>
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-
-            <DateInput
-              label="Start / Due Date"
-              value={editAnchorDate}
-              onChange={setEditAnchorDate}
-              hint="First occurrence — frequency repeats from this date"
+            <DateInput label="Start / Due Date" value={llAnchorDate} onChange={setLlAnchorDate}
+              hint="Frequency repeats from this date" />
+            <Input
+              label="Time of Day (optional)"
+              value={llTimeOfDay}
+              onChangeText={setLlTimeOfDay}
+              placeholder="e.g. 9:00 AM"
+              hint="Used for reminder notification"
             />
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Frequency</Text>
@@ -381,53 +540,179 @@ export default function TasksScreen() {
               {FREQUENCIES.map((f) => (
                 <TouchableOpacity
                   key={f.value}
-                  onPress={() => setEditFreqType(f.value)}
+                  onPress={() => setLlFreqType(f.value)}
                   className={`px-4 py-2 rounded-xl border ${
-                    editFreqType === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    llFreqType === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text className={`font-medium ${editFreqType === f.value ? "text-white" : "text-gray-700"}`}>
+                  <Text className={`font-medium ${llFreqType === f.value ? "text-white" : "text-gray-700"}`}>
                     {f.label}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
-
-            {editFreqType === "custom" && (
-              <Input
-                label="Every how many days?"
-                value={editCustomDays}
-                onChangeText={setEditCustomDays}
-                keyboardType="number-pad"
-                placeholder="e.g. 45"
-              />
+            {llFreqType === "custom" && (
+              <Input label="Every how many days?" value={llCustomDays} onChangeText={setLlCustomDays}
+                keyboardType="number-pad" placeholder="e.g. 45" />
             )}
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
-            <View className="flex-row flex-wrap gap-2 mb-6">
+            <View className="flex-row flex-wrap gap-2 mb-4">
               {members.map((m) => (
                 <TouchableOpacity
                   key={m.id}
-                  onPress={() => setEditAssignedId(editAssignedId === m.id ? undefined : m.id)}
+                  onPress={() => setLlAssignedId(llAssignedId === m.id ? undefined : m.id)}
                   className={`px-3 py-1.5 rounded-full border ${
-                    editAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    llAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text className={`text-sm font-medium ${editAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
+                  <Text className={`text-sm font-medium ${llAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
                     {m.display_name}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <Button
-              title="Save Changes"
-              onPress={handleSaveEditRecurring}
-              loading={updateRecurring.isPending}
-            />
             <TouchableOpacity
-              onPress={handleDeleteRecurring}
-              className="mt-3 items-center py-3"
+              onPress={() => editingLowLift && handleCompleteLowLift(editingLowLift)}
+              className="bg-green-50 border border-green-200 rounded-xl py-3 items-center mb-3"
+            >
+              <Text className="text-green-700 font-semibold">Mark Done</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => editingLowLift && handleDeleteLowLift(editingLowLift)}
+              className="items-center py-3"
+            >
+              <Text className="text-red-500 font-medium">Delete Task</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── PROJECT ADJACENT EDIT MODAL ─────────────────────────────────── */}
+      <Modal
+        visible={!!editingPA}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditingPA(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setEditingPA(null)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
+            <TouchableOpacity onPress={handleSavePA} disabled={!paTitle.trim() || updateProjectTask.isPending}>
+              <Text className={`text-base font-semibold ${paTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            {editingPA?.project_title && (
+              <View className="bg-blue-50 rounded-xl px-3 py-2 mb-4">
+                <Text className="text-xs text-blue-600 font-medium">
+                  {editingPA.project_title} · {editingPA.checklist_name ?? "General"}
+                </Text>
+              </View>
+            )}
+            <Input label="Title" value={paTitle} onChangeText={setPaTitle} placeholder="Task title" />
+            <Input
+              label="Notes (optional)"
+              value={paNotes}
+              onChangeText={setPaNotes}
+              multiline
+              numberOfLines={3}
+              placeholder="Add details..."
+            />
+            <DateInput label="Due Date (optional)" value={paDueDate} onChange={setPaDueDate} />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {members.map((m) => (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => setPaAssignedId(paAssignedId === m.id ? undefined : m.id)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    paAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${paAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
+                    {m.display_name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => editingPA && handleCompletePA(editingPA)}
+              className="bg-green-50 border border-green-200 rounded-xl py-3 items-center mb-3"
+            >
+              <Text className="text-green-700 font-semibold">Mark Done</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => editingPA && handleDeletePA(editingPA)}
+              className="items-center py-3"
+            >
+              <Text className="text-red-500 font-medium">Delete Task</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── STANDALONE TASK EDIT MODAL ──────────────────────────────────── */}
+      <Modal
+        visible={!!editingStandalone}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditingStandalone(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setEditingStandalone(null)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
+            <TouchableOpacity onPress={handleSaveStandalone} disabled={!stTitle.trim()}>
+              <Text className={`text-base font-semibold ${stTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Input label="Title" value={stTitle} onChangeText={setStTitle} placeholder="Task title" />
+            <Input
+              label="Notes (optional)"
+              value={stNotes}
+              onChangeText={setStNotes}
+              multiline
+              numberOfLines={3}
+              placeholder="Add details..."
+            />
+            <DateInput label="Due Date (optional)" value={stDueDate} onChange={setStDueDate} />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {members.map((m) => (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => setStAssignedId(stAssignedId === m.id ? undefined : m.id)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    stAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${stAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
+                    {m.display_name}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => editingStandalone && handleCompleteStandalone(editingStandalone)}
+              className="bg-green-50 border border-green-200 rounded-xl py-3 items-center mb-3"
+            >
+              <Text className="text-green-700 font-semibold">Mark Done</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => editingStandalone && handleDeleteStandalone(editingStandalone)}
+              className="items-center py-3"
             >
               <Text className="text-red-500 font-medium">Delete Task</Text>
             </TouchableOpacity>

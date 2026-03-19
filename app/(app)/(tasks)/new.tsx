@@ -17,36 +17,35 @@ import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useCreateTask } from "@/hooks/useTasks";
 import { useCreateRecurringTask } from "@/hooks/useRecurringTasks";
+import { useAddProjectTask } from "@/hooks/useProjectTasks";
 import { useProjects } from "@/hooks/useProjects";
-import { useTrips } from "@/hooks/useTrips";
-import { TASK_CATEGORIES, type FrequencyType } from "@/types/app.types";
+import { type FrequencyType } from "@/types/app.types";
 import { toISODateString } from "@/utils/dateUtils";
 import { frequencyToDays } from "@/utils/scheduleUtils";
+import type { ProjectWithOwners } from "@/types/app.types";
 
-type TaskMode = "one-off" | "recurring";
+type TaskMode = "low-lift" | "project-adjacent";
 
-// ── One-off schema ────────────────────────────────────────────────────────────
-const oneOffSchema = z.object({
+// ── Low-Lift (Recurring) schema ───────────────────────────────────────────────
+const lowLiftSchema = z.object({
   title: z.string().min(1, "Title is required"),
   notes: z.string().optional(),
-  dueDate: z.string().optional(),
-  dueTime: z.string().optional(),
-  assignedMemberId: z.string().optional(),
-  linkedEventType: z.enum(["project", "activity"]).optional(),
-  linkedEventId: z.string().optional(),
-});
-type OneOffFormData = z.infer<typeof oneOffSchema>;
-
-// ── Recurring schema ──────────────────────────────────────────────────────────
-const recurringSchema = z.object({
-  title: z.string().min(1, "Title is required"),
-  category: z.string().optional(),
   anchorDate: z.string().optional(),
+  timeOfDay: z.string().optional(),
   frequencyType: z.enum(["daily", "weekly", "monthly", "yearly", "custom"]),
   customDays: z.string().optional(),
   assignedMemberId: z.string().optional(),
 });
-type RecurringFormData = z.infer<typeof recurringSchema>;
+type LowLiftFormData = z.infer<typeof lowLiftSchema>;
+
+// ── Project Adjacent schema ───────────────────────────────────────────────────
+const paSchema = z.object({
+  title: z.string().min(1, "Title is required"),
+  notes: z.string().optional(),
+  dueDate: z.string().optional(),
+  assignedMemberId: z.string().optional(),
+});
+type PAFormData = z.infer<typeof paSchema>;
 
 const FREQUENCIES: { label: string; value: FrequencyType }[] = [
   { label: "Daily", value: "daily" },
@@ -59,58 +58,37 @@ const FREQUENCIES: { label: string; value: FrequencyType }[] = [
 export default function NewTaskScreen() {
   const router = useRouter();
   const { household, members } = useHouseholdStore();
-  const createOneOff = useCreateTask();
+  const createTask = useCreateTask();
   const createRecurring = useCreateRecurringTask();
+  const addProjectTask = useAddProjectTask();
 
   const { data: projects = [] } = useProjects(household?.id);
-  const { data: trips = [] } = useTrips(household?.id);
 
-  const [mode, setMode] = useState<TaskMode>("one-off");
-  const [linkedEventType, setLinkedEventType] = useState<"project" | "activity" | null>(null);
-  const [linkedEventId, setLinkedEventId] = useState<string | null>(null);
+  const [mode, setMode] = useState<TaskMode>("low-lift");
 
-  // ── One-off form ────────────────────────────────────────────────────────────
+  // Project Adjacent — project + checklist selection
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedChecklistName, setSelectedChecklistName] = useState<string>("General");
+
+  const selectedProject = projects.find((p) => p.id === selectedProjectId) as ProjectWithOwners | undefined;
+
+  // ── Low-Lift form ────────────────────────────────────────────────────────────
   const {
-    control: ooControl,
-    handleSubmit: ooHandleSubmit,
-    formState: { errors: ooErrors },
-  } = useForm<OneOffFormData>({
-    resolver: zodResolver(oneOffSchema),
+    control: llControl,
+    handleSubmit: llHandleSubmit,
+    watch: llWatch,
+    formState: { errors: llErrors },
+  } = useForm<LowLiftFormData>({
+    resolver: zodResolver(lowLiftSchema),
+    defaultValues: {
+      frequencyType: "monthly",
+      anchorDate: toISODateString(new Date()),
+    },
   });
 
-  const onSubmitOneOff = async (data: OneOffFormData) => {
-    if (!household) return;
-    try {
-      await createOneOff.mutateAsync({
-        household_id: household.id,
-        title: data.title,
-        notes: data.notes?.trim() || null,
-        due_date: data.dueDate || null,
-        due_time: data.dueTime?.trim() || null,
-        assigned_member_id: data.assignedMemberId ?? null,
-        linked_event_type: linkedEventType,
-        linked_event_id: linkedEventId,
-      });
-      router.back();
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    }
-  };
+  const frequencyType = llWatch("frequencyType");
 
-  // ── Recurring form ──────────────────────────────────────────────────────────
-  const {
-    control: recControl,
-    handleSubmit: recHandleSubmit,
-    watch: recWatch,
-    formState: { errors: recErrors },
-  } = useForm<RecurringFormData>({
-    resolver: zodResolver(recurringSchema),
-    defaultValues: { frequencyType: "monthly", anchorDate: toISODateString(new Date()) },
-  });
-
-  const frequencyType = recWatch("frequencyType");
-
-  const onSubmitRecurring = async (data: RecurringFormData) => {
+  const onSubmitLowLift = async (data: LowLiftFormData) => {
     if (!household) return;
     const today = toISODateString(new Date());
     const anchorDate = data.anchorDate || today;
@@ -122,14 +100,15 @@ export default function NewTaskScreen() {
       await createRecurring.mutateAsync({
         household_id: household.id,
         title: data.title,
-        description: null,
-        category: data.category ?? null,
+        description: data.notes?.trim() || null,
+        category: null,
         frequency_type: data.frequencyType,
         frequency_days: freqDays,
         anchor_date: anchorDate,
         next_due_date: anchorDate,
         assigned_member_id: data.assignedMemberId ?? null,
         is_active: true,
+        time_of_day: data.timeOfDay?.trim() || null,
       });
       router.back();
     } catch (e: any) {
@@ -137,7 +116,49 @@ export default function NewTaskScreen() {
     }
   };
 
-  const isPending = createOneOff.isPending || createRecurring.isPending;
+  // ── Project Adjacent form ─────────────────────────────────────────────────
+  const {
+    control: paControl,
+    handleSubmit: paHandleSubmit,
+    formState: { errors: paErrors },
+  } = useForm<PAFormData>({
+    resolver: zodResolver(paSchema),
+  });
+
+  const onSubmitPA = async (data: PAFormData) => {
+    if (!household) return;
+    try {
+      if (selectedProjectId) {
+        // Goes directly into the project checklist
+        await addProjectTask.mutateAsync({
+          project_id: selectedProjectId,
+          title: data.title,
+          sort_order: 9999, // will be sorted by due_date in display
+          checklist_name: selectedChecklistName,
+          assigned_member_id: data.assignedMemberId ?? null,
+          due_date: data.dueDate || null,
+          notes: data.notes?.trim() || null,
+        });
+      } else {
+        // Standalone task (no project link)
+        await createTask.mutateAsync({
+          household_id: household.id,
+          title: data.title,
+          notes: data.notes?.trim() || null,
+          due_date: data.dueDate || null,
+          due_time: null,
+          assigned_member_id: data.assignedMemberId ?? null,
+          linked_event_type: null,
+          linked_event_id: null,
+        });
+      }
+      router.back();
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const isPending = createRecurring.isPending || createTask.isPending || addProjectTask.isPending;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -148,16 +169,16 @@ export default function NewTaskScreen() {
         <Text className="flex-1 text-lg font-semibold text-gray-900">New Task</Text>
       </View>
 
-      {/* Mode toggle */}
+      {/* Mode toggle — Low-Lift left/default */}
       <View className="flex-row bg-gray-100 rounded-xl mx-4 mt-4 p-1">
-        {(["one-off", "recurring"] as TaskMode[]).map((m) => (
+        {(["low-lift", "project-adjacent"] as TaskMode[]).map((m) => (
           <TouchableOpacity
             key={m}
             onPress={() => setMode(m)}
             className={`flex-1 py-2 rounded-lg items-center ${mode === m ? "bg-white shadow-sm" : ""}`}
           >
             <Text className={`text-sm font-semibold ${mode === m ? "text-gray-900" : "text-gray-500"}`}>
-              {m === "one-off" ? "One-Off" : "Recurring"}
+              {m === "low-lift" ? "Low-Lift" : "Project Adjacent"}
             </Text>
           </TouchableOpacity>
         ))}
@@ -165,26 +186,26 @@ export default function NewTaskScreen() {
 
       <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
 
-        {/* ── ONE-OFF FORM ────────────────────────────────────────────────── */}
-        {mode === "one-off" && (
+        {/* ── LOW-LIFT FORM ──────────────────────────────────────────────── */}
+        {mode === "low-lift" && (
           <>
             <Controller
-              control={ooControl}
+              control={llControl}
               name="title"
               render={({ field: { onChange, value, onBlur } }) => (
                 <Input
-                  label="Title"
+                  label="Task Name"
                   value={value}
                   onChangeText={onChange}
                   onBlur={onBlur}
-                  error={ooErrors.title?.message}
-                  placeholder="e.g. Call the plumber"
+                  error={llErrors.title?.message}
+                  placeholder="e.g. Change HVAC filter"
                 />
               )}
             />
 
             <Controller
-              control={ooControl}
+              control={llControl}
               name="notes"
               render={({ field: { onChange, value, onBlur } }) => (
                 <Input
@@ -200,20 +221,21 @@ export default function NewTaskScreen() {
             />
 
             <Controller
-              control={ooControl}
-              name="dueDate"
+              control={llControl}
+              name="anchorDate"
               render={({ field: { onChange, value } }) => (
                 <DateInput
-                  label="Due Date (optional)"
+                  label="Start / Due Date"
                   value={value ?? ""}
                   onChange={onChange}
+                  hint="First occurrence — frequency repeats from this date"
                 />
               )}
             />
 
             <Controller
-              control={ooControl}
-              name="dueTime"
+              control={llControl}
+              name="timeOfDay"
               render={({ field: { onChange, value, onBlur } }) => (
                 <Input
                   label="Time of Day (optional)"
@@ -226,157 +248,9 @@ export default function NewTaskScreen() {
               )}
             />
 
-            <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
-            <Controller
-              control={ooControl}
-              name="assignedMemberId"
-              render={({ field: { onChange, value } }) => (
-                <View className="flex-row flex-wrap gap-2 mb-4">
-                  {members.map((m) => (
-                    <TouchableOpacity
-                      key={m.id}
-                      onPress={() => onChange(value === m.id ? undefined : m.id)}
-                      className={`px-3 py-1.5 rounded-full border ${
-                        value === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                      }`}
-                    >
-                      <Text className={`text-sm font-medium ${value === m.id ? "text-white" : "text-gray-700"}`}>
-                        {m.display_name}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            />
-
-            {/* Link to Event */}
-            <Text className="text-sm font-medium text-gray-700 mb-2">Link to Event (optional)</Text>
-            <View className="flex-row gap-3 mb-3">
-              {(["project", "activity"] as const).map((type) => (
-                <TouchableOpacity
-                  key={type}
-                  onPress={() => {
-                    setLinkedEventType(linkedEventType === type ? null : type);
-                    setLinkedEventId(null);
-                  }}
-                  className={`flex-1 py-2 rounded-xl border items-center ${
-                    linkedEventType === type ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                  }`}
-                >
-                  <Text className={`text-sm font-semibold ${linkedEventType === type ? "text-white" : "text-gray-700"}`}>
-                    {type === "project" ? "Project" : "Activity"}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            {linkedEventType === "project" && (
-              <View className="flex-row flex-wrap gap-2 mb-4">
-                {projects.map((p) => (
-                  <TouchableOpacity
-                    key={p.id}
-                    onPress={() => setLinkedEventId(linkedEventId === p.id ? null : p.id)}
-                    className={`px-3 py-1.5 rounded-full border ${
-                      linkedEventId === p.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                    }`}
-                  >
-                    <Text className={`text-sm font-medium ${linkedEventId === p.id ? "text-white" : "text-gray-700"}`}>
-                      {p.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {projects.length === 0 && (
-                  <Text className="text-sm text-gray-400">No projects yet.</Text>
-                )}
-              </View>
-            )}
-
-            {linkedEventType === "activity" && (
-              <View className="flex-row flex-wrap gap-2 mb-4">
-                {trips.map((t) => (
-                  <TouchableOpacity
-                    key={t.id}
-                    onPress={() => setLinkedEventId(linkedEventId === t.id ? null : t.id)}
-                    className={`px-3 py-1.5 rounded-full border ${
-                      linkedEventId === t.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                    }`}
-                  >
-                    <Text className={`text-sm font-medium ${linkedEventId === t.id ? "text-white" : "text-gray-700"}`}>
-                      {t.title}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-                {trips.length === 0 && (
-                  <Text className="text-sm text-gray-400">No activities yet.</Text>
-                )}
-              </View>
-            )}
-
-            <Button
-              title="Create Task"
-              onPress={ooHandleSubmit(onSubmitOneOff)}
-              loading={createOneOff.isPending}
-            />
-          </>
-        )}
-
-        {/* ── RECURRING FORM ──────────────────────────────────────────────── */}
-        {mode === "recurring" && (
-          <>
-            <Controller
-              control={recControl}
-              name="title"
-              render={({ field: { onChange, value, onBlur } }) => (
-                <Input
-                  label="Task Name"
-                  value={value}
-                  onChangeText={onChange}
-                  onBlur={onBlur}
-                  error={recErrors.title?.message}
-                  placeholder="e.g. Change HVAC filter"
-                />
-              )}
-            />
-
-            <Text className="text-sm font-medium text-gray-700 mb-2">Category</Text>
-            <Controller
-              control={recControl}
-              name="category"
-              render={({ field: { onChange, value } }) => (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-                  {TASK_CATEGORIES.map((cat) => (
-                    <TouchableOpacity
-                      key={cat}
-                      onPress={() => onChange(value === cat ? undefined : cat)}
-                      className={`mr-2 px-3 py-1.5 rounded-full border ${
-                        value === cat ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                      }`}
-                    >
-                      <Text className={`text-sm font-medium ${value === cat ? "text-white" : "text-gray-700"}`}>
-                        {cat}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </ScrollView>
-              )}
-            />
-
-            <Controller
-              control={recControl}
-              name="anchorDate"
-              render={({ field: { onChange, value } }) => (
-                <DateInput
-                  label="Start / Due Date"
-                  value={value ?? ""}
-                  onChange={onChange}
-                  hint="First occurrence — frequency repeats from this date"
-                />
-              )}
-            />
-
             <Text className="text-sm font-medium text-gray-700 mb-2">Frequency</Text>
             <Controller
-              control={recControl}
+              control={llControl}
               name="frequencyType"
               render={({ field: { onChange, value } }) => (
                 <View className="flex-row flex-wrap gap-2 mb-4">
@@ -399,7 +273,7 @@ export default function NewTaskScreen() {
 
             {frequencyType === "custom" && (
               <Controller
-                control={recControl}
+                control={llControl}
                 name="customDays"
                 render={({ field: { onChange, value, onBlur } }) => (
                   <Input
@@ -416,7 +290,7 @@ export default function NewTaskScreen() {
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
             <Controller
-              control={recControl}
+              control={llControl}
               name="assignedMemberId"
               render={({ field: { onChange, value } }) => (
                 <View className="flex-row flex-wrap gap-2 mb-6">
@@ -438,9 +312,152 @@ export default function NewTaskScreen() {
             />
 
             <Button
-              title="Create Recurring Task"
-              onPress={recHandleSubmit(onSubmitRecurring)}
+              title="Create Low-Lift Task"
+              onPress={llHandleSubmit(onSubmitLowLift)}
               loading={createRecurring.isPending}
+            />
+          </>
+        )}
+
+        {/* ── PROJECT ADJACENT FORM ─────────────────────────────────────── */}
+        {mode === "project-adjacent" && (
+          <>
+            <Controller
+              control={paControl}
+              name="title"
+              render={({ field: { onChange, value, onBlur } }) => (
+                <Input
+                  label="Title"
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  error={paErrors.title?.message}
+                  placeholder="e.g. Get permits"
+                />
+              )}
+            />
+
+            <Controller
+              control={paControl}
+              name="notes"
+              render={({ field: { onChange, value, onBlur } }) => (
+                <Input
+                  label="Notes (optional)"
+                  value={value}
+                  onChangeText={onChange}
+                  onBlur={onBlur}
+                  multiline
+                  numberOfLines={3}
+                  placeholder="Add details..."
+                />
+              )}
+            />
+
+            <Controller
+              control={paControl}
+              name="dueDate"
+              render={({ field: { onChange, value } }) => (
+                <DateInput
+                  label="Due Date (optional)"
+                  value={value ?? ""}
+                  onChange={onChange}
+                />
+              )}
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
+            <Controller
+              control={paControl}
+              name="assignedMemberId"
+              render={({ field: { onChange, value } }) => (
+                <View className="flex-row flex-wrap gap-2 mb-4">
+                  {members.map((m) => (
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => onChange(value === m.id ? undefined : m.id)}
+                      className={`px-3 py-1.5 rounded-full border ${
+                        value === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`text-sm font-medium ${value === m.id ? "text-white" : "text-gray-700"}`}>
+                        {m.display_name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            />
+
+            {/* Project picker */}
+            <Text className="text-sm font-medium text-gray-700 mb-2">
+              Link to Project (optional)
+            </Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {projects.map((p) => (
+                <TouchableOpacity
+                  key={p.id}
+                  onPress={() => {
+                    setSelectedProjectId(selectedProjectId === p.id ? null : p.id);
+                    setSelectedChecklistName("General");
+                  }}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    selectedProjectId === p.id
+                      ? "bg-blue-600 border-blue-600"
+                      : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${selectedProjectId === p.id ? "text-white" : "text-gray-700"}`}>
+                    {p.title}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {projects.length === 0 && (
+                <Text className="text-sm text-gray-400">No active projects.</Text>
+              )}
+            </View>
+
+            {/* Checklist section picker — shown once a project is selected */}
+            {selectedProjectId && selectedProject && (
+              <>
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Checklist Section
+                </Text>
+                {(() => {
+                  const existingNames = Array.from(
+                    new Set(
+                      ((selectedProject as any).project_tasks ?? []).map(
+                        (t: any) => t.checklist_name ?? "General"
+                      )
+                    )
+                  ) as string[];
+                  const sections = existingNames.length > 0 ? existingNames : ["General"];
+                  return (
+                    <View className="flex-row flex-wrap gap-2 mb-4">
+                      {sections.map((name) => (
+                        <TouchableOpacity
+                          key={name}
+                          onPress={() => setSelectedChecklistName(name)}
+                          className={`px-3 py-1.5 rounded-full border ${
+                            selectedChecklistName === name
+                              ? "bg-indigo-600 border-indigo-600"
+                              : "bg-white border-gray-200"
+                          }`}
+                        >
+                          <Text className={`text-sm font-medium ${selectedChecklistName === name ? "text-white" : "text-gray-700"}`}>
+                            {name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  );
+                })()}
+              </>
+            )}
+
+            <Button
+              title="Create Task"
+              onPress={paHandleSubmit(onSubmitPA)}
+              loading={createTask.isPending || addProjectTask.isPending}
             />
           </>
         )}

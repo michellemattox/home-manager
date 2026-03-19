@@ -173,6 +173,7 @@ export interface Database {
           checklist_name: string;
           assigned_member_id: string | null;
           due_date: string | null;
+          notes: string | null;
         };
         Insert: {
           id?: string;
@@ -185,6 +186,7 @@ export interface Database {
           checklist_name?: string;
           assigned_member_id?: string | null;
           due_date?: string | null;
+          notes?: string | null;
         };
         Update: {
           id?: string;
@@ -197,6 +199,7 @@ export interface Database {
           checklist_name?: string;
           assigned_member_id?: string | null;
           due_date?: string | null;
+          notes?: string | null;
         };
         Relationships: Rel;
       };
@@ -340,6 +343,7 @@ export interface Database {
           created_at: string;
           linked_event_type: "project" | "activity" | null;
           linked_event_id: string | null;
+          time_of_day: string | null;
         };
         Insert: {
           id?: string;
@@ -357,6 +361,7 @@ export interface Database {
           created_at?: string;
           linked_event_type?: "project" | "activity" | null;
           linked_event_id?: string | null;
+          time_of_day?: string | null;
         };
         Update: {
           id?: string;
@@ -374,6 +379,7 @@ export interface Database {
           created_at?: string;
           linked_event_type?: "project" | "activity" | null;
           linked_event_id?: string | null;
+          time_of_day?: string | null;
         };
         Relationships: Rel;
       };

@@ -18,6 +18,7 @@ import {
 } from "@/hooks/useProjects";
 import {
   useAddProjectTask,
+  useUpdateProjectTask,
   useCompleteProjectChecklistItem,
   useDeleteProjectTask,
 } from "@/hooks/useProjectTasks";
@@ -35,7 +36,7 @@ import { Badge } from "@/components/ui/Badge";
 import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { MemberAvatar, MemberAvatarGroup } from "@/components/ui/MemberAvatar";
-import { formatDateTime, formatDate, formatDateShort } from "@/utils/dateUtils";
+import { formatDateTime, formatDate, formatDateShort, isOverdue } from "@/utils/dateUtils";
 import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority, ProjectTask } from "@/types/app.types";
@@ -109,6 +110,7 @@ export default function ProjectDetailScreen() {
   const updateProject = useUpdateProject();
   const deleteProject = useDeleteProject();
   const addTask = useAddProjectTask();
+  const updateTask = useUpdateProjectTask();
   const completeTask = useCompleteProjectChecklistItem();
   const deleteTask = useDeleteProjectTask();
   const deleteCompleted = useDeleteCompletedChecklistItem();
@@ -134,7 +136,15 @@ export default function ProjectDetailScreen() {
   const [addItemTitle, setAddItemTitle] = useState("");
   const [addItemMember, setAddItemMember] = useState<string | null>(null);
   const [addItemDate, setAddItemDate] = useState("");
+  const [addItemNotes, setAddItemNotes] = useState("");
   const [showCompleted, setShowCompleted] = useState(false);
+
+  // Edit checklist item modal
+  const [editingItem, setEditingItem] = useState<ProjectTask | null>(null);
+  const [editItemTitle, setEditItemTitle] = useState("");
+  const [editItemNotes, setEditItemNotes] = useState("");
+  const [editItemDate, setEditItemDate] = useState("");
+  const [editItemMember, setEditItemMember] = useState<string | null>(null);
 
   // Edit project modal state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -273,11 +283,38 @@ export default function ProjectDetailScreen() {
         checklist_name: addItemChecklist,
         assigned_member_id: addItemMember,
         due_date: addItemDate || null,
+        notes: addItemNotes.trim() || null,
       });
       setAddItemTitle("");
       setAddItemMember(null);
       setAddItemDate("");
+      setAddItemNotes("");
       setAddItemChecklist(null);
+    } catch (e: any) { showAlert("Error", e.message); }
+  };
+
+  const openEditItem = (task: ProjectTask) => {
+    setEditingItem(task);
+    setEditItemTitle(task.title);
+    setEditItemNotes((task as any).notes ?? "");
+    setEditItemDate(task.due_date ?? "");
+    setEditItemMember(task.assigned_member_id ?? null);
+  };
+
+  const handleSaveEditItem = async () => {
+    if (!editingItem || !editItemTitle.trim() || !id) return;
+    try {
+      await updateTask.mutateAsync({
+        id: editingItem.id,
+        project_id: editingItem.project_id,
+        updates: {
+          title: editItemTitle.trim(),
+          notes: editItemNotes.trim() || null,
+          due_date: editItemDate || null,
+          assigned_member_id: editItemMember,
+        },
+      });
+      setEditingItem(null);
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
@@ -310,7 +347,13 @@ export default function ProjectDetailScreen() {
   for (const name of checklistNames) {
     tasksByChecklist[name] = allTasks
       .filter((t) => (t.checklist_name ?? "General") === name)
-      .sort((a, b) => a.sort_order - b.sort_order);
+      .sort((a, b) => {
+        // Sort by due_date soonest first; nulls go last
+        if (!a.due_date && !b.due_date) return a.sort_order - b.sort_order;
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      });
   }
 
   const isFinished = project.status === "finished" || project.status === "completed";
@@ -514,14 +557,22 @@ export default function ProjectDetailScreen() {
                   const assignedMember = task.assigned_member_id
                     ? members.find((m) => m.id === task.assigned_member_id)
                     : null;
+                  const isOverdueItem = task.due_date ? isOverdue(task.due_date) : false;
                   return (
-                    <View key={task.id} className="flex-row items-start py-2.5 border-b border-gray-50">
+                    <TouchableOpacity
+                      key={task.id}
+                      onPress={() => !isFinished && openEditItem(task)}
+                      className="flex-row items-start py-2.5 border-b border-gray-50"
+                    >
                       <TouchableOpacity
-                        onPress={() => handleCompleteTask(task)}
+                        onPress={(e) => { e.stopPropagation(); handleCompleteTask(task); }}
                         className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3 mt-0.5 items-center justify-center"
                       />
                       <View className="flex-1">
                         <Text className="text-sm text-gray-700">{task.title}</Text>
+                        {(task as any).notes ? (
+                          <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{(task as any).notes}</Text>
+                        ) : null}
                         <View className="flex-row items-center gap-2 mt-0.5 flex-wrap">
                           {assignedMember && (
                             <View className="flex-row items-center gap-1">
@@ -530,23 +581,13 @@ export default function ProjectDetailScreen() {
                             </View>
                           )}
                           {task.due_date && (
-                            <Text className="text-xs text-gray-400">{formatDateShort(task.due_date)}</Text>
+                            <Text className={`text-xs font-medium ${isOverdueItem ? "text-red-500" : "text-gray-400"}`}>
+                              {formatDateShort(task.due_date)}{isOverdueItem ? " ·  overdue" : ""}
+                            </Text>
                           )}
                         </View>
                       </View>
-                      {!isFinished && (
-                        <TouchableOpacity
-                          onPress={() =>
-                            showConfirm("Remove task?", task.title, () =>
-                              deleteTask.mutate({ id: task.id, project_id: id! })
-                            )
-                          }
-                          className="ml-2 p-1 mt-0.5"
-                        >
-                          <Text className="text-gray-300 text-sm">✕</Text>
-                        </TouchableOpacity>
-                      )}
-                    </View>
+                    </TouchableOpacity>
                   );
                 })
               )}
@@ -930,6 +971,17 @@ export default function ProjectDetailScreen() {
               placeholderTextColor="#9ca3af"
             />
 
+            <Text className="text-sm font-medium text-gray-700 mb-1">Notes (optional)</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4 min-h-[70px]"
+              value={addItemNotes}
+              onChangeText={setAddItemNotes}
+              placeholder="Add details..."
+              multiline
+              textAlignVertical="top"
+              placeholderTextColor="#9ca3af"
+            />
+
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign to (optional)</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">
               {members.map((m) => (
@@ -953,6 +1005,86 @@ export default function ProjectDetailScreen() {
               value={addItemDate}
               onChange={setAddItemDate}
             />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Edit Checklist Item Modal */}
+      <Modal
+        visible={editingItem !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditingItem(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setEditingItem(null)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-base font-semibold text-gray-900">Edit Task</Text>
+            <TouchableOpacity onPress={handleSaveEditItem} disabled={!editItemTitle.trim() || updateTask.isPending}>
+              <Text className={`text-base font-semibold ${editItemTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>
+                Save
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Text className="text-sm font-medium text-gray-700 mb-1">Task</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+              value={editItemTitle}
+              onChangeText={setEditItemTitle}
+              autoFocus
+              placeholderTextColor="#9ca3af"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Notes (optional)</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4 min-h-[70px]"
+              value={editItemNotes}
+              onChangeText={setEditItemNotes}
+              placeholder="Add details..."
+              multiline
+              textAlignVertical="top"
+              placeholderTextColor="#9ca3af"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Assign to (optional)</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {members.map((m) => (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => setEditItemMember(editItemMember === m.id ? null : m.id)}
+                  className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${
+                    editItemMember === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <MemberAvatar member={m} size="sm" />
+                  <Text className={`text-sm font-medium ${editItemMember === m.id ? "text-white" : "text-gray-700"}`}>
+                    {m.display_name.split(" ")[0]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <DateInput
+              label="Due Date (optional)"
+              value={editItemDate}
+              onChange={setEditItemDate}
+            />
+
+            <TouchableOpacity
+              onPress={() => {
+                if (!editingItem) return;
+                showConfirm("Remove task?", editingItem.title, () => {
+                  deleteTask.mutate({ id: editingItem.id, project_id: editingItem.project_id });
+                  setEditingItem(null);
+                });
+              }}
+              className="mt-4 items-center py-3"
+            >
+              <Text className="text-red-500 font-medium">Delete Task</Text>
+            </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
       </Modal>

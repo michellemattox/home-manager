@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import type { ProjectTask } from "@/types/app.types";
 
@@ -12,6 +12,7 @@ export function useAddProjectTask() {
       checklist_name = "General",
       assigned_member_id,
       due_date,
+      notes,
     }: {
       project_id: string;
       title: string;
@@ -19,15 +20,42 @@ export function useAddProjectTask() {
       checklist_name?: string;
       assigned_member_id?: string | null;
       due_date?: string | null;
+      notes?: string | null;
     }) => {
       const { error } = await supabase
         .from("project_tasks")
-        .insert({ project_id, title, sort_order, checklist_name, assigned_member_id, due_date });
+        .insert({ project_id, title, sort_order, checklist_name, assigned_member_id, due_date, notes });
       if (error) throw error;
       return { project_id };
     },
     onSuccess: ({ project_id }) =>
       qc.invalidateQueries({ queryKey: ["project", project_id] }),
+  });
+}
+
+export function useUpdateProjectTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      project_id,
+      updates,
+    }: {
+      id: string;
+      project_id: string;
+      updates: Partial<Pick<ProjectTask, "title" | "due_date" | "assigned_member_id" | "checklist_name" | "notes">>;
+    }) => {
+      const { error } = await supabase
+        .from("project_tasks")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+      return { project_id };
+    },
+    onSuccess: ({ project_id }) => {
+      qc.invalidateQueries({ queryKey: ["project", project_id] });
+      qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
+    },
   });
 }
 
@@ -93,6 +121,7 @@ export function useCompleteProjectChecklistItem() {
     onSuccess: ({ project_id }) => {
       qc.invalidateQueries({ queryKey: ["project", project_id] });
       qc.invalidateQueries({ queryKey: ["completed_checklist", "project", project_id] });
+      qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
     },
   });
 }
@@ -108,7 +137,49 @@ export function useDeleteProjectTask() {
       if (error) throw error;
       return { project_id };
     },
-    onSuccess: ({ project_id }) =>
-      qc.invalidateQueries({ queryKey: ["project", project_id] }),
+    onSuccess: ({ project_id }) => {
+      qc.invalidateQueries({ queryKey: ["project", project_id] });
+      qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
+    },
+  });
+}
+
+// Fetches all uncompleted project_tasks across all household projects
+export function useAllProjectTasks(householdId: string | undefined) {
+  return useQuery({
+    queryKey: ["all_project_tasks", householdId],
+    queryFn: async () => {
+      if (!householdId) return [];
+      // Step 1: get active project IDs + titles
+      const { data: projectData, error: projErr } = await supabase
+        .from("projects")
+        .select("id, title")
+        .eq("household_id", householdId)
+        .not("status", "in", '("completed","finished")');
+      if (projErr) throw projErr;
+
+      const projects = projectData ?? [];
+      if (projects.length === 0) return [];
+
+      const projectIds = projects.map((p) => p.id);
+      const projectTitleMap: Record<string, string> = Object.fromEntries(
+        projects.map((p) => [p.id, p.title])
+      );
+
+      // Step 2: get all uncompleted tasks for those projects
+      const { data, error } = await supabase
+        .from("project_tasks")
+        .select("*")
+        .in("project_id", projectIds)
+        .eq("is_completed", false)
+        .order("due_date", { ascending: true, nullsFirst: false });
+      if (error) throw error;
+
+      return (data ?? []).map((t) => ({
+        ...(t as ProjectTask & { notes: string | null }),
+        project_title: projectTitleMap[t.project_id] ?? "",
+      }));
+    },
+    enabled: !!householdId,
   });
 }
