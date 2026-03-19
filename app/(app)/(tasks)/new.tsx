@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -66,6 +67,10 @@ export default function NewTaskScreen() {
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
 
+  // Personal task toggles
+  const [llIsPersonal, setLlIsPersonal] = useState(false);
+  const [paIsPersonal, setPaIsPersonal] = useState(false);
+
   // Project Adjacent — project + checklist selection
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedChecklistName, setSelectedChecklistName] = useState<string>("General");
@@ -109,6 +114,7 @@ export default function NewTaskScreen() {
         assigned_member_id: data.assignedMemberId ?? null,
         is_active: true,
         time_of_day: data.timeOfDay?.trim() || null,
+        is_personal: llIsPersonal,
       });
       router.back();
     } catch (e: any) {
@@ -150,6 +156,7 @@ export default function NewTaskScreen() {
           assigned_member_id: data.assignedMemberId ?? null,
           linked_event_type: null,
           linked_event_id: null,
+          is_personal: paIsPersonal,
         });
       }
       router.back();
@@ -288,6 +295,19 @@ export default function NewTaskScreen() {
               />
             )}
 
+            <View className="flex-row items-center justify-between mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
+              <View className="flex-1 mr-3">
+                <Text className="text-sm font-semibold text-gray-900">Personal Task</Text>
+                <Text className="text-xs text-gray-400 mt-0.5">Only visible to the assigned person</Text>
+              </View>
+              <Switch
+                value={llIsPersonal}
+                onValueChange={setLlIsPersonal}
+                trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
+                thumbColor="#fff"
+              />
+            </View>
+
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
             <Controller
               control={llControl}
@@ -364,6 +384,19 @@ export default function NewTaskScreen() {
                 />
               )}
             />
+
+            <View className="flex-row items-center justify-between mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
+              <View className="flex-1 mr-3">
+                <Text className="text-sm font-semibold text-gray-900">Personal Task</Text>
+                <Text className="text-xs text-gray-400 mt-0.5">Only visible to the assigned person</Text>
+              </View>
+              <Switch
+                value={paIsPersonal}
+                onValueChange={setPaIsPersonal}
+                trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
+                thumbColor="#fff"
+              />
+            </View>
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
             <Controller

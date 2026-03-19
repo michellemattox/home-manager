@@ -175,6 +175,9 @@ export default function TasksScreen() {
   const { user } = useAuthStore();
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
+  const [ownerFilter, setOwnerFilter] = useState<string | null>(null); // null = All
+
+  const currentMember = members.find((m) => m.user_id === user?.id);
 
   // Low-Lift (Recurring)
   const { data: recurringTasks = [], isLoading: loadingRecurring, refetch: refetchRecurring } =
@@ -248,7 +251,6 @@ export default function TasksScreen() {
 
   const handleCompleteLowLift = async (task: RecurringTask) => {
     await notificationSuccess();
-    const currentMember = members.find((m) => m.user_id === user?.id);
     if (!currentMember) return;
     try {
       await completeRecurring.mutateAsync({ task, completedBy: currentMember.id });
@@ -325,7 +327,6 @@ export default function TasksScreen() {
   };
 
   const handleCompletePA = async (task: ProjectTask) => {
-    const currentMember = members.find((m) => m.user_id === user?.id);
     await notificationSuccess();
     try {
       await completeProjectTask.mutateAsync({ task, completedByMemberId: currentMember?.id ?? null });
@@ -394,8 +395,34 @@ export default function TasksScreen() {
     );
   };
 
-  const overdueRecurring = recurringTasks.filter((t) => isOverdue(t.next_due_date));
-  const upcomingRecurring = recurringTasks.filter((t) => !isOverdue(t.next_due_date));
+  // Personal task visibility — only show is_personal=true tasks to the assignee
+  const isVisible = (assignedMemberId: string | null | undefined, isPersonal: boolean) => {
+    if (!isPersonal) return true;
+    return assignedMemberId === currentMember?.id;
+  };
+
+  // Apply owner filter + personal task visibility
+  const visibleRecurring = recurringTasks.filter((t) => {
+    if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
+    if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    return true;
+  });
+
+  const visibleProjectTasks = projectTasks.filter((t) => {
+    const personal = (t as any).is_personal ?? false;
+    if (!isVisible(t.assigned_member_id, personal)) return false;
+    if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    return true;
+  });
+
+  const visibleStandalone = standaloneTasks.filter((t) => {
+    if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
+    if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    return true;
+  });
+
+  const overdueRecurring = visibleRecurring.filter((t) => isOverdue(t.next_due_date));
+  const upcomingRecurring = visibleRecurring.filter((t) => !isOverdue(t.next_due_date));
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -424,6 +451,37 @@ export default function TasksScreen() {
         ))}
       </View>
 
+      {/* Owner filter chips */}
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        contentContainerClassName="flex-row gap-2 px-4 py-2"
+      >
+        <TouchableOpacity
+          onPress={() => setOwnerFilter(null)}
+          className={`px-3 py-1.5 rounded-full border ${
+            ownerFilter === null ? "bg-gray-800 border-gray-800" : "bg-white border-gray-200"
+          }`}
+        >
+          <Text className={`text-xs font-semibold ${ownerFilter === null ? "text-white" : "text-gray-600"}`}>
+            All
+          </Text>
+        </TouchableOpacity>
+        {members.map((m) => (
+          <TouchableOpacity
+            key={m.id}
+            onPress={() => setOwnerFilter(ownerFilter === m.id ? null : m.id)}
+            className={`px-3 py-1.5 rounded-full border ${
+              ownerFilter === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+            }`}
+          >
+            <Text className={`text-xs font-semibold ${ownerFilter === m.id ? "text-white" : "text-gray-600"}`}>
+              {m.display_name}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </ScrollView>
+
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-8"
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
@@ -439,7 +497,7 @@ export default function TasksScreen() {
             {[...overdueRecurring, ...upcomingRecurring].map((task) => (
               <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} />
             ))}
-            {recurringTasks.length === 0 && (
+            {visibleRecurring.length === 0 && (
               <View className="items-center py-12">
                 <Text className="text-4xl mb-3">🔄</Text>
                 <Text className="text-base font-semibold text-gray-700">No low-lift tasks</Text>
@@ -454,12 +512,12 @@ export default function TasksScreen() {
         {/* ── PROJECT ADJACENT TAB ─────────────────────────────────────── */}
         {mode === "project-adjacent" && (
           <>
-            {projectTasks.length > 0 && (
+            {visibleProjectTasks.length > 0 && (
               <>
                 <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                   Checklist Items
                 </Text>
-                {projectTasks.map((task) => (
+                {visibleProjectTasks.map((task) => (
                   <ProjectAdjacentCard
                     key={task.id}
                     task={task as any}
@@ -470,12 +528,12 @@ export default function TasksScreen() {
               </>
             )}
 
-            {standaloneTasks.length > 0 && (
+            {visibleStandalone.length > 0 && (
               <>
                 <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 mt-2">
                   Standalone
                 </Text>
-                {standaloneTasks.map((task) => (
+                {visibleStandalone.map((task) => (
                   <StandaloneTaskCard
                     key={task.id}
                     task={task}
@@ -485,7 +543,7 @@ export default function TasksScreen() {
               </>
             )}
 
-            {projectTasks.length === 0 && standaloneTasks.length === 0 && (
+            {visibleProjectTasks.length === 0 && visibleStandalone.length === 0 && (
               <View className="items-center py-12">
                 <Text className="text-4xl mb-3">📋</Text>
                 <Text className="text-base font-semibold text-gray-700">No project adjacent tasks</Text>

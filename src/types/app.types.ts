@@ -23,6 +23,7 @@ export type DeviceToken = Database["public"]["Tables"]["device_tokens"]["Row"];
 export type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
 export type Task = Database["public"]["Tables"]["tasks"]["Row"];
 export type PreferredVendor = Database["public"]["Tables"]["preferred_vendors"]["Row"];
+export type HouseholdInvite = Database["public"]["Tables"]["household_invites"]["Row"];
 
 export type ProjectStatus = Project["status"];
 export type ProjectPriority = Project["priority"];

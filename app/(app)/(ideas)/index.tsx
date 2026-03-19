@@ -30,6 +30,7 @@ import type { Idea } from "@/types/app.types";
 function IdeaCard({
   idea,
   householdId,
+  authorName,
   onWaitlist,
   onConvert,
   onEdit,
@@ -37,6 +38,7 @@ function IdeaCard({
 }: {
   idea: Idea;
   householdId: string;
+  authorName?: string;
   onWaitlist: () => void;
   onConvert: (type: "task" | "project" | "activity") => void;
   onEdit: () => void;
@@ -53,7 +55,10 @@ function IdeaCard({
         </Text>
       </View>
       {idea.description ? (
-        <Text className="text-sm text-gray-600 mb-3">{idea.description}</Text>
+        <Text className="text-sm text-gray-600 mb-1">{idea.description}</Text>
+      ) : null}
+      {authorName ? (
+        <Text className="text-xs text-gray-400 mb-2">by {authorName}</Text>
       ) : null}
 
       <View className="flex-row flex-wrap gap-2 mt-1">
@@ -113,6 +118,7 @@ export default function IdeasScreen() {
   // Intake form
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
+  const [selectedAuthorId, setSelectedAuthorId] = useState<string | undefined>(currentMember?.id);
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -132,7 +138,7 @@ export default function IdeasScreen() {
         householdId: household.id,
         subject: subject.trim(),
         description: description.trim() || undefined,
-        authorId: currentMember.id,
+        authorId: selectedAuthorId ?? currentMember.id,
       });
       setSubject("");
       setDescription("");
@@ -284,11 +290,16 @@ export default function IdeasScreen() {
       );
     }
 
+    const authorName = idea.author_id
+      ? members.find((m) => m.id === idea.author_id)?.display_name
+      : undefined;
+
     return (
       <IdeaCard
         key={idea.id}
         idea={idea}
         householdId={household?.id ?? ""}
+        authorName={authorName}
         onWaitlist={() => handleWaitlist(idea)}
         onConvert={(type) => handleConvert(idea, type)}
         onEdit={() => startEdit(idea)}
@@ -328,6 +339,22 @@ export default function IdeasScreen() {
             multiline
             textAlignVertical="top"
           />
+          <Text className="text-sm font-medium text-gray-700 mb-2">Owner</Text>
+          <View className="flex-row flex-wrap gap-2 mb-3">
+            {members.map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                onPress={() => setSelectedAuthorId(m.id)}
+                className={`px-3 py-1.5 rounded-full border ${
+                  selectedAuthorId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-sm font-medium ${selectedAuthorId === m.id ? "text-white" : "text-gray-700"}`}>
+                  {m.display_name}{m.user_id === user?.id ? " (You)" : ""}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
           <TouchableOpacity
             onPress={handleSaveIdea}
             disabled={!subject.trim() || createIdea.isPending}

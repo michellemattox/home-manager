@@ -38,13 +38,49 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      household_invites: {
+        Row: {
+          id: string;
+          household_id: string;
+          email: string;
+          name: string;
+          role: "admin" | "editor" | "viewer";
+          invited_by: string | null;
+          token: string;
+          accepted_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          email: string;
+          name?: string;
+          role?: "admin" | "editor" | "viewer";
+          invited_by?: string | null;
+          token?: string;
+          accepted_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          email?: string;
+          name?: string;
+          role?: "admin" | "editor" | "viewer";
+          invited_by?: string | null;
+          token?: string;
+          accepted_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
       household_members: {
         Row: {
           id: string;
           household_id: string;
           user_id: string;
           display_name: string;
-          role: "admin" | "member";
+          role: "admin" | "editor" | "viewer" | "member";
           color_hex: string;
           invite_token: string | null;
           joined_at: string;
@@ -54,7 +90,7 @@ export interface Database {
           household_id: string;
           user_id: string;
           display_name: string;
-          role?: "admin" | "member";
+          role?: "admin" | "editor" | "viewer" | "member";
           color_hex?: string;
           invite_token?: string | null;
           joined_at?: string;
@@ -64,7 +100,7 @@ export interface Database {
           household_id?: string;
           user_id?: string;
           display_name?: string;
-          role?: "admin" | "member";
+          role?: "admin" | "editor" | "viewer" | "member";
           color_hex?: string;
           invite_token?: string | null;
           joined_at?: string;
@@ -344,6 +380,7 @@ export interface Database {
           linked_event_type: "project" | "activity" | null;
           linked_event_id: string | null;
           time_of_day: string | null;
+          is_personal: boolean;
         };
         Insert: {
           id?: string;
@@ -362,6 +399,7 @@ export interface Database {
           linked_event_type?: "project" | "activity" | null;
           linked_event_id?: string | null;
           time_of_day?: string | null;
+          is_personal?: boolean;
         };
         Update: {
           id?: string;
@@ -380,6 +418,7 @@ export interface Database {
           linked_event_type?: "project" | "activity" | null;
           linked_event_id?: string | null;
           time_of_day?: string | null;
+          is_personal?: boolean;
         };
         Relationships: Rel;
       };
@@ -532,6 +571,7 @@ export interface Database {
           is_completed: boolean;
           completed_at: string | null;
           created_at: string;
+          is_personal: boolean;
         };
         Insert: {
           id?: string;
@@ -546,6 +586,7 @@ export interface Database {
           is_completed?: boolean;
           completed_at?: string | null;
           created_at?: string;
+          is_personal?: boolean;
         };
         Update: {
           id?: string;
@@ -560,6 +601,7 @@ export interface Database {
           is_completed?: boolean;
           completed_at?: string | null;
           created_at?: string;
+          is_personal?: boolean;
         };
         Relationships: Rel;
       };

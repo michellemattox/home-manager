@@ -4,32 +4,110 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
-  Share,
+  Modal,
   Switch,
+  TextInput,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useNotificationStore } from "@/stores/notificationStore";
-import { useGenerateInvite } from "@/hooks/useHousehold";
+import {
+  useHouseholdInvites,
+  useSendInvite,
+  useDeleteInvite,
+  useDeleteMember,
+  useUpdateMemberRole,
+} from "@/hooks/useHousehold";
 import { supabase } from "@/lib/supabase";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
+import type { MemberRole } from "@/types/app.types";
+
+const ROLES: { label: string; value: "admin" | "editor" | "viewer" }[] = [
+  { label: "Admin", value: "admin" },
+  { label: "Editor", value: "editor" },
+  { label: "Viewer", value: "viewer" },
+];
+
+const roleBadgeVariant = (role: string) => {
+  if (role === "admin") return "info" as const;
+  if (role === "editor") return "warning" as const;
+  return "default" as const;
+};
 
 export default function SettingsScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
-  const generateInvite = useGenerateInvite();
-  const [inviteLoading, setInviteLoading] = useState(false);
+  const currentMember = members.find((m) => m.user_id === user?.id);
+  const isAdmin = currentMember?.role === "admin";
+
   const {
     overdueEnabled, setOverdueEnabled,
     dueSoonEnabled, setDueSoonEnabled,
     reminderHour, setReminderHour,
     reminderFrequency, setReminderFrequency,
   } = useNotificationStore();
+
+  const { data: invites = [] } = useHouseholdInvites(household?.id);
+  const sendInvite = useSendInvite();
+  const deleteInvite = useDeleteInvite();
+  const deleteMember = useDeleteMember();
+  const updateMemberRole = useUpdateMemberRole();
+
+  // Invite modal
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteName, setInviteName] = useState("");
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteRole, setInviteRole] = useState<"admin" | "editor" | "viewer">("editor");
+
+  const handleSendInvite = async () => {
+    if (!household || !currentMember || !inviteEmail.trim() || !inviteName.trim()) return;
+    try {
+      await sendInvite.mutateAsync({
+        householdId: household.id,
+        email: inviteEmail.trim().toLowerCase(),
+        name: inviteName.trim(),
+        role: inviteRole,
+        invitedBy: currentMember.id,
+      });
+      setShowInviteModal(false);
+      setInviteName("");
+      setInviteEmail("");
+      setInviteRole("editor");
+      showAlert("Invite sent", `${inviteName} will receive an email to join.`);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleDeleteInvite = (id: string, email: string) => {
+    if (!household) return;
+    showConfirm(
+      "Cancel invite?",
+      `Remove pending invite for ${email}?`,
+      () => deleteInvite.mutate({ id, householdId: household.id }),
+      true
+    );
+  };
+
+  const handleDeleteMember = (id: string, name: string) => {
+    if (!household) return;
+    showConfirm(
+      "Remove member?",
+      `Remove ${name} from this household?`,
+      () => deleteMember.mutate({ id, householdId: household.id }),
+      true
+    );
+  };
+
+  const handleRoleChange = (id: string, role: MemberRole) => {
+    if (!household) return;
+    updateMemberRole.mutate({ id, householdId: household.id, role });
+  };
 
   const handleSignOut = async () => {
     showConfirm(
@@ -38,23 +116,6 @@ export default function SettingsScreen() {
       () => supabase.auth.signOut(),
       true
     );
-  };
-
-  const handleInvite = async () => {
-    if (!household) return;
-    setInviteLoading(true);
-    try {
-      const token = await generateInvite.mutateAsync(household.id);
-      const link = `home-manager://invite/${token}`;
-      await Share.share({
-        message: `Join our household on Home Manager! Open this link: ${link}`,
-        title: "Home Manager Invite",
-      });
-    } catch (e: any) {
-      showAlert("Error", e.message);
-    } finally {
-      setInviteLoading(false);
-    }
   };
 
   return (
@@ -73,42 +134,96 @@ export default function SettingsScreen() {
             {household?.name ?? "My Household"}
           </Text>
           {household?.zip_code && (
-            <Text className="text-sm text-gray-400 mb-4">
-              ZIP: {household.zip_code}
-            </Text>
+            <Text className="text-sm text-gray-400 mb-4">ZIP: {household.zip_code}</Text>
           )}
 
+          {/* Members */}
           <Text className="text-sm font-semibold text-gray-700 mb-3">
             Members ({members.length})
           </Text>
-          {members.map((m) => (
-            <View
-              key={m.id}
-              className="flex-row items-center mb-3"
-            >
-              <MemberAvatar member={m} size="md" />
-              <View className="ml-3 flex-1">
-                <Text className="font-medium text-gray-900">
-                  {m.display_name}
-                  {m.user_id === user?.id ? " (You)" : ""}
-                </Text>
-                <Text className="text-xs text-gray-400">{m.user_id}</Text>
+          {members.map((m) => {
+            const isMe = m.user_id === user?.id;
+            return (
+              <View key={m.id} className="flex-row items-center mb-3">
+                <MemberAvatar member={m} size="md" />
+                <View className="ml-3 flex-1">
+                  <Text className="font-medium text-gray-900">
+                    {m.display_name}{isMe ? " (You)" : ""}
+                  </Text>
+                  <Text className="text-xs text-gray-400">{m.role}</Text>
+                </View>
+                {isAdmin && !isMe ? (
+                  <View className="flex-row items-center gap-2">
+                    {/* Role picker */}
+                    <TouchableOpacity
+                      onPress={() => {
+                        const roles: MemberRole[] = ["admin", "editor", "viewer", "member"];
+                        const next = roles[(roles.indexOf(m.role) + 1) % roles.length];
+                        handleRoleChange(m.id, next);
+                      }}
+                    >
+                      <Badge
+                        label={m.role.charAt(0).toUpperCase() + m.role.slice(1)}
+                        variant={roleBadgeVariant(m.role)}
+                        size="sm"
+                      />
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => handleDeleteMember(m.id, m.display_name)}
+                      className="ml-1 px-2 py-1"
+                    >
+                      <Text className="text-red-400 text-xs font-medium">Remove</Text>
+                    </TouchableOpacity>
+                  </View>
+                ) : (
+                  <Badge
+                    label={m.role.charAt(0).toUpperCase() + m.role.slice(1)}
+                    variant={roleBadgeVariant(m.role)}
+                    size="sm"
+                  />
+                )}
               </View>
-              <Badge
-                label={m.role === "admin" ? "Admin" : "Member"}
-                variant={m.role === "admin" ? "info" : "default"}
-                size="sm"
-              />
-            </View>
-          ))}
+            );
+          })}
 
-          <Button
-            title="Invite Member"
-            variant="secondary"
-            onPress={handleInvite}
-            loading={inviteLoading}
-            className="mt-2"
-          />
+          {/* Pending Invites */}
+          {invites.length > 0 && (
+            <>
+              <Text className="text-sm font-semibold text-gray-700 mt-4 mb-3">
+                Pending Invites ({invites.length})
+              </Text>
+              {invites.map((inv) => (
+                <View key={inv.id} className="flex-row items-center mb-3 bg-gray-50 rounded-xl px-3 py-2">
+                  <View className="flex-1">
+                    <Text className="text-sm font-medium text-gray-800">{inv.name}</Text>
+                    <Text className="text-xs text-gray-400">{inv.email}</Text>
+                  </View>
+                  <Badge
+                    label={inv.role.charAt(0).toUpperCase() + inv.role.slice(1)}
+                    variant={roleBadgeVariant(inv.role)}
+                    size="sm"
+                  />
+                  {isAdmin && (
+                    <TouchableOpacity
+                      onPress={() => handleDeleteInvite(inv.id, inv.email)}
+                      className="ml-2 px-2 py-1"
+                    >
+                      <Text className="text-red-400 text-xs font-medium">Cancel</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </>
+          )}
+
+          {isAdmin && (
+            <Button
+              title="Invite Member"
+              variant="secondary"
+              onPress={() => setShowInviteModal(true)}
+              className="mt-3"
+            />
+          )}
         </Card>
 
         {/* Notifications */}
@@ -183,16 +298,81 @@ export default function SettingsScreen() {
           Account
         </Text>
         <Card className="mb-6">
-          <Text className="text-sm text-gray-500 mb-4">
-            Signed in as {user?.email}
-          </Text>
-          <Button
-            title="Sign Out"
-            variant="danger"
-            onPress={handleSignOut}
-          />
+          <Text className="text-sm text-gray-500 mb-4">Signed in as {user?.email}</Text>
+          <Button title="Sign Out" variant="danger" onPress={handleSignOut} />
         </Card>
       </ScrollView>
+
+      {/* Invite Modal */}
+      <Modal
+        visible={showInviteModal}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowInviteModal(false)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setShowInviteModal(false)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Invite Member</Text>
+          </View>
+
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Text className="text-sm font-medium text-gray-700 mb-1">Name</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-4"
+              value={inviteName}
+              onChangeText={setInviteName}
+              placeholder="e.g. Jane Smith"
+              placeholderTextColor="#9ca3af"
+              autoCapitalize="words"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-1">Email</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-4"
+              value={inviteEmail}
+              onChangeText={setInviteEmail}
+              placeholder="jane@example.com"
+              placeholderTextColor="#9ca3af"
+              keyboardType="email-address"
+              autoCapitalize="none"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Role</Text>
+            <View className="flex-row gap-2 mb-6">
+              {ROLES.map((r) => (
+                <TouchableOpacity
+                  key={r.value}
+                  onPress={() => setInviteRole(r.value)}
+                  className={`flex-1 py-2.5 rounded-xl border items-center ${
+                    inviteRole === r.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-semibold ${inviteRole === r.value ? "text-white" : "text-gray-700"}`}>
+                    {r.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View className="bg-gray-100 rounded-xl p-3 mb-6">
+              <Text className="text-xs text-gray-500 font-semibold mb-1">Role permissions</Text>
+              <Text className="text-xs text-gray-400">Admin — full access, can manage members</Text>
+              <Text className="text-xs text-gray-400">Editor — create and edit everything</Text>
+              <Text className="text-xs text-gray-400">Viewer — read-only access</Text>
+            </View>
+
+            <Button
+              title="Send Invite"
+              onPress={handleSendInvite}
+              loading={sendInvite.isPending}
+              disabled={!inviteName.trim() || !inviteEmail.trim()}
+            />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
