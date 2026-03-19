@@ -158,6 +158,7 @@ export default function ProjectDetailScreen() {
   const [editTotalCost, setEditTotalCost] = useState("");
   const [editUsesVendor, setEditUsesVendor] = useState<boolean | null>(null);
   const [editSelectedVendorId, setEditSelectedVendorId] = useState<string | null>(null);
+  const [editOtherVendorName, setEditOtherVendorName] = useState("");
   const [editNotes, setEditNotes] = useState("");
 
   // Realtime subscription
@@ -186,7 +187,9 @@ export default function ProjectDetailScreen() {
       setEditBudget(project.estimated_cost_cents ? (project.estimated_cost_cents / 100).toFixed(2) : "");
       setEditTotalCost(project.total_cost_cents ? (project.total_cost_cents / 100).toFixed(2) : "");
       setEditUsesVendor((project as any).uses_vendor ?? null);
-      setEditSelectedVendorId((project as any).primary_vendor_id ?? null);
+      const hasOtherVendor = !(project as any).primary_vendor_id && (project as any).contractor_name;
+      setEditSelectedVendorId(hasOtherVendor ? "__other__" : ((project as any).primary_vendor_id ?? null));
+      setEditOtherVendorName((project as any).contractor_name ?? "");
       setEditNotes(project.notes ?? "");
     }
   }, [showEditModal]);
@@ -223,7 +226,8 @@ export default function ProjectDetailScreen() {
           estimated_cost_cents: editBudget.trim() ? displayToCents(editBudget) : 0,
           total_cost_cents: editTotalCost.trim() ? displayToCents(editTotalCost) : 0,
           uses_vendor: editUsesVendor === true,
-          primary_vendor_id: editUsesVendor ? editSelectedVendorId : null,
+          primary_vendor_id: editUsesVendor && editSelectedVendorId !== "__other__" ? editSelectedVendorId : null,
+          contractor_name: editUsesVendor && editSelectedVendorId === "__other__" ? editOtherVendorName.trim() || null : null,
           notes: editNotes.trim() || null,
         },
       });
@@ -914,28 +918,44 @@ export default function ProjectDetailScreen() {
             {editUsesVendor && (
               <>
                 <Text className="text-sm font-medium text-gray-700 mb-2">Select Vendor (optional)</Text>
-                {vendors.length === 0 ? (
-                  <Text className="text-sm text-gray-400 mb-4">No vendors saved yet.</Text>
-                ) : (
-                  <View className="flex-row flex-wrap gap-2 mb-4">
-                    {vendors.map((v) => {
-                      const active = editSelectedVendorId === v.id;
-                      return (
-                        <TouchableOpacity
-                          key={v.id}
-                          onPress={() => setEditSelectedVendorId(active ? null : v.id)}
-                          className={`px-3 py-1.5 rounded-full border ${
-                            active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                          }`}
-                        >
-                          <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
-                            {v.name}
-                          </Text>
-                        </TouchableOpacity>
-                      );
-                    })}
-                  </View>
+                <View className="flex-row flex-wrap gap-2 mb-2">
+                  {vendors.map((v) => {
+                    const active = editSelectedVendorId === v.id;
+                    return (
+                      <TouchableOpacity
+                        key={v.id}
+                        onPress={() => { setEditSelectedVendorId(active ? null : v.id); setEditOtherVendorName(""); }}
+                        className={`px-3 py-1.5 rounded-full border ${
+                          active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                        }`}
+                      >
+                        <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
+                          {v.name}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                  <TouchableOpacity
+                    onPress={() => setEditSelectedVendorId(editSelectedVendorId === "__other__" ? null : "__other__")}
+                    className={`px-3 py-1.5 rounded-full border ${
+                      editSelectedVendorId === "__other__" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <Text className={`text-sm font-medium ${editSelectedVendorId === "__other__" ? "text-white" : "text-gray-700"}`}>
+                      Other
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+                {editSelectedVendorId === "__other__" && (
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 mb-4"
+                    value={editOtherVendorName}
+                    onChangeText={setEditOtherVendorName}
+                    placeholder="Enter vendor name..."
+                    placeholderTextColor="#9ca3af"
+                  />
                 )}
+                {editSelectedVendorId !== "__other__" && <View className="mb-2" />}
               </>
             )}
 

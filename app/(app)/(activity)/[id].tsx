@@ -191,30 +191,30 @@ export default function TripDetailScreen() {
 
   // Edit task modal
   const [editingTask, setEditingTask] = useState<TripTask | null>(null);
-  const [editTitle, setEditTaskTitle] = useState("");
-  const [editAssignedId, setEditAssignedId] = useState<string | null>(null);
-  const [editDueDate, setEditDueDate] = useState("");
-  const [editChecklist, setEditChecklist] = useState("General");
+  const [taskEditTitle, setTaskEditTitle] = useState("");
+  const [taskEditAssignedId, setTaskEditAssignedId] = useState<string | null>(null);
+  const [taskEditDueDate, setTaskEditDueDate] = useState("");
+  const [taskEditChecklist, setTaskEditChecklist] = useState("General");
 
   const openEditTask = (task: TripTask) => {
     setEditingTask(task);
-    setEditTaskTitle(task.title);
-    setEditAssignedId(task.assigned_member_id ?? null);
-    setEditDueDate(task.due_date ?? "");
-    setEditChecklist(task.checklist_name ?? "General");
+    setTaskEditTitle(task.title);
+    setTaskEditAssignedId(task.assigned_member_id ?? null);
+    setTaskEditDueDate(task.due_date ?? "");
+    setTaskEditChecklist(task.checklist_name ?? "General");
   };
 
   const handleSaveEditTask = async () => {
-    if (!editingTask || !editTitle.trim()) return;
+    if (!editingTask || !taskEditTitle.trim()) return;
     try {
       await updateTask.mutateAsync({
         id: editingTask.id,
         tripId: editingTask.trip_id,
         updates: {
-          title: editTitle.trim(),
-          assigned_member_id: editAssignedId,
-          due_date: editDueDate || null,
-          checklist_name: editChecklist,
+          title: taskEditTitle.trim(),
+          assigned_member_id: taskEditAssignedId,
+          due_date: taskEditDueDate || null,
+          checklist_name: taskEditChecklist,
         },
       });
       setEditingTask(null);
@@ -565,8 +565,8 @@ export default function TripDetailScreen() {
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-base font-semibold text-gray-900">Edit Task</Text>
-            <TouchableOpacity onPress={handleSaveEditTask} disabled={!editTitle.trim() || updateTask.isPending}>
-              <Text className={`text-base font-semibold ${editTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>
+            <TouchableOpacity onPress={handleSaveEditTask} disabled={!taskEditTitle.trim() || updateTask.isPending}>
+              <Text className={`text-base font-semibold ${taskEditTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>
                 Save
               </Text>
             </TouchableOpacity>
@@ -575,8 +575,8 @@ export default function TripDetailScreen() {
             <Text className="text-sm font-medium text-gray-700 mb-1">Task</Text>
             <TextInput
               className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
-              value={editTitle}
-              onChangeText={setEditTaskTitle}
+              value={taskEditTitle}
+              onChangeText={setTaskEditTitle}
               autoFocus
               placeholderTextColor="#9ca3af"
             />
@@ -586,32 +586,32 @@ export default function TripDetailScreen() {
               {members.map((m) => (
                 <TouchableOpacity
                   key={m.id}
-                  onPress={() => setEditAssignedId(editAssignedId === m.id ? null : m.id)}
+                  onPress={() => setTaskEditAssignedId(taskEditAssignedId === m.id ? null : m.id)}
                   className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${
-                    editAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    taskEditAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                   }`}
                 >
                   <MemberAvatar member={m as any} size="sm" />
-                  <Text className={`text-sm font-medium ${editAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
+                  <Text className={`text-sm font-medium ${taskEditAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
                     {m.display_name.split(" ")[0]}
                   </Text>
                 </TouchableOpacity>
               ))}
             </View>
 
-            <DateInput label="Due Date (optional)" value={editDueDate} onChange={setEditDueDate} />
+            <DateInput label="Due Date (optional)" value={taskEditDueDate} onChange={setTaskEditDueDate} />
 
             <Text className="text-sm font-medium text-gray-700 mb-2 mt-2">Move to Checklist</Text>
             <View className="flex-row flex-wrap gap-2 mb-6">
               {checklistNames.map((n) => (
                 <TouchableOpacity
                   key={n}
-                  onPress={() => setEditChecklist(n)}
+                  onPress={() => setTaskEditChecklist(n)}
                   className={`px-3 py-1.5 rounded-full border ${
-                    editChecklist === n ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
+                    taskEditChecklist === n ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text className={`text-sm font-medium ${editChecklist === n ? "text-white" : "text-gray-700"}`}>
+                  <Text className={`text-sm font-medium ${taskEditChecklist === n ? "text-white" : "text-gray-700"}`}>
                     {n}
                   </Text>
                 </TouchableOpacity>

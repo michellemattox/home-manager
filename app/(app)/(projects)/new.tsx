@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  TextInput,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -60,6 +61,7 @@ export default function NewProjectScreen() {
 
   const [usesVendor, setUsesVendor] = useState<boolean | null>(null);
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
+  const [otherVendorName, setOtherVendorName] = useState("");
 
   const {
     control,
@@ -102,7 +104,8 @@ export default function NewProjectScreen() {
           notes: data.notes?.trim() || null,
           created_by: currentMember.id,
           uses_vendor: usesVendor === true,
-          primary_vendor_id: selectedVendorId,
+          primary_vendor_id: selectedVendorId === "__other__" ? null : selectedVendorId,
+          contractor_name: selectedVendorId === "__other__" ? otherVendorName.trim() || null : null,
         },
         ownerIds: data.ownerIds,
       });
@@ -306,29 +309,51 @@ export default function NewProjectScreen() {
             <Text className="text-sm font-medium text-gray-700 mb-2">
               Select Vendor (optional)
             </Text>
-            {vendors.length === 0 ? (
+            <View className="flex-row flex-wrap gap-2 mb-2">
+              {vendors.map((v) => {
+                const active = selectedVendorId === v.id;
+                return (
+                  <TouchableOpacity
+                    key={v.id}
+                    onPress={() => { setSelectedVendorId(active ? null : v.id); setOtherVendorName(""); }}
+                    className={`px-3 py-1.5 rounded-full border ${
+                      active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
+                      {v.name}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                onPress={() => setSelectedVendorId(selectedVendorId === "__other__" ? null : "__other__")}
+                className={`px-3 py-1.5 rounded-full border ${
+                  selectedVendorId === "__other__" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-sm font-medium ${selectedVendorId === "__other__" ? "text-white" : "text-gray-700"}`}>
+                  Other
+                </Text>
+              </TouchableOpacity>
+            </View>
+            {selectedVendorId === "__other__" && (
+              <TextInput
+                className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 mb-4"
+                value={otherVendorName}
+                onChangeText={setOtherVendorName}
+                placeholder="Enter vendor name..."
+                placeholderTextColor="#9ca3af"
+                autoFocus
+              />
+            )}
+            {vendors.length === 0 && selectedVendorId !== "__other__" && (
               <Text className="text-sm text-gray-400 mb-4">
-                No vendors saved yet. Add vendors in Projects → Vendors.
+                No saved vendors yet — select Other to enter a name, or add vendors in Projects → Vendors.
               </Text>
-            ) : (
-              <View className="flex-row flex-wrap gap-2 mb-4">
-                {vendors.map((v) => {
-                  const active = selectedVendorId === v.id;
-                  return (
-                    <TouchableOpacity
-                      key={v.id}
-                      onPress={() => setSelectedVendorId(active ? null : v.id)}
-                      className={`px-3 py-1.5 rounded-full border ${
-                        active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                      }`}
-                    >
-                      <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
-                        {v.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
+            )}
+            {selectedVendorId === null && vendors.length > 0 && (
+              <View className="mb-2" />
             )}
           </>
         )}
