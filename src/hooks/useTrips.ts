@@ -26,7 +26,7 @@ export function useTrip(tripId: string | undefined) {
       if (!tripId) return null;
       const { data, error } = await supabase
         .from("trips")
-        .select("*, trip_tasks(*, trip_task_owners(member_id))")
+        .select("*, tasks:trip_tasks(*, trip_task_owners(member_id))")
         .eq("id", tripId)
         .single();
       if (error) throw error;
@@ -128,6 +128,35 @@ export function useToggleTripTask() {
       return { taskId, tripId, isCompleted };
     },
     onSuccess: ({ tripId }) =>
+      qc.invalidateQueries({ queryKey: ["trip", tripId] }),
+  });
+}
+
+export function useUpdateTripTask() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      tripId,
+      updates,
+    }: {
+      id: string;
+      tripId: string;
+      updates: {
+        title?: string;
+        assigned_member_id?: string | null;
+        due_date?: string | null;
+        checklist_name?: string;
+      };
+    }) => {
+      const { error } = await supabase
+        .from("trip_tasks")
+        .update(updates)
+        .eq("id", id);
+      if (error) throw error;
+      return tripId;
+    },
+    onSuccess: (tripId) =>
       qc.invalidateQueries({ queryKey: ["trip", tripId] }),
   });
 }

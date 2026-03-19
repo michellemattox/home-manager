@@ -213,6 +213,7 @@ export default function IdeasScreen() {
     if (!household) return;
     try {
       await waitlistIdea.mutateAsync({ id: idea.id, householdId: household.id });
+      setShowWaitlisted(true);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
@@ -369,7 +370,7 @@ export default function IdeasScreen() {
         {/* Active ideas */}
         {activeIdeas.length > 0 && (
           <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
-            Ideas ({activeIdeas.length})
+            Open Ideas ({activeIdeas.length})
           </Text>
         )}
         {activeIdeas.map(renderIdea)}

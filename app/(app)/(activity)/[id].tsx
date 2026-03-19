@@ -14,6 +14,7 @@ import { impactLight } from "@/lib/haptics";
 import {
   useTrip,
   useCreateTripTask,
+  useUpdateTripTask,
   useCompleteTripChecklistItem,
   useDeleteTripTask,
   useUpdateTrip,
@@ -130,11 +131,13 @@ function TaskRow({
   task,
   members,
   onComplete,
+  onEdit,
   onDelete,
 }: {
   task: TripTask;
   members: { id: string; display_name: string; color_hex: string }[];
   onComplete: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
   const assignedMember = task.assigned_member_id
@@ -142,9 +145,9 @@ function TaskRow({
     : null;
 
   return (
-    <View className="flex-row items-start py-2.5 border-b border-gray-100">
+    <TouchableOpacity onPress={onEdit} className="flex-row items-start py-2.5 border-b border-gray-100">
       <TouchableOpacity
-        onPress={onComplete}
+        onPress={(e) => { e.stopPropagation(); onComplete(); }}
         className="w-5 h-5 rounded border-2 border-gray-300 mr-3 mt-0.5 items-center justify-center"
       />
       <View className="flex-1">
@@ -161,10 +164,10 @@ function TaskRow({
           )}
         </View>
       </View>
-      <TouchableOpacity onPress={onDelete} className="p-1 ml-2 mt-0.5">
-        <Text className="text-gray-300 text-base">×</Text>
+      <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDelete(); }} className="p-1 ml-2 mt-0.5">
+        <Text className="text-gray-300 text-xl leading-none">×</Text>
       </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -179,11 +182,46 @@ export default function TripDetailScreen() {
   const currentMember = members.find((m) => m.user_id === user?.id);
 
   const createTask = useCreateTripTask();
+  const updateTask = useUpdateTripTask();
   const completeTask = useCompleteTripChecklistItem();
   const deleteTask = useDeleteTripTask();
   const updateTrip = useUpdateTrip();
   const deleteTrip = useDeleteTrip();
   const deleteCompleted = useDeleteCompletedChecklistItem();
+
+  // Edit task modal
+  const [editingTask, setEditingTask] = useState<TripTask | null>(null);
+  const [editTitle, setEditTaskTitle] = useState("");
+  const [editAssignedId, setEditAssignedId] = useState<string | null>(null);
+  const [editDueDate, setEditDueDate] = useState("");
+  const [editChecklist, setEditChecklist] = useState("General");
+
+  const openEditTask = (task: TripTask) => {
+    setEditingTask(task);
+    setEditTaskTitle(task.title);
+    setEditAssignedId(task.assigned_member_id ?? null);
+    setEditDueDate(task.due_date ?? "");
+    setEditChecklist(task.checklist_name ?? "General");
+  };
+
+  const handleSaveEditTask = async () => {
+    if (!editingTask || !editTitle.trim()) return;
+    try {
+      await updateTask.mutateAsync({
+        id: editingTask.id,
+        tripId: editingTask.trip_id,
+        updates: {
+          title: editTitle.trim(),
+          assigned_member_id: editAssignedId,
+          due_date: editDueDate || null,
+          checklist_name: editChecklist,
+        },
+      });
+      setEditingTask(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
 
   const { data: completedItems = [] } = useCompletedChecklistItems("trip", id);
 
@@ -418,6 +456,7 @@ export default function TripDetailScreen() {
                     task={task}
                     members={members}
                     onComplete={() => handleComplete(task)}
+                    onEdit={() => openEditTask(task)}
                     onDelete={() => handleDelete(task)}
                   />
                 ))
@@ -512,6 +551,88 @@ export default function TripDetailScreen() {
         onAdd={handleAddItem}
         onClose={() => setAddItemChecklist(null)}
       />
+
+      {/* Edit Task Modal */}
+      <Modal
+        visible={editingTask !== null}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setEditingTask(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setEditingTask(null)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-base font-semibold text-gray-900">Edit Task</Text>
+            <TouchableOpacity onPress={handleSaveEditTask} disabled={!editTitle.trim() || updateTask.isPending}>
+              <Text className={`text-base font-semibold ${editTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>
+                Save
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Text className="text-sm font-medium text-gray-700 mb-1">Task</Text>
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-base text-gray-900 mb-4"
+              value={editTitle}
+              onChangeText={setEditTaskTitle}
+              autoFocus
+              placeholderTextColor="#9ca3af"
+            />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Assign to (optional)</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {members.map((m) => (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => setEditAssignedId(editAssignedId === m.id ? null : m.id)}
+                  className={`flex-row items-center gap-2 px-3 py-1.5 rounded-full border ${
+                    editAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <MemberAvatar member={m as any} size="sm" />
+                  <Text className={`text-sm font-medium ${editAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
+                    {m.display_name.split(" ")[0]}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <DateInput label="Due Date (optional)" value={editDueDate} onChange={setEditDueDate} />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2 mt-2">Move to Checklist</Text>
+            <View className="flex-row flex-wrap gap-2 mb-6">
+              {checklistNames.map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setEditChecklist(n)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    editChecklist === n ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${editChecklist === n ? "text-white" : "text-gray-700"}`}>
+                    {n}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <TouchableOpacity
+              onPress={() => {
+                if (!editingTask) return;
+                showConfirm("Remove task?", `"${editingTask.title}"`, () => {
+                  deleteTask.mutate({ taskId: editingTask.id, tripId: editingTask.trip_id });
+                  setEditingTask(null);
+                }, true);
+              }}
+              className="items-center py-3"
+            >
+              <Text className="text-red-500 font-medium">Delete Task</Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       {/* Edit Trip Modal */}
       <Modal

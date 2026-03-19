@@ -16,6 +16,7 @@ import { useNotificationStore } from "@/stores/notificationStore";
 import {
   useHouseholdInvites,
   useSendInvite,
+  useResendInvite,
   useDeleteInvite,
   useDeleteMember,
   useUpdateMemberRole,
@@ -43,7 +44,7 @@ export default function SettingsScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
-  const isAdmin = currentMember?.role === "admin";
+  const isAdmin = true; // any member can manage others in a household
 
   const {
     overdueEnabled, setOverdueEnabled,
@@ -54,6 +55,7 @@ export default function SettingsScreen() {
 
   const { data: invites = [] } = useHouseholdInvites(household?.id);
   const sendInvite = useSendInvite();
+  const resendInvite = useResendInvite();
   const deleteInvite = useDeleteInvite();
   const deleteMember = useDeleteMember();
   const updateMemberRole = useUpdateMemberRole();
@@ -79,6 +81,16 @@ export default function SettingsScreen() {
       setInviteEmail("");
       setInviteRole("editor");
       showAlert("Invite sent", `${inviteName} will receive an email to join.`);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleResendInvite = async (inv: { email: string; name: string; token: string }) => {
+    if (!household) return;
+    try {
+      await resendInvite.mutateAsync({ ...inv, householdId: household.id });
+      showAlert("Sent", `Invite re-sent to ${inv.email}`);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
@@ -193,24 +205,33 @@ export default function SettingsScreen() {
                 Pending Invites ({invites.length})
               </Text>
               {invites.map((inv) => (
-                <View key={inv.id} className="flex-row items-center mb-3 bg-gray-50 rounded-xl px-3 py-2">
-                  <View className="flex-1">
-                    <Text className="text-sm font-medium text-gray-800">{inv.name}</Text>
-                    <Text className="text-xs text-gray-400">{inv.email}</Text>
+                <View key={inv.id} className="mb-3 bg-gray-50 rounded-xl px-3 py-2">
+                  <View className="flex-row items-center">
+                    <View className="flex-1">
+                      <Text className="text-sm font-medium text-gray-800">{inv.name}</Text>
+                      <Text className="text-xs text-gray-400">{inv.email}</Text>
+                    </View>
+                    <Badge
+                      label={inv.role.charAt(0).toUpperCase() + inv.role.slice(1)}
+                      variant={roleBadgeVariant(inv.role)}
+                      size="sm"
+                    />
                   </View>
-                  <Badge
-                    label={inv.role.charAt(0).toUpperCase() + inv.role.slice(1)}
-                    variant={roleBadgeVariant(inv.role)}
-                    size="sm"
-                  />
-                  {isAdmin && (
+                  <View className="flex-row gap-3 mt-2">
+                    <TouchableOpacity
+                      onPress={() => handleResendInvite({ email: inv.email, name: inv.name, token: inv.token })}
+                      disabled={resendInvite.isPending}
+                      className="px-3 py-1 bg-blue-50 border border-blue-200 rounded-lg"
+                    >
+                      <Text className="text-blue-600 text-xs font-medium">Resend</Text>
+                    </TouchableOpacity>
                     <TouchableOpacity
                       onPress={() => handleDeleteInvite(inv.id, inv.email)}
-                      className="ml-2 px-2 py-1"
+                      className="px-3 py-1 bg-red-50 border border-red-200 rounded-lg"
                     >
-                      <Text className="text-red-400 text-xs font-medium">Cancel</Text>
+                      <Text className="text-red-500 text-xs font-medium">Cancel Invite</Text>
                     </TouchableOpacity>
-                  )}
+                  </View>
                 </View>
               ))}
             </>

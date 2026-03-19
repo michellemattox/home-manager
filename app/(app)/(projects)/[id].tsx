@@ -145,6 +145,7 @@ export default function ProjectDetailScreen() {
   const [editItemNotes, setEditItemNotes] = useState("");
   const [editItemDate, setEditItemDate] = useState("");
   const [editItemMember, setEditItemMember] = useState<string | null>(null);
+  const [editItemChecklist, setEditItemChecklist] = useState<string>("General");
 
   // Edit project modal state
   const [showEditModal, setShowEditModal] = useState(false);
@@ -301,6 +302,7 @@ export default function ProjectDetailScreen() {
     setEditItemNotes((task as any).notes ?? "");
     setEditItemDate(task.due_date ?? "");
     setEditItemMember(task.assigned_member_id ?? null);
+    setEditItemChecklist(task.checklist_name ?? "General");
   };
 
   const handleSaveEditItem = async () => {
@@ -314,6 +316,7 @@ export default function ProjectDetailScreen() {
           notes: editItemNotes.trim() || null,
           due_date: editItemDate || null,
           assigned_member_id: editItemMember,
+          checklist_name: editItemChecklist,
         },
       });
       setEditingItem(null);
@@ -563,7 +566,7 @@ export default function ProjectDetailScreen() {
                   return (
                     <TouchableOpacity
                       key={task.id}
-                      onPress={() => !isFinished && openEditItem(task)}
+                      onPress={() => openEditItem(task)}
                       className="flex-row items-start py-2.5 border-b border-gray-50"
                     >
                       <TouchableOpacity
@@ -584,11 +587,22 @@ export default function ProjectDetailScreen() {
                           )}
                           {task.due_date && (
                             <Text className={`text-xs font-medium ${isOverdueItem ? "text-red-500" : "text-gray-400"}`}>
-                              {formatDateShort(task.due_date)}{isOverdueItem ? " ·  overdue" : ""}
+                              {formatDateShort(task.due_date)}{isOverdueItem ? " · overdue" : ""}
                             </Text>
                           )}
                         </View>
                       </View>
+                      <TouchableOpacity
+                        onPress={(e) => {
+                          e.stopPropagation();
+                          showConfirm("Remove task?", `"${task.title}"`, () => {
+                            deleteTask.mutate({ id: task.id, project_id: task.project_id });
+                          }, true);
+                        }}
+                        className="p-1 ml-1 mt-0.5"
+                      >
+                        <Text className="text-gray-300 text-xl leading-none">×</Text>
+                      </TouchableOpacity>
                     </TouchableOpacity>
                   );
                 })
@@ -1075,15 +1089,32 @@ export default function ProjectDetailScreen() {
               onChange={setEditItemDate}
             />
 
+            <Text className="text-sm font-medium text-gray-700 mb-2 mt-2">Move to Checklist</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {checklistNames.map((n) => (
+                <TouchableOpacity
+                  key={n}
+                  onPress={() => setEditItemChecklist(n)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    editItemChecklist === n ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${editItemChecklist === n ? "text-white" : "text-gray-700"}`}>
+                    {n}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <TouchableOpacity
               onPress={() => {
                 if (!editingItem) return;
                 showConfirm("Remove task?", editingItem.title, () => {
                   deleteTask.mutate({ id: editingItem.id, project_id: editingItem.project_id });
                   setEditingItem(null);
-                });
+                }, true);
               }}
-              className="mt-4 items-center py-3"
+              className="mt-2 items-center py-3"
             >
               <Text className="text-red-500 font-medium">Delete Task</Text>
             </TouchableOpacity>

@@ -124,6 +124,27 @@ export function useSendInvite() {
   });
 }
 
+export function useResendInvite() {
+  return useMutation({
+    mutationFn: async ({
+      email,
+      name,
+      token,
+      householdId,
+    }: {
+      email: string;
+      name: string;
+      token: string;
+      householdId: string;
+    }) => {
+      const { error } = await supabase.functions.invoke("invite-member", {
+        body: { email, name, token, householdId },
+      });
+      if (error) throw new Error("Edge Function not deployed yet — invite record exists, email could not be sent.");
+    },
+  });
+}
+
 export function useDeleteInvite() {
   const qc = useQueryClient();
   return useMutation({
