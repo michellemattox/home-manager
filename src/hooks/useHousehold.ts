@@ -113,7 +113,18 @@ export function useSendInvite() {
         body: { email, name, token: invite.token, householdId },
       });
 
-      return { invite: invite as HouseholdInvite, emailSent: !fnError };
+      let fnErrorMessage: string | null = null;
+      if (fnError) {
+        try {
+          // FunctionsHttpError carries the response body in .context
+          const body = await (fnError as any).context?.json?.();
+          fnErrorMessage = body?.error ?? fnError.message ?? "Unknown error";
+        } catch {
+          fnErrorMessage = fnError.message ?? "Unknown error";
+        }
+      }
+
+      return { invite: invite as HouseholdInvite, emailSent: !fnError, fnErrorMessage };
     },
     onSuccess: (_, { householdId }) =>
       qc.invalidateQueries({ queryKey: ["household_invites", householdId] }),
@@ -136,7 +147,14 @@ export function useResendInvite() {
       const { error } = await supabase.functions.invoke("invite-member", {
         body: { email, name, token, householdId },
       });
-      if (error) throw new Error("Edge Function not deployed yet — invite record exists, email could not be sent.");
+      if (error) {
+        let msg = error.message ?? "Email could not be sent.";
+        try {
+          const body = await (error as any).context?.json?.();
+          if (body?.error) msg = body.error;
+        } catch {}
+        throw new Error(msg);
+      }
     },
   });
 }

@@ -83,9 +83,12 @@ export default function SettingsScreen() {
       if ((result as any).emailSent) {
         showAlert("Invite sent", `${inviteName} will receive an email to join.`);
       } else {
+        const errDetail = (result as any).fnErrorMessage
+          ? `\n\nError from email service:\n"${(result as any).fnErrorMessage}"`
+          : "";
         showAlert(
           "Invite saved — email not sent",
-          `The invite record was created for ${inviteName} but the email could not be delivered.\n\nTo enable email invites, deploy the Edge Function:\n  supabase functions deploy invite-member`
+          `The invite record was created for ${inviteName} but the email could not be delivered.${errDetail}\n\nCheck the Edge Function logs in your Supabase dashboard → Edge Functions → invite-member → Logs.`
         );
       }
     } catch (e: any) {
