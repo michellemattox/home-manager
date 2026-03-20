@@ -50,6 +50,7 @@ export default function SettingsScreen() {
   const {
     overdueEnabled, setOverdueEnabled,
     dueSoonEnabled, setDueSoonEnabled,
+    summaryEnabled, setSummaryEnabled,
     reminderHour, setReminderHour,
     reminderFrequency, setReminderFrequency,
   } = useNotificationStore();
@@ -286,24 +287,38 @@ export default function SettingsScreen() {
         <Card className="mb-6">
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-1 mr-3">
-              <Text className="text-sm font-semibold text-gray-900">Overdue alerts</Text>
-              <Text className="text-xs text-gray-400 mt-0.5">Notify when projects or tasks are past due</Text>
+              <Text className="text-sm font-semibold text-gray-900">Summary digest</Text>
+              <Text className="text-xs text-gray-400 mt-0.5">One combined reminder covering tasks, projects, activities, and goals</Text>
             </View>
             <Switch
-              value={overdueEnabled}
-              onValueChange={setOverdueEnabled}
+              value={summaryEnabled}
+              onValueChange={setSummaryEnabled}
               trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
               thumbColor="#fff"
             />
           </View>
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-1 mr-3">
-              <Text className="text-sm font-semibold text-gray-900">Due soon alerts</Text>
+              <Text className={`text-sm font-semibold ${summaryEnabled ? "text-gray-400" : "text-gray-900"}`}>Overdue alerts</Text>
+              <Text className="text-xs text-gray-400 mt-0.5">Notify when projects or tasks are past due</Text>
+            </View>
+            <Switch
+              value={overdueEnabled}
+              onValueChange={setOverdueEnabled}
+              disabled={summaryEnabled}
+              trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
+              thumbColor="#fff"
+            />
+          </View>
+          <View className="flex-row items-center justify-between mb-4">
+            <View className="flex-1 mr-3">
+              <Text className={`text-sm font-semibold ${summaryEnabled ? "text-gray-400" : "text-gray-900"}`}>Due soon alerts</Text>
               <Text className="text-xs text-gray-400 mt-0.5">Notify for items due within 7–14 days</Text>
             </View>
             <Switch
               value={dueSoonEnabled}
               onValueChange={setDueSoonEnabled}
+              disabled={summaryEnabled}
               trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
               thumbColor="#fff"
             />
@@ -325,16 +340,17 @@ export default function SettingsScreen() {
             ))}
           </View>
           <Text className="text-sm font-semibold text-gray-700 mb-2">Frequency</Text>
-          <View className="flex-row gap-2">
+          <View className="flex-row flex-wrap gap-2">
             {([
               { label: "Daily", value: "daily" },
               { label: "Every 2 Days", value: "every_other_day" },
               { label: "Weekly", value: "weekly" },
+              { label: "Monthly", value: "monthly" },
             ] as const).map((f) => (
               <TouchableOpacity
                 key={f.value}
                 onPress={() => setReminderFrequency(f.value)}
-                className={`flex-1 py-2 rounded-xl border items-center ${
+                className={`px-4 py-2 rounded-xl border items-center ${
                   reminderFrequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                 }`}
               >
