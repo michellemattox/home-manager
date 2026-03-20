@@ -8,6 +8,7 @@ import {
   Switch,
   TextInput,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -82,9 +83,10 @@ export default function SettingsScreen() {
       setInviteRole("editor");
       if ((result as any).existingUser) {
         const token = (result as any).invite?.token ?? "";
+        await Clipboard.setStringAsync(token);
         showAlert(
-          "Share this invite code",
-          `${inviteName} already has an account.\n\nSend them this code:\n\n${token}\n\nThey can enter it in the app under "Join a Household" on the setup screen.`
+          "Invite code copied!",
+          `${inviteName} already has an account — no email was sent.\n\nThe invite code has been copied to your clipboard. Paste it into a text or email to send manually.\n\nThey open the app → "Join a Household" → enter the code.`
         );
       } else if ((result as any).emailSent) {
         showAlert("Invite sent", `${inviteName} will receive an email to join.`);
@@ -107,9 +109,10 @@ export default function SettingsScreen() {
     try {
       const result = await resendInvite.mutateAsync({ ...inv, householdId: household.id });
       if ((result as any)?.existingUser) {
+        await Clipboard.setStringAsync(inv.token);
         showAlert(
-          "Share this invite code",
-          `${inv.name} already has an account.\n\nSend them this code:\n\n${inv.token}\n\nThey can enter it in the app under "Join a Household" on the setup screen.`
+          "Invite code copied!",
+          `${inv.name} already has an account — no email was sent.\n\nThe invite code has been copied to your clipboard. Paste it into a text or email to send manually.\n\nThey open the app → "Join a Household" → enter the code.`
         );
       } else {
         showAlert("Sent", `Invite re-sent to ${inv.email}`);

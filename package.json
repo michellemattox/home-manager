@@ -19,6 +19,7 @@
     "@tanstack/react-query-persist-client": "^5.90.25",
     "date-fns": "^4.1.0",
     "expo": "~55.0.7",
+    "expo-clipboard": "^55.0.9",
     "expo-device": "^55.0.10",
     "expo-file-system": "^55.0.11",
     "expo-haptics": "^55.0.9",
