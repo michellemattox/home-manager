@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Alert,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -134,54 +133,46 @@ function TaskRow({
   onComplete,
   onEdit,
   onDelete,
-  onMoveUp,
-  onMoveDown,
   onMoveToChecklist,
+  showMoveButton,
 }: {
   task: TripTask;
   members: { id: string; display_name: string; color_hex: string }[];
   onComplete: () => void;
   onEdit: () => void;
   onDelete: () => void;
-  onMoveUp: () => void;
-  onMoveDown: () => void;
   onMoveToChecklist: () => void;
+  showMoveButton: boolean;
 }) {
   const assignedMember = task.assigned_member_id
     ? members.find((m) => m.id === task.assigned_member_id)
     : null;
 
   return (
-    <TouchableOpacity onPress={onEdit} className="flex-row items-start py-2.5 border-b border-gray-100">
+    <TouchableOpacity onPress={onEdit} className="flex-row items-center py-1.5 border-b border-gray-100">
       <TouchableOpacity
         onPress={(e) => { e.stopPropagation(); onComplete(); }}
-        className="w-5 h-5 rounded border-2 border-gray-300 mr-3 mt-0.5 items-center justify-center"
+        className="w-4 h-4 rounded border-2 border-gray-300 mr-2 items-center justify-center flex-shrink-0"
       />
-      <View className="flex-1">
-        <Text className="text-sm text-gray-800">{task.title}</Text>
-        <View className="flex-row items-center gap-2 mt-1 flex-wrap">
-          {assignedMember && (
-            <View className="flex-row items-center gap-1">
-              <MemberAvatar member={assignedMember as any} size="sm" />
-              <Text className="text-xs text-gray-400">{assignedMember.display_name.split(" ")[0]}</Text>
-            </View>
-          )}
-          {task.due_date && (
-            <Text className="text-xs text-gray-400">{formatDateShort(task.due_date)}</Text>
-          )}
-        </View>
+      <View className="flex-1 min-w-0">
+        <Text className="text-xs text-gray-800" numberOfLines={1}>{task.title}</Text>
+        {(assignedMember || task.due_date) && (
+          <Text className="text-xs text-gray-400 mt-0.5">
+            {[assignedMember?.display_name.split(" ")[0], task.due_date ? formatDateShort(task.due_date) : null]
+              .filter(Boolean).join(" · ")}
+          </Text>
+        )}
       </View>
-      <View className="flex-col items-center ml-1">
-        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onMoveUp(); }} className="px-1 py-0.5">
-          <Text className="text-gray-300 text-xs leading-none">▲</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onMoveDown(); }} className="px-1 py-0.5">
-          <Text className="text-gray-300 text-xs leading-none">▼</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onMoveToChecklist(); }} className="px-1 py-0.5">
-          <Text className="text-gray-300 text-xs leading-none">⇄</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDelete(); }} className="px-1 py-0.5 mt-0.5">
+      <View className="flex-row items-center gap-1 ml-1">
+        {showMoveButton && (
+          <TouchableOpacity
+            onPress={(e) => { e.stopPropagation(); onMoveToChecklist(); }}
+            className="bg-blue-50 rounded px-1.5 py-1"
+          >
+            <Text className="text-blue-500 text-xs font-medium">Move</Text>
+          </TouchableOpacity>
+        )}
+        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDelete(); }} className="px-1 py-0.5">
           <Text className="text-gray-300 text-base leading-none">×</Text>
         </TouchableOpacity>
       </View>
@@ -258,6 +249,9 @@ export default function TripDetailScreen() {
 
   // Add item modal
   const [addItemChecklist, setAddItemChecklist] = useState<string | null>(null);
+
+  // Move-to-checklist modal
+  const [movingTask, setMovingTask] = useState<TripTask | null>(null);
 
   // Completed section toggle
   const [showCompleted, setShowCompleted] = useState(false);
@@ -370,43 +364,8 @@ export default function TripDetailScreen() {
     }
   };
 
-  const handleMoveTask = async (task: TripTask, direction: "up" | "down") => {
-    const allTasks = trip?.tasks ?? [];
-    const checklistName = task.checklist_name ?? "General";
-    const group = allTasks
-      .filter((t) => (t.checklist_name ?? "General") === checklistName)
-      .sort((a, b) => a.sort_order - b.sort_order);
-    const idx = group.findIndex((t) => t.id === task.id);
-    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
-    if (swapIdx < 0 || swapIdx >= group.length) return;
-    const swapTask = group[swapIdx];
-    try {
-      await updateTask.mutateAsync({ id: task.id, tripId: task.trip_id, updates: { sort_order: swapTask.sort_order } });
-      await updateTask.mutateAsync({ id: swapTask.id, tripId: swapTask.trip_id, updates: { sort_order: task.sort_order } });
-    } catch (e: any) { showAlert("Error", e.message); }
-  };
-
   const handleQuickMoveToChecklist = (task: TripTask) => {
-    const currentChecklist = task.checklist_name ?? "General";
-    const others = checklistNames.filter((n) => n !== currentChecklist);
-    if (others.length === 0) {
-      showAlert("No other checklists", "Add another checklist first to move tasks between them.");
-      return;
-    }
-    Alert.alert(
-      "Move to Checklist",
-      `Move "${task.title}" to:`,
-      [
-        { text: "Cancel", style: "cancel" },
-        ...others.map((name) => ({
-          text: name,
-          onPress: () =>
-            updateTask
-              .mutateAsync({ id: task.id, tripId: task.trip_id, updates: { checklist_name: name } })
-              .catch((e: any) => showAlert("Error", e.message)),
-        })),
-      ]
-    );
+    setMovingTask(task);
   };
 
   const handleDelete = (task: TripTask) => {
@@ -516,9 +475,8 @@ export default function TripDetailScreen() {
                     onComplete={() => handleComplete(task)}
                     onEdit={() => openEditTask(task)}
                     onDelete={() => handleDelete(task)}
-                    onMoveUp={() => handleMoveTask(task, "up")}
-                    onMoveDown={() => handleMoveTask(task, "down")}
                     onMoveToChecklist={() => handleQuickMoveToChecklist(task)}
+                    showMoveButton={checklistNames.length > 1}
                   />
                 ))
               )}
@@ -679,6 +637,12 @@ export default function TripDetailScreen() {
               ))}
             </View>
 
+            <Button
+              title="Save Changes"
+              onPress={handleSaveEditTask}
+              loading={updateTask.isPending}
+              className="mb-3"
+            />
             <TouchableOpacity
               onPress={() => {
                 if (!editingTask) return;
@@ -692,6 +656,40 @@ export default function TripDetailScreen() {
               <Text className="text-red-500 font-medium">Delete Task</Text>
             </TouchableOpacity>
           </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* Move to Checklist Modal */}
+      <Modal
+        visible={!!movingTask}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setMovingTask(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <Text className="flex-1 text-base font-semibold text-gray-900">Move to Checklist</Text>
+            <TouchableOpacity onPress={() => setMovingTask(null)}>
+              <Text className="text-blue-600 text-sm font-medium">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          {movingTask && checklistNames
+            .filter((n) => n !== (movingTask.checklist_name ?? "General"))
+            .map((name) => (
+              <TouchableOpacity
+                key={name}
+                onPress={() => {
+                  updateTask
+                    .mutateAsync({ id: movingTask.id, tripId: movingTask.trip_id, updates: { checklist_name: name } })
+                    .then(() => setMovingTask(null))
+                    .catch((e: any) => showAlert("Error", e.message));
+                }}
+                className="flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-100"
+              >
+                <Text className="text-base text-gray-900">{name}</Text>
+                <Text className="text-gray-400 text-base">→</Text>
+              </TouchableOpacity>
+            ))}
         </SafeAreaView>
       </Modal>
 
