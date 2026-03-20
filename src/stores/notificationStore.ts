@@ -3,10 +3,29 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-// Use localStorage on web, AsyncStorage on native
+// Use localStorage on web, AsyncStorage on native.
+// The getter is wrapped in a try/catch because localStorage throws a
+// SecurityError in some browser contexts (private mode, sandboxed iframes).
+function getWebStorage(): Storage {
+  try {
+    return localStorage;
+  } catch {
+    // Fallback: in-memory storage so the store still initialises
+    const mem: Record<string, string> = {};
+    return {
+      getItem: (k) => mem[k] ?? null,
+      setItem: (k, v) => { mem[k] = v; },
+      removeItem: (k) => { delete mem[k]; },
+      clear: () => { Object.keys(mem).forEach((k) => delete mem[k]); },
+      key: (i) => Object.keys(mem)[i] ?? null,
+      length: 0,
+    } as unknown as Storage;
+  }
+}
+
 const notifStorage =
   Platform.OS === "web"
-    ? createJSONStorage(() => localStorage)
+    ? createJSONStorage(getWebStorage)
     : createJSONStorage(() => AsyncStorage);
 
 export type ReminderFrequency = "daily" | "every_other_day" | "weekly" | "monthly";
