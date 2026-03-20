@@ -19,9 +19,18 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCreateProject } from "@/hooks/useProjects";
 import { usePreferredVendors } from "@/hooks/usePreferredVendors";
+import { supabase } from "@/lib/supabase";
 import { displayToCents } from "@/utils/currencyUtils";
+import { toISODateString } from "@/utils/dateUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority } from "@/types/app.types";
+
+const FREQUENCIES: { label: string; value: string }[] = [
+  { label: "Weekly", value: "weekly" },
+  { label: "Monthly", value: "monthly" },
+  { label: "Bi-Annually", value: "bi-annually" },
+  { label: "Annually", value: "annually" },
+];
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -63,6 +72,7 @@ export default function NewProjectScreen() {
   const [usesVendor, setUsesVendor] = useState<boolean | null>(null);
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [otherVendorName, setOtherVendorName] = useState("");
+  const [frequency, setFrequency] = useState<string | null>(null);
 
   const {
     control,
@@ -89,9 +99,10 @@ export default function NewProjectScreen() {
       data.estimatedCost?.trim() ? displayToCents(data.estimatedCost) : 0;
     const totalCents =
       data.totalCost?.trim() ? displayToCents(data.totalCost) : 0;
+    const isOtherVendor = selectedVendorId === "__other__";
 
     try {
-      await createProject.mutateAsync({
+      const project = await createProject.mutateAsync({
         project: {
           household_id: household.id,
           title: data.title,
@@ -102,15 +113,63 @@ export default function NewProjectScreen() {
           category: data.category ?? null,
           estimated_cost_cents: estimatedCents,
           total_cost_cents: totalCents,
-          contractor_name: null,
           notes: data.notes?.trim() || null,
           created_by: currentMember.id,
           uses_vendor: usesVendor === true,
-          primary_vendor_id: selectedVendorId === "__other__" ? null : selectedVendorId,
-          contractor_name: selectedVendorId === "__other__" ? otherVendorName.trim() || null : null,
+          primary_vendor_id: isOtherVendor ? null : selectedVendorId,
+          contractor_name: isOtherVendor ? otherVendorName.trim() || null : null,
+          frequency: frequency,
         },
         ownerIds: data.ownerIds,
       });
+
+      // Auto-create preferred vendor record when "Other" name is entered
+      let resolvedVendorId = isOtherVendor ? null : selectedVendorId;
+      let resolvedVendorName = isOtherVendor
+        ? otherVendorName.trim()
+        : vendors.find((v) => v.id === selectedVendorId)?.name ?? "";
+
+      if (usesVendor && isOtherVendor && otherVendorName.trim()) {
+        const { data: existing } = await supabase
+          .from("preferred_vendors")
+          .select("id")
+          .eq("household_id", household.id)
+          .ilike("name", otherVendorName.trim())
+          .limit(1);
+        if (existing && existing.length > 0) {
+          resolvedVendorId = existing[0].id;
+        } else {
+          const { data: newVendor } = await supabase
+            .from("preferred_vendors")
+            .insert({ household_id: household.id, name: otherVendorName.trim() })
+            .select("id")
+            .single();
+          resolvedVendorId = newVendor?.id ?? null;
+        }
+        if (resolvedVendorId) {
+          await supabase
+            .from("projects")
+            .update({ primary_vendor_id: resolvedVendorId, contractor_name: null })
+            .eq("id", project.id);
+        }
+      }
+
+      // Auto-create service record when vendor + cost are both set
+      if (usesVendor && totalCents > 0 && resolvedVendorName) {
+        await supabase.from("service_records").insert({
+          household_id: household.id,
+          vendor_name: resolvedVendorName,
+          service_type: data.category ?? "Project",
+          service_date: data.dueDate || toISODateString(new Date()),
+          cost_cents: totalCents,
+          event_type: "project",
+          event_id: project.id,
+          frequency: (frequency === "annually" ? "yearly" : frequency) as any,
+          notes: null,
+          receipt_url: null,
+        });
+      }
+
       router.replace("/(app)/(projects)");
     } catch (e: any) {
       showAlert("Error", e.message);
@@ -376,6 +435,24 @@ export default function NewProjectScreen() {
             />
           )}
         />
+
+        {/* Frequency */}
+        <Text className="text-sm font-medium text-gray-700 mb-2">Frequency (optional)</Text>
+        <View className="flex-row flex-wrap gap-2 mb-4">
+          {FREQUENCIES.map((f) => (
+            <TouchableOpacity
+              key={f.value}
+              onPress={() => setFrequency(frequency === f.value ? null : f.value)}
+              className={`px-3 py-1.5 rounded-full border ${
+                frequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+              }`}
+            >
+              <Text className={`text-sm font-medium ${frequency === f.value ? "text-white" : "text-gray-600"}`}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         {/* Owners */}
         <Text className="text-sm font-medium text-gray-700 mb-2">Owners</Text>

@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
-  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -39,8 +38,16 @@ import { showAlert, showConfirm } from "@/lib/alert";
 import { MemberAvatar, MemberAvatarGroup } from "@/components/ui/MemberAvatar";
 import { formatDateTime, formatDate, formatDateShort, isOverdue } from "@/utils/dateUtils";
 import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
+import { toISODateString } from "@/utils/dateUtils";
 import { PROJECT_CATEGORIES } from "@/types/app.types";
 import type { ProjectStatus, ProjectPriority, ProjectTask } from "@/types/app.types";
+
+const FREQUENCIES: { label: string; value: string }[] = [
+  { label: "Weekly", value: "weekly" },
+  { label: "Monthly", value: "monthly" },
+  { label: "Bi-Annually", value: "bi-annually" },
+  { label: "Annually", value: "annually" },
+];
 
 function isoToDisplay(iso: string): string {
   if (!iso) return "";
@@ -148,6 +155,9 @@ export default function ProjectDetailScreen() {
   const [editItemMember, setEditItemMember] = useState<string | null>(null);
   const [editItemChecklist, setEditItemChecklist] = useState<string>("General");
 
+  // Move-to-checklist modal
+  const [movingTask, setMovingTask] = useState<ProjectTask | null>(null);
+
   // Edit project modal state
   const [showEditModal, setShowEditModal] = useState(false);
   const [editTitle, setEditTitle] = useState("");
@@ -161,6 +171,7 @@ export default function ProjectDetailScreen() {
   const [editSelectedVendorId, setEditSelectedVendorId] = useState<string | null>(null);
   const [editOtherVendorName, setEditOtherVendorName] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editFrequency, setEditFrequency] = useState<string | null>(null);
 
   // Realtime subscription
   useEffect(() => {
@@ -192,6 +203,7 @@ export default function ProjectDetailScreen() {
       setEditSelectedVendorId(hasOtherVendor ? "__other__" : ((project as any).primary_vendor_id ?? null));
       setEditOtherVendorName((project as any).contractor_name ?? "");
       setEditNotes(project.notes ?? "");
+      setEditFrequency((project as any).frequency ?? null);
     }
   }, [showEditModal]);
 
@@ -214,7 +226,9 @@ export default function ProjectDetailScreen() {
   };
 
   const handleSaveEditProject = async () => {
-    if (!editTitle.trim() || !id) return;
+    if (!editTitle.trim() || !id || !household) return;
+    const isOtherVendor = editSelectedVendorId === "__other__";
+    const totalCents = editTotalCost.trim() ? displayToCents(editTotalCost) : 0;
     try {
       await updateProject.mutateAsync({
         id,
@@ -225,13 +239,62 @@ export default function ProjectDetailScreen() {
           category: editCategory ?? null,
           expected_date: editDueDate || null,
           estimated_cost_cents: editBudget.trim() ? displayToCents(editBudget) : 0,
-          total_cost_cents: editTotalCost.trim() ? displayToCents(editTotalCost) : 0,
+          total_cost_cents: totalCents,
           uses_vendor: editUsesVendor === true,
-          primary_vendor_id: editUsesVendor && editSelectedVendorId !== "__other__" ? editSelectedVendorId : null,
-          contractor_name: editUsesVendor && editSelectedVendorId === "__other__" ? editOtherVendorName.trim() || null : null,
+          primary_vendor_id: editUsesVendor && !isOtherVendor ? editSelectedVendorId : null,
+          contractor_name: editUsesVendor && isOtherVendor ? editOtherVendorName.trim() || null : null,
           notes: editNotes.trim() || null,
+          frequency: editFrequency,
         },
       });
+
+      // Auto-create preferred vendor when "Other" name is entered
+      let resolvedVendorId = isOtherVendor ? null : editSelectedVendorId;
+      let resolvedVendorName = isOtherVendor
+        ? editOtherVendorName.trim()
+        : vendors.find((v) => v.id === editSelectedVendorId)?.name ?? "";
+
+      if (editUsesVendor && isOtherVendor && editOtherVendorName.trim()) {
+        const { data: existing } = await supabase
+          .from("preferred_vendors")
+          .select("id")
+          .eq("household_id", household.id)
+          .ilike("name", editOtherVendorName.trim())
+          .limit(1);
+        if (existing && existing.length > 0) {
+          resolvedVendorId = existing[0].id;
+        } else {
+          const { data: newVendor } = await supabase
+            .from("preferred_vendors")
+            .insert({ household_id: household.id, name: editOtherVendorName.trim() })
+            .select("id")
+            .single();
+          resolvedVendorId = newVendor?.id ?? null;
+        }
+        if (resolvedVendorId) {
+          await supabase
+            .from("projects")
+            .update({ primary_vendor_id: resolvedVendorId, contractor_name: null })
+            .eq("id", id);
+        }
+      }
+
+      // Auto-create service record if vendor + cost and none linked yet
+      if (editUsesVendor && totalCents > 0 && resolvedVendorName && eventServiceRecords.length === 0) {
+        await supabase.from("service_records").insert({
+          household_id: household.id,
+          vendor_name: resolvedVendorName,
+          service_type: (project as any).category ?? "Project",
+          service_date: editDueDate || toISODateString(new Date()),
+          cost_cents: totalCents,
+          event_type: "project",
+          event_id: id,
+          frequency: (editFrequency === "annually" ? "yearly" : editFrequency) as any,
+          notes: null,
+          receipt_url: null,
+        });
+      }
+
       setShowEditModal(false);
     } catch (e: any) { showAlert("Error", e.message); }
   };
@@ -338,26 +401,12 @@ export default function ProjectDetailScreen() {
   };
 
   const handleQuickMoveToChecklist = (task: ProjectTask) => {
-    const currentChecklist = task.checklist_name ?? "General";
-    const others = checklistNames.filter((n) => n !== currentChecklist);
+    const others = checklistNames.filter((n) => n !== (task.checklist_name ?? "General"));
     if (others.length === 0) {
       showAlert("No other checklists", "Add another checklist section first.");
       return;
     }
-    Alert.alert(
-      "Move to Checklist",
-      `Move "${task.title}" to:`,
-      [
-        { text: "Cancel", style: "cancel" },
-        ...others.map((name) => ({
-          text: name,
-          onPress: () =>
-            updateTask
-              .mutateAsync({ id: task.id, project_id: task.project_id, updates: { checklist_name: name } })
-              .catch((e: any) => showAlert("Error", e.message)),
-        })),
-      ]
-    );
+    setMovingTask(task);
   };
 
   const handleMoveTask = async (task: ProjectTask, direction: "up" | "down") => {
@@ -455,10 +504,17 @@ export default function ProjectDetailScreen() {
             )}
           </View>
 
-          {/* Vendor indicator */}
-          {(project as any).uses_vendor && (
-            <View className="flex-row items-center py-2 border-t border-gray-100 mt-2">
-              <Text className="text-xs text-blue-500 font-medium">Uses a vendor</Text>
+          {/* Frequency + Vendor indicator */}
+          {((project as any).frequency || (project as any).uses_vendor) && (
+            <View className="flex-row items-center gap-3 py-2 border-t border-gray-100 mt-2 flex-wrap">
+              {(project as any).frequency && (
+                <Text className="text-xs text-indigo-600 font-medium">
+                  🔁 {FREQUENCIES.find((f) => f.value === (project as any).frequency)?.label ?? (project as any).frequency}
+                </Text>
+              )}
+              {(project as any).uses_vendor && (
+                <Text className="text-xs text-blue-500 font-medium">Uses a vendor</Text>
+              )}
             </View>
           )}
 
@@ -604,50 +660,46 @@ export default function ProjectDetailScreen() {
                     <TouchableOpacity
                       key={task.id}
                       onPress={() => openEditItem(task)}
-                      className="flex-row items-start py-2.5 border-b border-gray-50"
+                      className="flex-row items-center py-1.5 border-b border-gray-50"
                     >
                       <TouchableOpacity
                         onPress={(e) => { e.stopPropagation(); handleCompleteTask(task); }}
-                        className="w-5 h-5 rounded-full border-2 border-gray-300 mr-3 mt-0.5 items-center justify-center"
+                        className="w-4 h-4 rounded-full border-2 border-gray-300 mr-2 items-center justify-center flex-shrink-0"
                       />
-                      <View className="flex-1">
-                        <Text className="text-sm text-gray-700">{task.title}</Text>
-                        {(task as any).notes ? (
-                          <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{(task as any).notes}</Text>
-                        ) : null}
-                        <View className="flex-row items-center gap-2 mt-0.5 flex-wrap">
+                      <View className="flex-1 mr-1">
+                        <Text className="text-xs text-gray-800" numberOfLines={1}>{task.title}</Text>
+                        <View className="flex-row items-center gap-1.5 flex-wrap">
                           {assignedMember && (
-                            <View className="flex-row items-center gap-1">
-                              <MemberAvatar member={assignedMember} size="sm" />
-                              <Text className="text-xs text-gray-400">{assignedMember.display_name.split(" ")[0]}</Text>
-                            </View>
+                            <Text className="text-xs text-gray-400">{assignedMember.display_name.split(" ")[0]}</Text>
                           )}
                           {task.due_date && (
-                            <Text className={`text-xs font-medium ${isOverdueItem ? "text-red-500" : "text-gray-400"}`}>
-                              {formatDateShort(task.due_date)}{isOverdueItem ? " · overdue" : ""}
+                            <Text className={`text-xs ${isOverdueItem ? "text-red-500 font-medium" : "text-gray-400"}`}>
+                              {formatDateShort(task.due_date)}{isOverdueItem ? " ·!" : ""}
                             </Text>
                           )}
                         </View>
                       </View>
-                      <View className="flex-col items-center ml-1">
+                      <View className="flex-row items-center gap-0.5">
                         <TouchableOpacity
                           onPress={(e) => { e.stopPropagation(); handleMoveTask(task, "up"); }}
-                          className="px-1 py-0.5"
+                          className="px-1 py-1"
                         >
                           <Text className="text-gray-300 text-xs leading-none">▲</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={(e) => { e.stopPropagation(); handleMoveTask(task, "down"); }}
-                          className="px-1 py-0.5"
+                          className="px-1 py-1"
                         >
                           <Text className="text-gray-300 text-xs leading-none">▼</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={(e) => { e.stopPropagation(); handleQuickMoveToChecklist(task); }}
-                          className="px-1 py-0.5"
-                        >
-                          <Text className="text-blue-300 text-xs leading-none">⇄</Text>
-                        </TouchableOpacity>
+                        {checklistNames.length > 1 && (
+                          <TouchableOpacity
+                            onPress={(e) => { e.stopPropagation(); handleQuickMoveToChecklist(task); }}
+                            className="bg-blue-50 rounded px-1.5 py-1"
+                          >
+                            <Text className="text-blue-500 text-xs font-medium">Move</Text>
+                          </TouchableOpacity>
+                        )}
                         <TouchableOpacity
                           onPress={(e) => {
                             e.stopPropagation();
@@ -656,9 +708,9 @@ export default function ProjectDetailScreen() {
                                 .catch((err: any) => showAlert("Error", err.message));
                             }, true);
                           }}
-                          className="px-1 py-0.5 mt-0.5"
+                          className="px-1 py-1"
                         >
-                          <Text className="text-gray-300 text-base leading-none">×</Text>
+                          <Text className="text-gray-300 text-sm leading-none">×</Text>
                         </TouchableOpacity>
                       </View>
                     </TouchableOpacity>
@@ -807,6 +859,42 @@ export default function ProjectDetailScreen() {
           <Text className="text-white text-2xl font-light">+</Text>
         </TouchableOpacity>
       )}
+
+      {/* Move to Checklist modal */}
+      <Modal visible={!!movingTask} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setMovingTask(null)}>
+        <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <Text className="flex-1 text-base font-semibold text-gray-900">Move to Checklist</Text>
+            <TouchableOpacity onPress={() => setMovingTask(null)}>
+              <Text className="text-blue-600 text-sm font-medium">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          {movingTask && (
+            <>
+              <Text className="text-xs text-gray-400 px-4 pt-3 pb-1" numberOfLines={1}>
+                "{movingTask.title}"
+              </Text>
+              {checklistNames
+                .filter((n) => n !== (movingTask.checklist_name ?? "General"))
+                .map((name) => (
+                  <TouchableOpacity
+                    key={name}
+                    onPress={() => {
+                      updateTask
+                        .mutateAsync({ id: movingTask.id, project_id: movingTask.project_id, updates: { checklist_name: name } })
+                        .then(() => setMovingTask(null))
+                        .catch((e: any) => showAlert("Error", e.message));
+                    }}
+                    className="flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-100 mx-0"
+                  >
+                    <Text className="text-base text-gray-900">{name}</Text>
+                    <Text className="text-gray-400 text-base">→</Text>
+                  </TouchableOpacity>
+                ))}
+            </>
+          )}
+        </SafeAreaView>
+      </Modal>
 
       {/* Add Update modal */}
       <Modal visible={showUpdateModal} animationType="slide" presentationStyle="pageSheet">
@@ -1012,6 +1100,23 @@ export default function ProjectDetailScreen() {
                 {editSelectedVendorId !== "__other__" && <View className="mb-2" />}
               </>
             )}
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Frequency (optional)</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              {FREQUENCIES.map((f) => (
+                <TouchableOpacity
+                  key={f.value}
+                  onPress={() => setEditFrequency(editFrequency === f.value ? null : f.value)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    editFrequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${editFrequency === f.value ? "text-white" : "text-gray-700"}`}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Text className="text-sm font-medium text-gray-700 mb-1">Notes</Text>
             <TextInput

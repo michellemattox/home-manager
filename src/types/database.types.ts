@@ -126,6 +126,7 @@ export interface Database {
           total_cost_cents: number;
           uses_vendor: boolean;
           primary_vendor_id: string | null;
+          frequency: string | null;
         };
         Insert: {
           id?: string;
@@ -145,6 +146,7 @@ export interface Database {
           total_cost_cents?: number;
           uses_vendor?: boolean;
           primary_vendor_id?: string | null;
+          frequency?: string | null;
         };
         Update: {
           id?: string;
@@ -164,6 +166,7 @@ export interface Database {
           total_cost_cents?: number;
           uses_vendor?: boolean;
           primary_vendor_id?: string | null;
+          frequency?: string | null;
         };
         Relationships: Rel;
       };
