@@ -154,6 +154,15 @@ export default function OnboardingScreen() {
             className="mt-4"
           />
         </WebForm>
+
+        <View className="mt-8 items-center">
+          <Text className="text-sm text-gray-400 mb-3">Already have an invite?</Text>
+          <Button
+            title="Join a Household"
+            variant="secondary"
+            onPress={() => router.push("/join")}
+          />
+        </View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

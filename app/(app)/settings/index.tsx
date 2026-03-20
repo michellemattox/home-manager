@@ -80,7 +80,13 @@ export default function SettingsScreen() {
       setInviteName("");
       setInviteEmail("");
       setInviteRole("editor");
-      if ((result as any).emailSent) {
+      if ((result as any).existingUser) {
+        const token = (result as any).invite?.token ?? "";
+        showAlert(
+          "Share this invite code",
+          `${inviteName} already has an account.\n\nSend them this code:\n\n${token}\n\nThey can enter it in the app under "Join a Household" on the setup screen.`
+        );
+      } else if ((result as any).emailSent) {
         showAlert("Invite sent", `${inviteName} will receive an email to join.`);
       } else {
         const errDetail = (result as any).fnErrorMessage
@@ -99,11 +105,17 @@ export default function SettingsScreen() {
   const handleResendInvite = async (inv: { email: string; name: string; token: string }) => {
     if (!household) return;
     try {
-      await resendInvite.mutateAsync({ ...inv, householdId: household.id });
-      showAlert("Sent", `Invite re-sent to ${inv.email}`);
+      const result = await resendInvite.mutateAsync({ ...inv, householdId: household.id });
+      if ((result as any)?.existingUser) {
+        showAlert(
+          "Share this invite code",
+          `${inv.name} already has an account.\n\nSend them this code:\n\n${inv.token}\n\nThey can enter it in the app under "Join a Household" on the setup screen.`
+        );
+      } else {
+        showAlert("Sent", `Invite re-sent to ${inv.email}`);
+      }
     } catch (e: any) {
-      // Edge Function may not be deployed yet — show as info rather than error
-      showAlert("Notice", e.message ?? "Could not send email. The invite record exists and the email will send once the notification service is deployed.");
+      showAlert("Error", e.message ?? "Could not send email.");
     }
   };
 

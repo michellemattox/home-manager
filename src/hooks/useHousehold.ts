@@ -109,14 +109,16 @@ export function useSendInvite() {
       if (error) throw error;
 
       // Call Edge Function to send email
-      const { error: fnError } = await supabase.functions.invoke("invite-member", {
+      const { data: fnData, error: fnError } = await supabase.functions.invoke("invite-member", {
         body: { email, name, token: invite.token, householdId },
       });
 
       let fnErrorMessage: string | null = null;
+      const existingUser: boolean = !fnError && !!(fnData as any)?.existingUser;
+      const actionLink: string | null = !fnError ? ((fnData as any)?.actionLink ?? null) : null;
+
       if (fnError) {
         try {
-          // FunctionsHttpError carries the response body in .context
           const body = await (fnError as any).context?.json?.();
           fnErrorMessage = body?.error ?? fnError.message ?? "Unknown error";
         } catch {
@@ -124,7 +126,7 @@ export function useSendInvite() {
         }
       }
 
-      return { invite: invite as HouseholdInvite, emailSent: !fnError, fnErrorMessage };
+      return { invite: invite as HouseholdInvite, emailSent: !fnError, fnErrorMessage, existingUser, actionLink };
     },
     onSuccess: (_, { householdId }) =>
       qc.invalidateQueries({ queryKey: ["household_invites", householdId] }),
@@ -144,7 +146,7 @@ export function useResendInvite() {
       token: string;
       householdId: string;
     }) => {
-      const { error } = await supabase.functions.invoke("invite-member", {
+      const { data: fnData, error } = await supabase.functions.invoke("invite-member", {
         body: { email, name, token, householdId },
       });
       if (error) {
@@ -155,6 +157,9 @@ export function useResendInvite() {
         } catch {}
         throw new Error(msg);
       }
+      const existingUser: boolean = !!(fnData as any)?.existingUser;
+      const actionLink: string | null = (fnData as any)?.actionLink ?? null;
+      return { existingUser, actionLink };
     },
   });
 }

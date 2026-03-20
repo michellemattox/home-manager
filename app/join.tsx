@@ -9,21 +9,32 @@ import { Input } from "@/components/ui/Input";
 import { showAlert } from "@/lib/alert";
 
 export default function JoinScreen() {
-  const { token } = useLocalSearchParams<{ token?: string }>();
+  const { token: tokenParam } = useLocalSearchParams<{ token?: string }>();
   const router = useRouter();
   const { session } = useAuthStore();
 
-  const [checking, setChecking] = useState(true);
+  // Manual token entry when no deep link token was provided
+  const [manualToken, setManualToken] = useState("");
+  const [activeToken, setActiveToken] = useState<string | undefined>(tokenParam);
+
+  const [checking, setChecking] = useState(!!tokenParam);
   const [invite, setInvite] = useState<any>(null);
   const [displayName, setDisplayName] = useState("");
   const [joining, setJoining] = useState(false);
 
+  // When tokenParam arrives (deep link), update activeToken
   useEffect(() => {
-    if (!token) { setChecking(false); return; }
+    if (tokenParam) setActiveToken(tokenParam);
+  }, [tokenParam]);
+
+  // Look up invite whenever activeToken changes
+  useEffect(() => {
+    if (!activeToken) { setChecking(false); return; }
+    setChecking(true);
     supabase
       .from("household_invites")
       .select("*, households(name)")
-      .eq("token", token)
+      .eq("token", activeToken)
       .is("accepted_at", null)
       .maybeSingle()
       .then(({ data }) => {
@@ -31,10 +42,16 @@ export default function JoinScreen() {
         if (data?.name) setDisplayName(data.name);
         setChecking(false);
       });
-  }, [token]);
+  }, [activeToken]);
+
+  const handleLookupToken = () => {
+    const t = manualToken.trim();
+    if (!t) return;
+    setActiveToken(t);
+  };
 
   const handleJoin = async () => {
-    if (!token || !invite || !session) return;
+    if (!activeToken || !invite || !session) return;
     setJoining(true);
     try {
       const { error: memberError } = await supabase
@@ -50,7 +67,7 @@ export default function JoinScreen() {
       await supabase
         .from("household_invites")
         .update({ accepted_at: new Date().toISOString() })
-        .eq("token", token);
+        .eq("token", activeToken);
 
       router.replace("/(app)/(home)");
     } catch (e: any) {
@@ -60,6 +77,34 @@ export default function JoinScreen() {
     }
   };
 
+  // ── No token yet — show manual entry form ───────────────────────────────────
+  if (!activeToken) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+        <ScrollView contentContainerClassName="px-6 pt-12 pb-8" keyboardShouldPersistTaps="handled">
+          <Text className="text-3xl font-bold text-gray-900 mb-2">Join a Household</Text>
+          <Text className="text-base text-gray-500 mb-8">
+            Enter the invite code from your invitation email.
+          </Text>
+          <Input
+            label="Invite Code"
+            value={manualToken}
+            onChangeText={setManualToken}
+            placeholder="Paste your invite code here"
+            autoFocus
+            autoCapitalize="none"
+          />
+          <Button
+            title="Look Up Invite"
+            onPress={handleLookupToken}
+            disabled={!manualToken.trim()}
+          />
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // ── Loading ──────────────────────────────────────────────────────────────────
   if (checking) {
     return (
       <View className="flex-1 items-center justify-center bg-gray-50">
@@ -68,17 +113,24 @@ export default function JoinScreen() {
     );
   }
 
-  if (!token || !invite) {
+  // ── Invalid / expired invite ─────────────────────────────────────────────────
+  if (!invite) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
         <Text className="text-xl font-bold text-gray-900 mb-2">Invalid invite</Text>
-        <Text className="text-sm text-gray-500 text-center">
+        <Text className="text-sm text-gray-500 text-center mb-6">
           This invite link is invalid or has already been used.
         </Text>
+        <Button
+          title="Try a Different Code"
+          variant="secondary"
+          onPress={() => { setActiveToken(undefined); setManualToken(""); }}
+        />
       </SafeAreaView>
     );
   }
 
+  // ── Not signed in ────────────────────────────────────────────────────────────
   if (!session) {
     return (
       <SafeAreaView className="flex-1 bg-gray-50 items-center justify-center px-6">
@@ -90,6 +142,7 @@ export default function JoinScreen() {
     );
   }
 
+  // ── Accept invite ────────────────────────────────────────────────────────────
   const householdName = invite.households?.name ?? "a household";
 
   return (
