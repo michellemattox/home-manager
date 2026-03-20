@@ -318,7 +318,7 @@ export default function HomeScreen() {
               <OverdueTaskRow
                 key={t.id}
                 task={t}
-                onPress={() => router.push("/(app)/(tasks)")}
+                onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
                 onComplete={() => handleCompleteRecurring(t)}
               />
             ))}
@@ -348,7 +348,7 @@ export default function HomeScreen() {
               <DueSoonTaskRow
                 key={t.id}
                 task={t}
-                onPress={() => router.push("/(app)/(tasks)")}
+                onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
                 onComplete={() => handleCompleteRecurring(t)}
               />
             ))}

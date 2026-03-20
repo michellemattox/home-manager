@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   TextInput,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationSuccess } from "@/lib/haptics";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -171,6 +171,7 @@ function StandaloneTaskCard({ task, onPress }: { task: Task; onPress: () => void
 
 export default function TasksScreen() {
   const router = useRouter();
+  const { openTaskId } = useLocalSearchParams<{ openTaskId?: string }>();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
 
@@ -222,6 +223,13 @@ export default function TasksScreen() {
     setLlCustomDays(String(task.frequency_days));
     setLlAssignedId(task.assigned_member_id ?? undefined);
   };
+
+  // When navigated here from Home with a specific task ID, auto-open that task.
+  useEffect(() => {
+    if (!openTaskId || recurringTasks.length === 0) return;
+    const task = recurringTasks.find((t) => t.id === openTaskId);
+    if (task) openLowLiftEdit(task);
+  }, [openTaskId, recurringTasks]);
 
   const handleSaveLowLift = async () => {
     if (!editingLowLift || !llTitle.trim() || !household) return;
