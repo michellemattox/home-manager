@@ -11,6 +11,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
+import type { HouseholdMember } from "@/types/app.types";
 import {
   useGoals,
   useCreateGoal,
@@ -27,6 +28,122 @@ import { formatDateShort, formatDateTime, isOverdue } from "@/utils/dateUtils";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
 
 type UserTypeFilter = "all" | "family" | "individual";
+
+// ─── GoalFormFields (defined outside screen to prevent focus loss) ─────────────
+function GoalFormFields({
+  title, setTitle,
+  description, setDescription,
+  userType, setUserType,
+  memberId, setMemberId,
+  dueDate, setDueDate,
+  reminder, setReminder,
+  members,
+  userId,
+}: {
+  title: string; setTitle: (v: string) => void;
+  description: string; setDescription: (v: string) => void;
+  userType: "family" | "individual"; setUserType: (v: "family" | "individual") => void;
+  memberId: string | null; setMemberId: (v: string | null) => void;
+  dueDate: string; setDueDate: (v: string) => void;
+  reminder: Goal["reminder_frequency"]; setReminder: (v: Goal["reminder_frequency"]) => void;
+  members: HouseholdMember[];
+  userId: string | undefined;
+}) {
+  return (
+    <>
+      <Text className="text-sm font-medium text-gray-700 mb-1">Title *</Text>
+      <TextInput
+        className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-4"
+        value={title}
+        onChangeText={setTitle}
+        placeholder="e.g. Run a 5K this year"
+        placeholderTextColor="#9ca3af"
+        autoFocus
+      />
+
+      <Text className="text-sm font-medium text-gray-700 mb-1">Description (optional)</Text>
+      <TextInput
+        className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-4 min-h-[70px]"
+        value={description}
+        onChangeText={setDescription}
+        placeholder="What does success look like?"
+        placeholderTextColor="#9ca3af"
+        multiline
+        textAlignVertical="top"
+      />
+
+      <Text className="text-sm font-medium text-gray-700 mb-2">Owner</Text>
+      <View className="flex-row gap-2 mb-4">
+        {(["family", "individual"] as const).map((t) => (
+          <TouchableOpacity
+            key={t}
+            onPress={() => setUserType(t)}
+            className={`flex-1 py-2.5 rounded-xl border items-center ${
+              userType === t ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+            }`}
+          >
+            <Text className={`text-sm font-semibold ${userType === t ? "text-white" : "text-gray-700"}`}>
+              {t === "family" ? "👨‍👩‍👧 Family" : "👤 Individual"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {userType === "individual" && (
+        <>
+          <Text className="text-sm font-medium text-gray-700 mb-2">Who</Text>
+          <View className="flex-row flex-wrap gap-2 mb-4">
+            {members.map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                onPress={() => setMemberId(m.id)}
+                className={`px-3 py-1.5 rounded-full border ${
+                  memberId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-sm font-medium ${memberId === m.id ? "text-white" : "text-gray-700"}`}>
+                  {m.display_name}{m.user_id === userId ? " (You)" : ""}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </>
+      )}
+
+      <DateInput
+        label="Due Date (optional)"
+        value={dueDate}
+        onChange={setDueDate}
+        hint="Target completion date"
+      />
+
+      <Text className="text-sm font-medium text-gray-700 mb-2">Reminder Frequency</Text>
+      <View className="flex-row flex-wrap gap-2 mb-6">
+        {REMINDER_OPTIONS.map((r) => (
+          <TouchableOpacity
+            key={r.value}
+            onPress={() => setReminder(reminder === r.value ? null : r.value)}
+            className={`px-4 py-2 rounded-xl border ${
+              reminder === r.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+            }`}
+          >
+            <Text className={`text-sm font-medium ${reminder === r.value ? "text-white" : "text-gray-700"}`}>
+              {r.label}
+            </Text>
+          </TouchableOpacity>
+        ))}
+        {reminder && (
+          <TouchableOpacity
+            onPress={() => setReminder(null)}
+            className="px-4 py-2 rounded-xl border border-gray-200"
+          >
+            <Text className="text-sm text-gray-400">None</Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </>
+  );
+}
 
 const REMINDER_OPTIONS: { label: string; value: Goal["reminder_frequency"] }[] = [
   { label: "Daily", value: "daily" },
@@ -242,7 +359,14 @@ export default function GoalsScreen() {
     return true;
   });
 
-  const activeGoals = filteredGoals.filter((g) => g.status !== "completed");
+  const activeGoals = filteredGoals
+    .filter((g) => g.status !== "completed")
+    .sort((a, b) => {
+      if (!a.due_date && !b.due_date) return 0;
+      if (!a.due_date) return 1;
+      if (!b.due_date) return -1;
+      return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    });
   const completedGoals = filteredGoals.filter((g) => g.status === "completed");
 
   const handleCreateGoal = async () => {
@@ -336,108 +460,6 @@ export default function GoalsScreen() {
       true
     );
   };
-
-  const GoalFormFields = ({
-    title, setTitle,
-    description, setDescription,
-    userType, setUserType,
-    memberId, setMemberId,
-    dueDate, setDueDate,
-    reminder, setReminder,
-  }: any) => (
-    <>
-      <Text className="text-sm font-medium text-gray-700 mb-1">Title *</Text>
-      <TextInput
-        className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-4"
-        value={title}
-        onChangeText={setTitle}
-        placeholder="e.g. Run a 5K this year"
-        placeholderTextColor="#9ca3af"
-        autoFocus
-      />
-
-      <Text className="text-sm font-medium text-gray-700 mb-1">Description (optional)</Text>
-      <TextInput
-        className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-4 min-h-[70px]"
-        value={description}
-        onChangeText={setDescription}
-        placeholder="What does success look like?"
-        placeholderTextColor="#9ca3af"
-        multiline
-        textAlignVertical="top"
-      />
-
-      <Text className="text-sm font-medium text-gray-700 mb-2">Owner</Text>
-      <View className="flex-row gap-2 mb-4">
-        {(["family", "individual"] as const).map((t) => (
-          <TouchableOpacity
-            key={t}
-            onPress={() => setUserType(t)}
-            className={`flex-1 py-2.5 rounded-xl border items-center ${
-              userType === t ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-            }`}
-          >
-            <Text className={`text-sm font-semibold ${userType === t ? "text-white" : "text-gray-700"}`}>
-              {t === "family" ? "👨‍👩‍👧 Family" : "👤 Individual"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      {userType === "individual" && (
-        <>
-          <Text className="text-sm font-medium text-gray-700 mb-2">Who</Text>
-          <View className="flex-row flex-wrap gap-2 mb-4">
-            {members.map((m: any) => (
-              <TouchableOpacity
-                key={m.id}
-                onPress={() => setMemberId(m.id)}
-                className={`px-3 py-1.5 rounded-full border ${
-                  memberId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                }`}
-              >
-                <Text className={`text-sm font-medium ${memberId === m.id ? "text-white" : "text-gray-700"}`}>
-                  {m.display_name}{m.user_id === user?.id ? " (You)" : ""}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-        </>
-      )}
-
-      <DateInput
-        label="Due Date (optional)"
-        value={dueDate}
-        onChange={setDueDate}
-        hint="Target completion date"
-      />
-
-      <Text className="text-sm font-medium text-gray-700 mb-2">Reminder Frequency</Text>
-      <View className="flex-row flex-wrap gap-2 mb-6">
-        {REMINDER_OPTIONS.map((r) => (
-          <TouchableOpacity
-            key={r.value}
-            onPress={() => setReminder(reminder === r.value ? null : r.value)}
-            className={`px-4 py-2 rounded-xl border ${
-              reminder === r.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-            }`}
-          >
-            <Text className={`text-sm font-medium ${reminder === r.value ? "text-white" : "text-gray-700"}`}>
-              {r.label}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        {reminder && (
-          <TouchableOpacity
-            onPress={() => setReminder(null)}
-            className="px-4 py-2 rounded-xl border border-gray-200"
-          >
-            <Text className="text-sm text-gray-400">None</Text>
-          </TouchableOpacity>
-        )}
-      </View>
-    </>
-  );
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -567,6 +589,8 @@ export default function GoalsScreen() {
               memberId={newMemberId} setMemberId={setNewMemberId}
               dueDate={newDueDate} setDueDate={setNewDueDate}
               reminder={newReminder} setReminder={setNewReminder}
+              members={members}
+              userId={user?.id}
             />
             <TouchableOpacity
               onPress={handleCreateGoal}
@@ -603,6 +627,8 @@ export default function GoalsScreen() {
               memberId={editMemberId} setMemberId={setEditMemberId}
               dueDate={editDueDate} setDueDate={setEditDueDate}
               reminder={editReminder} setReminder={setEditReminder}
+              members={members}
+              userId={user?.id}
             />
             <TouchableOpacity
               onPress={handleSaveEdit}

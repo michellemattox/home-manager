@@ -225,8 +225,22 @@ export default function HomeScreen() {
     .filter((r) => new Date(r.service_date) >= thisYearStart)
     .reduce((sum, r) => sum + r.cost_cents, 0);
 
-  // Recent services
-  const recentServices = (serviceRecords ?? []).slice(0, 3);
+  // Upcoming service reminders — records with frequency that are coming due within 60 days
+  const now = new Date();
+  const upcomingServiceReminders = (serviceRecords ?? [])
+    .filter((r) => {
+      if (!r.frequency) return false;
+      const days = r.frequency === "monthly" ? 30 : r.frequency === "quarterly" ? 90 : r.frequency === "bi-annually" ? 180 : 365;
+      const nextDue = new Date(new Date(r.service_date).getTime() + days * 86400000);
+      const daysUntil = Math.ceil((nextDue.getTime() - now.getTime()) / 86400000);
+      return daysUntil <= 60 && daysUntil >= -14; // show within 60 days or up to 2 weeks overdue
+    })
+    .map((r) => {
+      const days = r.frequency === "monthly" ? 30 : r.frequency === "quarterly" ? 90 : r.frequency === "bi-annually" ? 180 : 365;
+      const nextDue = new Date(new Date(r.service_date).getTime() + days * 86400000);
+      return { ...r, nextDue };
+    })
+    .sort((a, b) => a.nextDue.getTime() - b.nextDue.getTime());
 
   const handleCompleteRecurring = async (task: RecurringTask) => {
     await notificationSuccess();
@@ -358,59 +372,41 @@ export default function HomeScreen() {
           </View>
         )}
 
-        {/* Quick Actions */}
-        <SectionHeader title="Quick Add" />
-        <View className="flex-row gap-3">
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(projects)/new")}
-            className="flex-1 bg-white border border-gray-200 rounded-xl p-3 items-center"
-          >
-            <Text className="text-xl">🏗️</Text>
-            <Text className="text-xs font-medium text-gray-700 mt-1">Project</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(tasks)/new")}
-            className="flex-1 bg-white border border-gray-200 rounded-xl p-3 items-center"
-          >
-            <Text className="text-xl">🔔</Text>
-            <Text className="text-xs font-medium text-gray-700 mt-1">Task</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(services)/new")}
-            className="flex-1 bg-white border border-gray-200 rounded-xl p-3 items-center"
-          >
-            <Text className="text-xl">🔧</Text>
-            <Text className="text-xs font-medium text-gray-700 mt-1">Service</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={() => router.push("/(app)/(activity)/new")}
-            className="flex-1 bg-white border border-gray-200 rounded-xl p-3 items-center"
-          >
-            <Text className="text-xl">🗓️</Text>
-            <Text className="text-xs font-medium text-gray-700 mt-1">Activity</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Recent Service Records */}
-        {recentServices.length > 0 && (
+        {/* Upcoming Service Reminders */}
+        {upcomingServiceReminders.length > 0 && (
           <>
             <SectionHeader
-              title="Recent Services"
+              title="Service Reminders"
               onSeeAll={() => router.push("/(app)/(services)")}
             />
-            {recentServices.map((r) => (
-              <TouchableOpacity
-                key={r.id}
-                onPress={() => router.push("/(app)/(services)")}
-                className="bg-white border border-gray-100 rounded-xl p-3 mb-2 flex-row items-center justify-between"
-              >
-                <View className="flex-1 mr-2">
-                  <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{r.vendor_name}</Text>
-                  <Text className="text-xs text-gray-500 mt-0.5">{r.service_type} · {formatDateShort(r.service_date)}</Text>
+            {upcomingServiceReminders.map((r) => {
+              const daysUntil = Math.ceil((r.nextDue.getTime() - now.getTime()) / 86400000);
+              const isOverdueService = daysUntil < 0;
+              return (
+                <View
+                  key={r.id}
+                  className={`rounded-xl p-3 mb-2 border ${isOverdueService ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200"}`}
+                >
+                  <View className="flex-row items-start justify-between mb-2">
+                    <View className="flex-1 mr-2">
+                      <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
+                        {r.vendor_name}
+                      </Text>
+                      <Text className="text-xs text-gray-500 mt-0.5">
+                        {r.service_type} · {isOverdueService ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? "Due today" : `Due in ${daysUntil}d`}
+                      </Text>
+                    </View>
+                    <Text className="text-xs text-gray-400">{formatDateShort(r.nextDue.toISOString().slice(0, 10))}</Text>
+                  </View>
+                  <TouchableOpacity
+                    onPress={() => router.push(`/(app)/(projects)/new?title=${encodeURIComponent(r.vendor_name + " — " + r.service_type)}`)}
+                    className="self-start bg-blue-600 rounded-lg px-3 py-1.5"
+                  >
+                    <Text className="text-white text-xs font-semibold">+ Create Project</Text>
+                  </TouchableOpacity>
                 </View>
-                <Text className="text-sm font-semibold text-gray-700">{centsToDisplay(r.cost_cents)}</Text>
-              </TouchableOpacity>
-            ))}
+              );
+            })}
           </>
         )}
 

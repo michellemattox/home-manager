@@ -117,7 +117,7 @@ function ProjectsTab() {
   const { household, members } = useHouseholdStore();
   const { data: projects, isLoading, refetch } = useProjects(household?.id);
   const [showFinished, setShowFinished] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>("newest");
+  const [sortBy, setSortBy] = useState<SortOption>("due_date");
   const [filterOwner, setFilterOwner] = useState<string | null>(null);
   const [filterPriority, setFilterPriority] = useState<ProjectPriority | null>(null);
   const [filterCategory, setFilterCategory] = useState<string | null>(null);

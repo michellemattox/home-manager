@@ -54,12 +54,12 @@ export default function ActivityScreen() {
   const { data: trips, isLoading, refetch } = useTrips(household?.id);
 
   const now = new Date();
-  const upcoming = (trips ?? []).filter(
-    (t) => !isBefore(parseISO(t.return_date), now)
-  );
-  const past = (trips ?? []).filter((t) =>
-    isBefore(parseISO(t.return_date), now)
-  );
+  const upcoming = (trips ?? [])
+    .filter((t) => !isBefore(parseISO(t.return_date), now))
+    .sort((a, b) => parseISO(a.departure_date).getTime() - parseISO(b.departure_date).getTime());
+  const past = (trips ?? [])
+    .filter((t) => isBefore(parseISO(t.return_date), now))
+    .sort((a, b) => parseISO(b.departure_date).getTime() - parseISO(a.departure_date).getTime());
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>

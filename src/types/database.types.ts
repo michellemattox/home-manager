@@ -459,6 +459,7 @@ export interface Database {
           created_at: string;
           event_type: "project" | "activity" | null;
           event_id: string | null;
+          frequency: "monthly" | "quarterly" | "bi-annually" | "yearly" | null;
         };
         Insert: {
           id?: string;
@@ -472,6 +473,7 @@ export interface Database {
           created_at?: string;
           event_type?: "project" | "activity" | null;
           event_id?: string | null;
+          frequency?: "monthly" | "quarterly" | "bi-annually" | "yearly" | null;
         };
         Update: {
           id?: string;
@@ -485,6 +487,7 @@ export interface Database {
           created_at?: string;
           event_type?: "project" | "activity" | null;
           event_id?: string | null;
+          frequency?: "monthly" | "quarterly" | "bi-annually" | "yearly" | null;
         };
         Relationships: Rel;
       };

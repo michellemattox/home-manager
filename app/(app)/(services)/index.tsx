@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -25,6 +25,21 @@ import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
 import { SERVICE_TYPES } from "@/types/app.types";
 import type { ServiceRecord } from "@/types/app.types";
 
+const FREQUENCIES = [
+  { label: "Monthly", value: "monthly" },
+  { label: "Quarterly", value: "quarterly" },
+  { label: "Bi-Annually", value: "bi-annually" },
+  { label: "Yearly", value: "yearly" },
+] as const;
+type ServiceFrequency = typeof FREQUENCIES[number]["value"];
+
+function getNextServiceDate(serviceDate: string, frequency: string | null): Date | null {
+  if (!frequency) return null;
+  const base = new Date(serviceDate);
+  const days = frequency === "monthly" ? 30 : frequency === "quarterly" ? 90 : frequency === "bi-annually" ? 180 : 365;
+  return new Date(base.getTime() + days * 86400000);
+}
+
 function ServiceRow({
   record,
   onEdit,
@@ -34,6 +49,9 @@ function ServiceRow({
   onEdit: () => void;
   onDelete: () => void;
 }) {
+  const nextDue = getNextServiceDate(record.service_date, record.frequency ?? null);
+  const nextDueStr = nextDue ? formatDate(nextDue.toISOString().slice(0, 10)) : null;
+
   return (
     <TouchableOpacity onPress={onEdit}>
       <Card className="mb-2">
@@ -46,6 +64,12 @@ function ServiceRow({
             <Text className="text-xs text-gray-400 mt-0.5">
               {formatDate(record.service_date)}
             </Text>
+            {record.frequency && (
+              <Text className="text-xs text-blue-500 mt-0.5">
+                {FREQUENCIES.find((f) => f.value === record.frequency)?.label ?? record.frequency}
+                {nextDueStr ? ` · Next: ${nextDueStr}` : ""}
+              </Text>
+            )}
             {record.notes && (
               <Text className="text-sm text-gray-400 mt-1" numberOfLines={2}>
                 {record.notes}
@@ -82,6 +106,7 @@ export default function ServicesScreen() {
   const [editDate, setEditDate] = useState("");
   const [editCost, setEditCost] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editFrequency, setEditFrequency] = useState<ServiceFrequency | null>(null);
 
   const openEdit = (record: ServiceRecord) => {
     setEditingRecord(record);
@@ -90,6 +115,7 @@ export default function ServicesScreen() {
     setEditDate(record.service_date);
     setEditCost((record.cost_cents / 100).toFixed(2));
     setEditNotes(record.notes ?? "");
+    setEditFrequency((record.frequency as ServiceFrequency) ?? null);
   };
 
   const handleSaveEdit = async () => {
@@ -104,6 +130,7 @@ export default function ServicesScreen() {
           service_date: editDate,
           cost_cents: displayToCents(editCost),
           notes: editNotes.trim() || null,
+          frequency: editFrequency ?? null,
         },
       });
       setEditingRecord(null);
@@ -306,6 +333,23 @@ export default function ServicesScreen() {
               numberOfLines={3}
               placeholder="What was repaired, warranty info..."
             />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Recurrence Frequency</Text>
+            <View className="flex-row flex-wrap gap-2 mb-6">
+              {FREQUENCIES.map((f) => (
+                <TouchableOpacity
+                  key={f.value}
+                  onPress={() => setEditFrequency(editFrequency === f.value ? null : f.value)}
+                  className={`px-4 py-2 rounded-xl border ${
+                    editFrequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${editFrequency === f.value ? "text-white" : "text-gray-700"}`}>
+                    {f.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <Button
               title="Save Changes"

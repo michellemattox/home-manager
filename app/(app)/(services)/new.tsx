@@ -21,6 +21,14 @@ import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 import { SERVICE_TYPES } from "@/types/app.types";
 import { displayToCents } from "@/utils/currencyUtils";
 
+const FREQUENCIES = [
+  { label: "Monthly", value: "monthly" },
+  { label: "Quarterly", value: "quarterly" },
+  { label: "Bi-Annually", value: "bi-annually" },
+  { label: "Yearly", value: "yearly" },
+] as const;
+type ServiceFrequency = typeof FREQUENCIES[number]["value"];
+
 const schema = z.object({
   vendorName: z.string().min(1, "Vendor name is required"),
   serviceType: z.string().min(1, "Service type is required"),
@@ -36,6 +44,8 @@ export default function NewServiceScreen() {
   const { household } = useHouseholdStore();
   const createRecord = useCreateServiceRecord();
   const { data: preferredVendors } = usePreferredVendors(household?.id);
+
+  const [frequency, setFrequency] = useState<ServiceFrequency | null>(null);
 
   const {
     control,
@@ -61,6 +71,7 @@ export default function NewServiceScreen() {
         cost_cents: displayToCents(data.cost),
         notes: data.notes ?? null,
         receipt_url: null,
+        frequency: frequency ?? null,
       });
       router.back();
     } catch (e: any) {
@@ -206,6 +217,28 @@ export default function NewServiceScreen() {
             />
           )}
         />
+
+        <Text className="text-sm font-medium text-gray-700 mb-2">
+          Recurrence Frequency (optional)
+        </Text>
+        <Text className="text-xs text-gray-400 mb-3">
+          Set if this service repeats — it will appear as a reminder on the Home dashboard.
+        </Text>
+        <View className="flex-row flex-wrap gap-2 mb-6">
+          {FREQUENCIES.map((f) => (
+            <TouchableOpacity
+              key={f.value}
+              onPress={() => setFrequency(frequency === f.value ? null : f.value)}
+              className={`px-4 py-2 rounded-xl border ${
+                frequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+              }`}
+            >
+              <Text className={`text-sm font-medium ${frequency === f.value ? "text-white" : "text-gray-700"}`}>
+                {f.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <Button
           title="Save Record"

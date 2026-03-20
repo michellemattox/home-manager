@@ -421,8 +421,26 @@ export default function TasksScreen() {
     return true;
   });
 
-  const overdueRecurring = visibleRecurring.filter((t) => isOverdue(t.next_due_date));
-  const upcomingRecurring = visibleRecurring.filter((t) => !isOverdue(t.next_due_date));
+  const overdueRecurring = visibleRecurring
+    .filter((t) => isOverdue(t.next_due_date))
+    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
+  const upcomingRecurring = visibleRecurring
+    .filter((t) => !isOverdue(t.next_due_date))
+    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
+
+  const sortedProjectTasks = [...visibleProjectTasks].sort((a, b) => {
+    if (!a.due_date && !b.due_date) return 0;
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
+    return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+  });
+
+  const sortedStandalone = [...visibleStandalone].sort((a, b) => {
+    if (!a.due_date && !b.due_date) return 0;
+    if (!a.due_date) return 1;
+    if (!b.due_date) return -1;
+    return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+  });
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -497,6 +515,7 @@ export default function TasksScreen() {
             {[...overdueRecurring, ...upcomingRecurring].map((task) => (
               <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} />
             ))}
+
             {visibleRecurring.length === 0 && (
               <View className="items-center py-12">
                 <Text className="text-4xl mb-3">🔄</Text>
@@ -512,12 +531,12 @@ export default function TasksScreen() {
         {/* ── PROJECT ADJACENT TAB ─────────────────────────────────────── */}
         {mode === "project-adjacent" && (
           <>
-            {visibleProjectTasks.length > 0 && (
+            {sortedProjectTasks.length > 0 && (
               <>
                 <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
                   Checklist Items
                 </Text>
-                {visibleProjectTasks.map((task) => (
+                {sortedProjectTasks.map((task) => (
                   <ProjectAdjacentCard
                     key={task.id}
                     task={task as any}
@@ -528,12 +547,12 @@ export default function TasksScreen() {
               </>
             )}
 
-            {visibleStandalone.length > 0 && (
+            {sortedStandalone.length > 0 && (
               <>
                 <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 mt-2">
                   Standalone
                 </Text>
-                {visibleStandalone.map((task) => (
+                {sortedStandalone.map((task) => (
                   <StandaloneTaskCard
                     key={task.id}
                     task={task}

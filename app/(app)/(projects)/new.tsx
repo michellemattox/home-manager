@@ -6,7 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -52,6 +52,7 @@ const PRIORITIES: { label: string; value: ProjectPriority }[] = [
 
 export default function NewProjectScreen() {
   const router = useRouter();
+  const { title: prefillTitle } = useLocalSearchParams<{ title?: string }>();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const createProject = useCreateProject();
@@ -70,6 +71,7 @@ export default function NewProjectScreen() {
   } = useForm<FormData>({
     resolver: zodResolver(schema),
     defaultValues: {
+      title: prefillTitle ?? "",
       status: "planned",
       priority: "medium",
       ownerIds: currentMember ? [currentMember.id] : [],
