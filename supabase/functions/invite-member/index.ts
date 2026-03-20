@@ -25,7 +25,7 @@ Deno.serve(async (req) => {
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
     );
 
-    const redirectTo = `home-manager://join?token=${token}`;
+    const redirectTo = `https://home-manager-michellemattoxs-projects.vercel.app/join?token=${token}`;
 
     // Check if a Supabase Auth user already exists for this email
     const { data: userList } = await supabaseAdmin.auth.admin.listUsers({ perPage: 1000 });
