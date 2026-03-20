@@ -2,6 +2,13 @@ import React from "react";
 import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
 import { useNotificationStore } from "@/stores/notificationStore";
+import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
+
+// Mounts the scheduler as a side-effect component inside the authenticated tab tree
+function NotificationScheduler() {
+  useNotificationScheduler();
+  return null;
+}
 
 function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
   return (
@@ -39,7 +46,9 @@ function TasksTabIcon({ focused }: { focused: boolean }) {
 
 export default function AppLayout() {
   return (
-    <Tabs
+    <>
+      <NotificationScheduler />
+      <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -111,5 +120,6 @@ export default function AppLayout() {
       <Tabs.Screen name="(vendors)" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
+    </>
   );
 }

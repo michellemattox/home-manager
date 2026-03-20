@@ -59,18 +59,19 @@ export interface ReminderCounts {
   dueSoonProjects: number;
   overdueTasks: number;
   dueSoonTasks: number;
+  overdueGoals: number;
 }
 
-export type ReminderFrequency = "daily" | "every_other_day" | "weekly";
+export type ReminderFrequency = "daily" | "every_other_day" | "weekly" | "monthly";
 
 export interface NotificationPrefs {
   overdueEnabled: boolean;
   dueSoonEnabled: boolean;
+  summaryEnabled: boolean;
   reminderHour: number; // 0-23
   reminderFrequency: ReminderFrequency;
 }
 
-// Schedule a single combined reminder. Call whenever app data changes.
 export async function scheduleItemReminders(
   counts: ReminderCounts,
   prefs: NotificationPrefs
@@ -80,34 +81,46 @@ export async function scheduleItemReminders(
   const Notifications = require("expo-notifications");
   await Notifications.cancelAllScheduledNotificationsAsync();
 
-  const { overdueProjects, dueSoonProjects, overdueTasks, dueSoonTasks } = counts;
-  const totalOverdue = overdueProjects + overdueTasks;
+  const { overdueProjects, dueSoonProjects, overdueTasks, dueSoonTasks, overdueGoals } = counts;
+  const totalOverdue = overdueProjects + overdueTasks + overdueGoals;
   const totalDueSoon = dueSoonProjects + dueSoonTasks;
 
-  const wantOverdue = prefs.overdueEnabled && totalOverdue > 0;
-  const wantDueSoon = prefs.dueSoonEnabled && totalDueSoon > 0;
+  let title: string;
+  let body: string;
 
-  if (!wantOverdue && !wantDueSoon) return;
+  if (prefs.summaryEnabled) {
+    // Summary digest — always send, even if nothing is overdue
+    const parts: string[] = [];
+    if (totalOverdue > 0) parts.push(`${totalOverdue} overdue`);
+    if (totalDueSoon > 0) parts.push(`${totalDueSoon} due soon`);
+    title = "🏠 Home Summary";
+    body =
+      parts.length > 0
+        ? parts.join(", ") + " across tasks, projects & goals"
+        : "Everything is up to date — great job!";
+  } else {
+    const wantOverdue = prefs.overdueEnabled && totalOverdue > 0;
+    const wantDueSoon = prefs.dueSoonEnabled && totalDueSoon > 0;
+    if (!wantOverdue && !wantDueSoon) return;
 
-  // Build a single combined notification
-  const parts: string[] = [];
-  if (wantOverdue) parts.push(`${totalOverdue} overdue`);
-  if (wantDueSoon) parts.push(`${totalDueSoon} due soon`);
-  const title = parts.join(", ") + ` item${(totalOverdue + totalDueSoon) !== 1 ? "s" : ""}`;
+    const titleParts: string[] = [];
+    if (wantOverdue) titleParts.push(`${totalOverdue} overdue`);
+    if (wantDueSoon) titleParts.push(`${totalDueSoon} due soon`);
+    title =
+      titleParts.join(", ") +
+      ` item${totalOverdue + totalDueSoon !== 1 ? "s" : ""}`;
 
-  const bodyParts: string[] = [];
-  if (wantOverdue) bodyParts.push(buildBody(overdueProjects, overdueTasks, "overdue"));
-  if (wantDueSoon) bodyParts.push(buildBody(dueSoonProjects, dueSoonTasks, "due soon"));
+    const bodyParts: string[] = [];
+    if (wantOverdue) bodyParts.push(buildBody(overdueProjects, overdueTasks, overdueGoals, "overdue"));
+    if (wantDueSoon) bodyParts.push(buildBody(dueSoonProjects, dueSoonTasks, 0, "due soon"));
+    body = bodyParts.join(" ");
+  }
 
   const trigger = buildTrigger(prefs.reminderHour, prefs.reminderFrequency);
 
   await Notifications.scheduleNotificationAsync({
     identifier: "home-reminder",
-    content: {
-      title,
-      body: bodyParts.join(" "),
-      sound: true,
-    },
+    content: { title, body, sound: true },
     trigger,
   });
 }
@@ -118,22 +131,44 @@ export async function cancelAllReminders(): Promise<void> {
   await Notifications.cancelAllScheduledNotificationsAsync();
 }
 
-function buildTrigger(hour: number, frequency: ReminderFrequency): { seconds: number; repeats: boolean } {
-  const frequencyDays = frequency === "weekly" ? 7 : frequency === "every_other_day" ? 2 : 1;
-  const now = new Date();
+/**
+ * Build the expo-notifications trigger for the given hour and frequency.
+ *
+ * - daily:          Calendar trigger — fires every day at `hour:00` regardless of when scheduled.
+ * - every_other_day: One-shot firing 2 days from now at `hour:00`; rescheduled on next app open.
+ * - weekly:          One-shot firing 7 days from now at `hour:00`.
+ * - monthly:         One-shot firing 30 days from now at `hour:00`.
+ *
+ * The one-shot approach means non-daily frequencies fire at the correct clock time and
+ * get rescheduled each time the app is opened (via useNotificationScheduler).
+ */
+function buildTrigger(hour: number, frequency: ReminderFrequency): object {
+  if (frequency === "daily") {
+    // DailyTriggerInput — repeats every day at the chosen hour, no drift
+    return { hour, minute: 0, repeats: true };
+  }
+
+  const intervalDays =
+    frequency === "monthly" ? 30 : frequency === "weekly" ? 7 : 2;
+
+  // Schedule the one-shot for intervalDays from now at the chosen hour
   const next = new Date();
+  next.setDate(next.getDate() + intervalDays);
   next.setHours(hour, 0, 0, 0);
-  if (next <= now) next.setDate(next.getDate() + 1);
-  // For non-daily, if next occurrence would be sooner than the interval, push it out
-  const seconds = Math.floor((next.getTime() - now.getTime()) / 1000);
-  // We schedule repeating at the interval in seconds; expo-notifications handles repeat
-  const intervalSeconds = frequencyDays * 24 * 3600;
-  return { seconds: Math.max(seconds, intervalSeconds), repeats: true };
+
+  const seconds = Math.max(60, Math.floor((next.getTime() - Date.now()) / 1000));
+  return { seconds };
 }
 
-function buildBody(projectCount: number, taskCount: number, label: string): string {
+function buildBody(
+  projectCount: number,
+  taskCount: number,
+  goalCount: number,
+  label: string
+): string {
   const parts: string[] = [];
   if (projectCount > 0) parts.push(`${projectCount} project${projectCount !== 1 ? "s" : ""}`);
   if (taskCount > 0) parts.push(`${taskCount} task${taskCount !== 1 ? "s" : ""}`);
-  return parts.join(" & ") + ` ${label}.`;
+  if (goalCount > 0) parts.push(`${goalCount} goal${goalCount !== 1 ? "s" : ""}`);
+  return parts.join(", ") + ` ${label}.`;
 }
