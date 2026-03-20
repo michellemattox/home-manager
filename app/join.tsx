@@ -40,8 +40,9 @@ export default function JoinScreen() {
       .then(({ data }) => {
         setInvite(data);
         if (data?.name) setDisplayName(data.name);
-        setChecking(false);
-      });
+      })
+      .catch(() => {})
+      .finally(() => setChecking(false));
   }, [activeToken]);
 
   const handleLookupToken = () => {
