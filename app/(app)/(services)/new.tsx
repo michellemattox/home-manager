@@ -1,10 +1,9 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Alert,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -14,7 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
 import { DateInput } from "@/components/ui/DateInput";
 import { Button } from "@/components/ui/Button";
-import { showAlert, showConfirm } from "@/lib/alert";
+import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useCreateServiceRecord } from "@/hooks/useServices";
 import { usePreferredVendors } from "@/hooks/usePreferredVendors";
