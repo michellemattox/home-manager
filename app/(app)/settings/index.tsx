@@ -69,7 +69,7 @@ export default function SettingsScreen() {
   const handleSendInvite = async () => {
     if (!household || !currentMember || !inviteEmail.trim() || !inviteName.trim()) return;
     try {
-      await sendInvite.mutateAsync({
+      const result = await sendInvite.mutateAsync({
         householdId: household.id,
         email: inviteEmail.trim().toLowerCase(),
         name: inviteName.trim(),
@@ -80,7 +80,14 @@ export default function SettingsScreen() {
       setInviteName("");
       setInviteEmail("");
       setInviteRole("editor");
-      showAlert("Invite sent", `${inviteName} will receive an email to join.`);
+      if ((result as any).emailSent) {
+        showAlert("Invite sent", `${inviteName} will receive an email to join.`);
+      } else {
+        showAlert(
+          "Invite saved — email not sent",
+          `The invite record was created for ${inviteName} but the email could not be delivered.\n\nTo enable email invites, deploy the Edge Function:\n  supabase functions deploy invite-member`
+        );
+      }
     } catch (e: any) {
       showAlert("Error", e.message);
     }
@@ -112,7 +119,13 @@ export default function SettingsScreen() {
     showConfirm(
       "Remove member?",
       `Remove ${name} from this household?`,
-      () => deleteMember.mutate({ id, householdId: household.id }),
+      async () => {
+        try {
+          await deleteMember.mutateAsync({ id, householdId: household.id });
+        } catch (e: any) {
+          showAlert("Error", e.message || "Failed to remove member. Ensure migration 016 has been run in Supabase.");
+        }
+      },
       true
     );
   };

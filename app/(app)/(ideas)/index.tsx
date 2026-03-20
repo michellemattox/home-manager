@@ -172,7 +172,11 @@ export default function IdeasScreen() {
   const waitlistedIdeas = ideas.filter((i) => i.status === "waitlisted");
 
   const handleSaveIdea = async () => {
-    if (!subject.trim() || !household || !currentMember) return;
+    if (!subject.trim()) return;
+    if (!household || !currentMember) {
+      showAlert("Error", "Could not identify your household profile. Try signing out and back in.");
+      return;
+    }
     try {
       await createIdea.mutateAsync({
         householdId: household.id,

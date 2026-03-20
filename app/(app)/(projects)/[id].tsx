@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Alert,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -336,6 +337,29 @@ export default function ProjectDetailScreen() {
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
+  const handleQuickMoveToChecklist = (task: ProjectTask) => {
+    const currentChecklist = task.checklist_name ?? "General";
+    const others = checklistNames.filter((n) => n !== currentChecklist);
+    if (others.length === 0) {
+      showAlert("No other checklists", "Add another checklist section first.");
+      return;
+    }
+    Alert.alert(
+      "Move to Checklist",
+      `Move "${task.title}" to:`,
+      [
+        { text: "Cancel", style: "cancel" },
+        ...others.map((name) => ({
+          text: name,
+          onPress: () =>
+            updateTask
+              .mutateAsync({ id: task.id, project_id: task.project_id, updates: { checklist_name: name } })
+              .catch((e: any) => showAlert("Error", e.message)),
+        })),
+      ]
+    );
+  };
+
   const handleMoveTask = async (task: ProjectTask, direction: "up" | "down") => {
     const checklistName = task.checklist_name ?? "General";
     const group = (allTasks)
@@ -619,10 +643,17 @@ export default function ProjectDetailScreen() {
                           <Text className="text-gray-300 text-xs leading-none">▼</Text>
                         </TouchableOpacity>
                         <TouchableOpacity
+                          onPress={(e) => { e.stopPropagation(); handleQuickMoveToChecklist(task); }}
+                          className="px-1 py-0.5"
+                        >
+                          <Text className="text-blue-300 text-xs leading-none">⇄</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
                           onPress={(e) => {
                             e.stopPropagation();
                             showConfirm("Remove task?", `"${task.title}"`, () => {
-                              deleteTask.mutate({ id: task.id, project_id: task.project_id });
+                              deleteTask.mutateAsync({ id: task.id, project_id: task.project_id })
+                                .catch((err: any) => showAlert("Error", err.message));
                             }, true);
                           }}
                           className="px-1 py-0.5 mt-0.5"

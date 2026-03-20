@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  Alert,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -135,6 +136,7 @@ function TaskRow({
   onDelete,
   onMoveUp,
   onMoveDown,
+  onMoveToChecklist,
 }: {
   task: TripTask;
   members: { id: string; display_name: string; color_hex: string }[];
@@ -143,6 +145,7 @@ function TaskRow({
   onDelete: () => void;
   onMoveUp: () => void;
   onMoveDown: () => void;
+  onMoveToChecklist: () => void;
 }) {
   const assignedMember = task.assigned_member_id
     ? members.find((m) => m.id === task.assigned_member_id)
@@ -174,6 +177,9 @@ function TaskRow({
         </TouchableOpacity>
         <TouchableOpacity onPress={(e) => { e.stopPropagation(); onMoveDown(); }} className="px-1 py-0.5">
           <Text className="text-gray-300 text-xs leading-none">▼</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onMoveToChecklist(); }} className="px-1 py-0.5">
+          <Text className="text-gray-300 text-xs leading-none">⇄</Text>
         </TouchableOpacity>
         <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDelete(); }} className="px-1 py-0.5 mt-0.5">
           <Text className="text-gray-300 text-base leading-none">×</Text>
@@ -380,11 +386,35 @@ export default function TripDetailScreen() {
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
+  const handleQuickMoveToChecklist = (task: TripTask) => {
+    const currentChecklist = task.checklist_name ?? "General";
+    const others = checklistNames.filter((n) => n !== currentChecklist);
+    if (others.length === 0) {
+      showAlert("No other checklists", "Add another checklist first to move tasks between them.");
+      return;
+    }
+    Alert.alert(
+      "Move to Checklist",
+      `Move "${task.title}" to:`,
+      [
+        { text: "Cancel", style: "cancel" },
+        ...others.map((name) => ({
+          text: name,
+          onPress: () =>
+            updateTask
+              .mutateAsync({ id: task.id, tripId: task.trip_id, updates: { checklist_name: name } })
+              .catch((e: any) => showAlert("Error", e.message)),
+        })),
+      ]
+    );
+  };
+
   const handleDelete = (task: TripTask) => {
     showConfirm(
       "Remove task?",
       `"${task.title}" will be removed.`,
-      () => deleteTask.mutate({ taskId: task.id, tripId: task.trip_id }),
+      () => deleteTask.mutateAsync({ taskId: task.id, tripId: task.trip_id })
+        .catch((e: any) => showAlert("Error", e.message)),
       true
     );
   };
@@ -488,6 +518,7 @@ export default function TripDetailScreen() {
                     onDelete={() => handleDelete(task)}
                     onMoveUp={() => handleMoveTask(task, "up")}
                     onMoveDown={() => handleMoveTask(task, "down")}
+                    onMoveToChecklist={() => handleQuickMoveToChecklist(task)}
                   />
                 ))
               )}
