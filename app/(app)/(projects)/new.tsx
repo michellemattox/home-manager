@@ -454,33 +454,46 @@ export default function NewProjectScreen() {
           ))}
         </View>
 
-        {/* Owners */}
-        <Text className="text-sm font-medium text-gray-700 mb-2">Owners</Text>
+        {/* Assign To */}
+        <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
         <Controller
           control={control}
           name="ownerIds"
-          render={({ field: { onChange, value } }) => (
-            <View className="flex-row flex-wrap gap-2 mb-6">
-              {members.map((m) => {
-                const selected = value.includes(m.id);
-                return (
-                  <TouchableOpacity
-                    key={m.id}
-                    onPress={() =>
-                      onChange(selected ? value.filter((id) => id !== m.id) : [...value, m.id])
-                    }
-                    className={`px-3 py-1.5 rounded-full border ${
-                      selected ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                    }`}
-                  >
-                    <Text className={`text-sm font-medium ${selected ? "text-white" : "text-gray-700"}`}>
-                      {m.display_name}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </View>
-          )}
+          render={({ field: { onChange, value } }) => {
+            const allSelected = members.length > 0 && members.every((m) => value.includes(m.id));
+            return (
+              <View className="flex-row flex-wrap gap-2 mb-6">
+                <TouchableOpacity
+                  onPress={() => onChange(allSelected ? [] : members.map((m) => m.id))}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    allSelected ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${allSelected ? "text-white" : "text-gray-700"}`}>
+                    All
+                  </Text>
+                </TouchableOpacity>
+                {members.map((m) => {
+                  const selected = value.includes(m.id);
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() =>
+                        onChange(selected ? value.filter((id) => id !== m.id) : [...value, m.id])
+                      }
+                      className={`px-3 py-1.5 rounded-full border ${
+                        selected ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`text-sm font-medium ${selected ? "text-white" : "text-gray-700"}`}>
+                        {m.display_name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            );
+          }}
         />
 
         <Button

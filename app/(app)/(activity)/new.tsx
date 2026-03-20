@@ -34,6 +34,7 @@ export default function NewActivityScreen() {
   const { user } = useAuthStore();
   const createTrip = useCreateTrip();
   const currentMember = members.find((m) => m.user_id === user?.id);
+  const [assignedTo, setAssignedTo] = React.useState<string>("all");
 
   const {
     control,
@@ -60,6 +61,7 @@ export default function NewActivityScreen() {
         created_by: currentMember.id,
         uses_vendor: false,
         primary_vendor_id: null,
+        assigned_to: assignedTo,
       });
       router.replace(`/(app)/(activity)/${trip.id}`);
     } catch (e: any) {
@@ -153,6 +155,24 @@ export default function NewActivityScreen() {
             />
           )}
         />
+
+        {/* Assign To */}
+        <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
+        <View className="flex-row flex-wrap gap-2 mb-6">
+          {[{ label: "All", value: "all" }, ...members.map((m) => ({ label: m.display_name, value: m.display_name }))].map((opt) => (
+            <TouchableOpacity
+              key={opt.value}
+              onPress={() => setAssignedTo(opt.value)}
+              className={`px-3 py-1.5 rounded-full border ${
+                assignedTo === opt.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+              }`}
+            >
+              <Text className={`text-sm font-medium ${assignedTo === opt.value ? "text-white" : "text-gray-700"}`}>
+                {opt.label}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
 
         <Button
           title="Create Activity"

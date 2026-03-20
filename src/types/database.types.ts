@@ -255,6 +255,7 @@ export interface Database {
           created_at: string;
           uses_vendor: boolean;
           primary_vendor_id: string | null;
+          assigned_to: string | null;
         };
         Insert: {
           id?: string;
@@ -268,6 +269,7 @@ export interface Database {
           created_at?: string;
           uses_vendor?: boolean;
           primary_vendor_id?: string | null;
+          assigned_to?: string | null;
         };
         Update: {
           id?: string;
@@ -281,6 +283,7 @@ export interface Database {
           created_at?: string;
           uses_vendor?: boolean;
           primary_vendor_id?: string | null;
+          assigned_to?: string | null;
         };
         Relationships: Rel;
       };
