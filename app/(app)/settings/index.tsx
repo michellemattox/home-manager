@@ -53,7 +53,24 @@ export default function SettingsScreen() {
     summaryEnabled, setSummaryEnabled,
     reminderHour, setReminderHour,
     reminderFrequency, setReminderFrequency,
+    notifyMemberIds, setNotifyMemberIds,
   } = useNotificationStore();
+
+  const isAllMembers = notifyMemberIds.includes("all") || notifyMemberIds.length === 0;
+
+  const toggleMember = (id: string) => {
+    if (id === "all") {
+      setNotifyMemberIds(["all"]);
+      return;
+    }
+    // Deselect "all", toggle this individual member
+    const current = notifyMemberIds.filter((x) => x !== "all");
+    const next = current.includes(id)
+      ? current.filter((x) => x !== id)
+      : [...current, id];
+    // If all individuals are now selected, collapse back to "all"
+    setNotifyMemberIds(next.length === 0 ? ["all"] : next.length === members.length ? ["all"] : next);
+  };
 
   const { data: invites = [] } = useHouseholdInvites(household?.id);
   const sendInvite = useSendInvite();
@@ -323,6 +340,43 @@ export default function SettingsScreen() {
               thumbColor="#fff"
             />
           </View>
+          {/* Member filter */}
+          <Text className="text-sm font-semibold text-gray-700 mb-2">Notify me about</Text>
+          <View className="flex-row flex-wrap gap-2 mb-4">
+            {/* All chip */}
+            <TouchableOpacity
+              onPress={() => toggleMember("all")}
+              className={`px-3 py-1.5 rounded-xl border ${
+                isAllMembers ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+              }`}
+            >
+              <Text className={`text-sm font-medium ${isAllMembers ? "text-white" : "text-gray-700"}`}>
+                All
+              </Text>
+            </TouchableOpacity>
+            {/* Individual member chips */}
+            {members.map((m) => {
+              const selected = !isAllMembers && notifyMemberIds.includes(m.id);
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => toggleMember(m.id)}
+                  className={`flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl border ${
+                    selected ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <View
+                    className="w-2 h-2 rounded-full"
+                    style={{ backgroundColor: selected ? "#fff" : (m.color_hex ?? "#3b82f6") }}
+                  />
+                  <Text className={`text-sm font-medium ${selected ? "text-white" : "text-gray-700"}`}>
+                    {m.display_name}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
           <Text className="text-sm font-semibold text-gray-700 mb-2">Reminder time</Text>
           <View className="flex-row flex-wrap gap-2 mb-4">
             {[7, 8, 9, 12, 17, 20].map((h) => (
