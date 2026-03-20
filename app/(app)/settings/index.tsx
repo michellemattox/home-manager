@@ -92,7 +92,8 @@ export default function SettingsScreen() {
       await resendInvite.mutateAsync({ ...inv, householdId: household.id });
       showAlert("Sent", `Invite re-sent to ${inv.email}`);
     } catch (e: any) {
-      showAlert("Error", e.message);
+      // Edge Function may not be deployed yet — show as info rather than error
+      showAlert("Notice", e.message ?? "Could not send email. The invite record exists and the email will send once the notification service is deployed.");
     }
   };
 

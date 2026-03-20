@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   TextInput,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -21,18 +22,36 @@ import {
 } from "@/hooks/useIdeas";
 import { useCreateTask } from "@/hooks/useTasks";
 import { useCreateProject } from "@/hooks/useProjects";
+import { useProjects } from "@/hooks/useProjects";
 import { useCreateTrip } from "@/hooks/useTrips";
+import { useCreateRecurringTask } from "@/hooks/useRecurringTasks";
+import { useAddProjectTask } from "@/hooks/useProjectTasks";
 import { Card } from "@/components/ui/Card";
+import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateShort } from "@/utils/dateUtils";
-import type { Idea } from "@/types/app.types";
+import { toISODateString } from "@/utils/dateUtils";
+import { frequencyToDays } from "@/utils/scheduleUtils";
+import type { Idea, ProjectWithOwners, FrequencyType } from "@/types/app.types";
+
+type TaskMode = "low-lift" | "project-adjacent";
+
+const FREQUENCIES: { label: string; value: FrequencyType }[] = [
+  { label: "Daily", value: "daily" },
+  { label: "Weekly", value: "weekly" },
+  { label: "Monthly", value: "monthly" },
+  { label: "Yearly", value: "yearly" },
+  { label: "Custom", value: "custom" },
+];
 
 function IdeaCard({
   idea,
   householdId,
   authorName,
   onWaitlist,
-  onConvert,
+  onConvertProject,
+  onConvertActivity,
+  onConvertTask,
   onEdit,
   onDelete,
 }: {
@@ -40,7 +59,9 @@ function IdeaCard({
   householdId: string;
   authorName?: string;
   onWaitlist: () => void;
-  onConvert: (type: "task" | "project" | "activity") => void;
+  onConvertProject: () => void;
+  onConvertActivity: () => void;
+  onConvertTask: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
@@ -63,19 +84,19 @@ function IdeaCard({
 
       <View className="flex-row flex-wrap gap-2 mt-1">
         <TouchableOpacity
-          onPress={() => onConvert("task")}
+          onPress={onConvertTask}
           className="px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200"
         >
           <Text className="text-xs font-semibold text-amber-700">→ Task</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => onConvert("project")}
+          onPress={onConvertProject}
           className="px-3 py-1.5 rounded-full bg-blue-50 border border-blue-200"
         >
           <Text className="text-xs font-semibold text-blue-700">→ Project</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          onPress={() => onConvert("activity")}
+          onPress={onConvertActivity}
           className="px-3 py-1.5 rounded-full bg-purple-50 border border-purple-200"
         >
           <Text className="text-xs font-semibold text-purple-700">→ Activity</Text>
@@ -106,6 +127,7 @@ export default function IdeasScreen() {
   const currentMember = members.find((m) => m.user_id === user?.id);
 
   const { data: ideas = [], isLoading, refetch } = useIdeas(household?.id);
+  const { data: projects = [] } = useProjects(household?.id);
   const createIdea = useCreateIdea();
   const updateIdea = useUpdateIdea();
   const waitlistIdea = useWaitlistIdea();
@@ -114,6 +136,8 @@ export default function IdeasScreen() {
   const createTask = useCreateTask();
   const createProject = useCreateProject();
   const createTrip = useCreateTrip();
+  const createRecurring = useCreateRecurringTask();
+  const addProjectTask = useAddProjectTask();
 
   // Intake form
   const [subject, setSubject] = useState("");
@@ -127,6 +151,22 @@ export default function IdeasScreen() {
 
   // Collapsed waitlist
   const [showWaitlisted, setShowWaitlisted] = useState(false);
+
+  // ── Task conversion modal ──────────────────────────────────────────────────
+  const [taskModalIdea, setTaskModalIdea] = useState<Idea | null>(null);
+  const [taskMode, setTaskMode] = useState<TaskMode>("low-lift");
+
+  // Low-Lift fields
+  const [llFrequency, setLlFrequency] = useState<FrequencyType>("monthly");
+  const [llCustomDays, setLlCustomDays] = useState("");
+  const [llAnchorDate, setLlAnchorDate] = useState(toISODateString(new Date()));
+  const [llAssignedId, setLlAssignedId] = useState<string | null>(null);
+
+  // Project Adjacent fields
+  const [paSelectedProjectId, setPaSelectedProjectId] = useState<string | null>(null);
+  const [paChecklistName, setPaChecklistName] = useState("General");
+  const [paDueDate, setPaDueDate] = useState("");
+  const [paAssignedId, setPaAssignedId] = useState<string | null>(null);
 
   const activeIdeas = ideas.filter((i) => i.status === "new");
   const waitlistedIdeas = ideas.filter((i) => i.status === "waitlisted");
@@ -147,62 +187,143 @@ export default function IdeasScreen() {
     }
   };
 
-  const handleConvert = async (idea: Idea, type: "task" | "project" | "activity") => {
-    if (!household || !currentMember) return;
-    const title = idea.subject ?? idea.body ?? "Untitled";
-    const desc = idea.description ?? undefined;
+  const openTaskModal = (idea: Idea) => {
+    setTaskModalIdea(idea);
+    setTaskMode("low-lift");
+    setLlFrequency("monthly");
+    setLlCustomDays("");
+    setLlAnchorDate(toISODateString(new Date()));
+    setLlAssignedId(null);
+    setPaSelectedProjectId(null);
+    setPaChecklistName("General");
+    setPaDueDate("");
+    setPaAssignedId(null);
+  };
+
+  const handleConvertToTask = async () => {
+    if (!taskModalIdea || !household || !currentMember) return;
+    const title = taskModalIdea.subject ?? taskModalIdea.body ?? "Untitled";
+    const notes = taskModalIdea.description ?? null;
     try {
       let convertedId = "";
-
-      if (type === "task") {
-        const task = await createTask.mutateAsync({
+      if (taskMode === "low-lift") {
+        const today = toISODateString(new Date());
+        const anchorDate = llAnchorDate || today;
+        const freqDays = llFrequency === "custom"
+          ? parseInt(llCustomDays || "30", 10)
+          : frequencyToDays(llFrequency);
+        const rt = await createRecurring.mutateAsync({
           household_id: household.id,
           title,
-          notes: desc ?? null,
-          due_date: null,
-          due_time: null,
-          assigned_member_id: null,
-          linked_event_type: null,
-          linked_event_id: null,
+          description: notes,
+          category: null,
+          frequency_type: llFrequency,
+          frequency_days: freqDays,
+          anchor_date: anchorDate,
+          next_due_date: anchorDate,
+          assigned_member_id: llAssignedId,
+          is_active: true,
+          time_of_day: null,
+          is_personal: false,
         });
-        convertedId = task.id;
-      } else if (type === "project") {
-        const project = await createProject.mutateAsync({
+        convertedId = rt.id;
+      } else {
+        if (paSelectedProjectId) {
+          await addProjectTask.mutateAsync({
+            project_id: paSelectedProjectId,
+            title,
+            sort_order: 9999,
+            checklist_name: paChecklistName,
+            assigned_member_id: paAssignedId,
+            due_date: paDueDate || null,
+            notes,
+          });
+          convertedId = paSelectedProjectId;
+        } else {
+          const t = await createTask.mutateAsync({
+            household_id: household.id,
+            title,
+            notes,
+            due_date: paDueDate || null,
+            due_time: null,
+            assigned_member_id: paAssignedId,
+            linked_event_type: null,
+            linked_event_id: null,
+            is_personal: false,
+          });
+          convertedId = t.id;
+        }
+      }
+      await convertIdea.mutateAsync({
+        id: taskModalIdea.id,
+        householdId: household.id,
+        convertedToType: "task",
+        convertedToId: convertedId,
+      });
+      setTaskModalIdea(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleConvertToProject = async (idea: Idea) => {
+    if (!household || !currentMember) return;
+    const title = idea.subject ?? idea.body ?? "Untitled";
+    const desc = idea.description ?? null;
+    try {
+      const project = await createProject.mutateAsync({
+        project: {
           household_id: household.id,
           title,
-          description: desc ?? null,
+          description: desc,
           status: "planned",
           priority: "medium",
           created_by: currentMember.id,
           estimated_cost_cents: 0,
           total_cost_cents: 0,
-        });
-        convertedId = project.id;
-        // Add current member as owner
-        await (await import("@/lib/supabase")).supabase
-          .from("project_owners")
-          .insert({ project_id: project.id, member_id: currentMember.id });
-      } else {
-        const today = new Date().toISOString().slice(0, 10);
-        const trip = await createTrip.mutateAsync({
-          household_id: household.id,
-          title,
-          destination: desc ?? "",
-          departure_date: today,
-          return_date: today,
+          category: null,
+          expected_date: null,
+          completed_at: null,
           notes: null,
-          created_by: currentMember.id,
+          contractor_name: null,
           uses_vendor: false,
           primary_vendor_id: null,
-        });
-        convertedId = trip.id;
-      }
-
+        },
+        ownerIds: [currentMember.id],
+      });
       await convertIdea.mutateAsync({
         id: idea.id,
         householdId: household.id,
-        convertedToType: type,
-        convertedToId: convertedId,
+        convertedToType: "project",
+        convertedToId: project.id,
+      });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleConvertToActivity = async (idea: Idea) => {
+    if (!household || !currentMember) return;
+    const title = idea.subject ?? idea.body ?? "Untitled";
+    const desc = idea.description ?? "";
+    try {
+      const today = new Date().toISOString().slice(0, 10);
+      const trip = await createTrip.mutateAsync({
+        household_id: household.id,
+        title,
+        destination: desc || "",
+        departure_date: today,
+        return_date: today,
+        notes: null,
+        created_by: currentMember.id,
+        uses_vendor: false,
+        primary_vendor_id: null,
+      });
+      await convertIdea.mutateAsync({
+        id: idea.id,
+        householdId: household.id,
+        convertedToType: "activity",
+        convertedToId: trip.id,
       });
     } catch (e: any) {
       showAlert("Error", e.message);
@@ -302,12 +423,22 @@ export default function IdeasScreen() {
         householdId={household?.id ?? ""}
         authorName={authorName}
         onWaitlist={() => handleWaitlist(idea)}
-        onConvert={(type) => handleConvert(idea, type)}
+        onConvertTask={() => openTaskModal(idea)}
+        onConvertProject={() => handleConvertToProject(idea)}
+        onConvertActivity={() => handleConvertToActivity(idea)}
         onEdit={() => startEdit(idea)}
         onDelete={() => handleDelete(idea)}
       />
     );
   };
+
+  // Project Adjacent checklist sections for the selected project
+  const paProject = projects.find((p) => p.id === paSelectedProjectId) as ProjectWithOwners | undefined;
+  const paSections = paProject
+    ? Array.from(new Set(((paProject as any).project_tasks ?? []).map((t: any) => t.checklist_name ?? "General"))) as string[]
+    : ["General"];
+
+  const isConverting = createRecurring.isPending || createTask.isPending || addProjectTask.isPending || createProject.isPending || convertIdea.isPending;
 
   return (
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
@@ -403,6 +534,192 @@ export default function IdeasScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* ── Task Conversion Modal ──────────────────────────────────────────── */}
+      <Modal
+        visible={!!taskModalIdea}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setTaskModalIdea(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setTaskModalIdea(null)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Convert to Task</Text>
+          </View>
+
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            {taskModalIdea && (
+              <View className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 mb-4">
+                <Text className="text-sm font-semibold text-amber-900">
+                  {taskModalIdea.subject ?? taskModalIdea.body}
+                </Text>
+                {taskModalIdea.description ? (
+                  <Text className="text-xs text-amber-700 mt-1">{taskModalIdea.description}</Text>
+                ) : null}
+              </View>
+            )}
+
+            {/* Mode toggle */}
+            <View className="flex-row bg-gray-100 rounded-xl p-1 mb-5">
+              {(["low-lift", "project-adjacent"] as TaskMode[]).map((m) => (
+                <TouchableOpacity
+                  key={m}
+                  onPress={() => setTaskMode(m)}
+                  className={`flex-1 py-2 rounded-lg items-center ${taskMode === m ? "bg-white shadow-sm" : ""}`}
+                >
+                  <Text className={`text-sm font-semibold ${taskMode === m ? "text-gray-900" : "text-gray-500"}`}>
+                    {m === "low-lift" ? "Low-Lift" : "Project Adjacent"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* ── LOW-LIFT ───────────────────────────────────────────────── */}
+            {taskMode === "low-lift" && (
+              <>
+                <DateInput
+                  label="Start / Due Date"
+                  value={llAnchorDate}
+                  onChange={setLlAnchorDate}
+                  hint="First occurrence — frequency repeats from this date"
+                />
+
+                <Text className="text-sm font-medium text-gray-700 mb-2">Frequency</Text>
+                <View className="flex-row flex-wrap gap-2 mb-4">
+                  {FREQUENCIES.map((f) => (
+                    <TouchableOpacity
+                      key={f.value}
+                      onPress={() => setLlFrequency(f.value)}
+                      className={`px-4 py-2 rounded-xl border ${
+                        llFrequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`font-medium text-sm ${llFrequency === f.value ? "text-white" : "text-gray-700"}`}>
+                        {f.label}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                {llFrequency === "custom" && (
+                  <TextInput
+                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 mb-4"
+                    value={llCustomDays}
+                    onChangeText={setLlCustomDays}
+                    placeholder="Every how many days? e.g. 45"
+                    placeholderTextColor="#9ca3af"
+                    keyboardType="number-pad"
+                  />
+                )}
+
+                <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
+                <View className="flex-row flex-wrap gap-2 mb-6">
+                  {members.map((m) => (
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => setLlAssignedId(llAssignedId === m.id ? null : m.id)}
+                      className={`px-3 py-1.5 rounded-full border ${
+                        llAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`text-sm font-medium ${llAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
+                        {m.display_name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            {/* ── PROJECT ADJACENT ───────────────────────────────────────── */}
+            {taskMode === "project-adjacent" && (
+              <>
+                <DateInput
+                  label="Due Date (optional)"
+                  value={paDueDate}
+                  onChange={setPaDueDate}
+                />
+
+                <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
+                <View className="flex-row flex-wrap gap-2 mb-4">
+                  {members.map((m) => (
+                    <TouchableOpacity
+                      key={m.id}
+                      onPress={() => setPaAssignedId(paAssignedId === m.id ? null : m.id)}
+                      className={`px-3 py-1.5 rounded-full border ${
+                        paAssignedId === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`text-sm font-medium ${paAssignedId === m.id ? "text-white" : "text-gray-700"}`}>
+                        {m.display_name}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text className="text-sm font-medium text-gray-700 mb-2">
+                  Link to Project (optional)
+                </Text>
+                <View className="flex-row flex-wrap gap-2 mb-4">
+                  {projects.map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      onPress={() => {
+                        setPaSelectedProjectId(paSelectedProjectId === p.id ? null : p.id);
+                        setPaChecklistName("General");
+                      }}
+                      className={`px-3 py-1.5 rounded-full border ${
+                        paSelectedProjectId === p.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`text-sm font-medium ${paSelectedProjectId === p.id ? "text-white" : "text-gray-700"}`}>
+                        {p.title}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                  {projects.length === 0 && (
+                    <Text className="text-sm text-gray-400">No active projects — task will be standalone.</Text>
+                  )}
+                </View>
+
+                {paSelectedProjectId && (
+                  <>
+                    <Text className="text-sm font-medium text-gray-700 mb-2">Checklist Section</Text>
+                    <View className="flex-row flex-wrap gap-2 mb-6">
+                      {(paSections.length > 0 ? paSections : ["General"]).map((name) => (
+                        <TouchableOpacity
+                          key={name}
+                          onPress={() => setPaChecklistName(name)}
+                          className={`px-3 py-1.5 rounded-full border ${
+                            paChecklistName === name ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
+                          }`}
+                        >
+                          <Text className={`text-sm font-medium ${paChecklistName === name ? "text-white" : "text-gray-700"}`}>
+                            {name}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </>
+                )}
+              </>
+            )}
+
+            <TouchableOpacity
+              onPress={handleConvertToTask}
+              disabled={isConverting}
+              className={`py-3 rounded-xl items-center ${isConverting ? "bg-gray-200" : "bg-amber-500"}`}
+            >
+              <Text className={`text-sm font-semibold ${isConverting ? "text-gray-400" : "text-white"}`}>
+                {isConverting ? "Converting..." : "Convert to Task"}
+              </Text>
+            </TouchableOpacity>
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }

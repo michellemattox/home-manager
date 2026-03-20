@@ -89,6 +89,22 @@ export default function AppLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="(goals)"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="🎯" label="Goals" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
+        name="(garden)"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="🌱" label="Garden" focused={focused} />
+          ),
+        }}
+      />
       {/* Hidden tabs — content moved into Projects sub-tabs or Home settings */}
       <Tabs.Screen name="(travel)" options={{ href: null }} />
       <Tabs.Screen name="(services)" options={{ href: null }} />

@@ -147,6 +147,7 @@ export function useUpdateTripTask() {
         assigned_member_id?: string | null;
         due_date?: string | null;
         checklist_name?: string;
+        sort_order?: number;
       };
     }) => {
       const { error } = await supabase

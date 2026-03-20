@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React from "react";
 import {
   View,
   Text,
@@ -17,7 +17,6 @@ import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useCreateTrip } from "@/hooks/useTrips";
-import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -35,11 +34,6 @@ export default function NewActivityScreen() {
   const { user } = useAuthStore();
   const createTrip = useCreateTrip();
   const currentMember = members.find((m) => m.user_id === user?.id);
-
-  const { data: vendors = [] } = usePreferredVendors(household?.id);
-
-  const [usesVendor, setUsesVendor] = useState<boolean | null>(null);
-  const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
 
   const {
     control,
@@ -64,8 +58,8 @@ export default function NewActivityScreen() {
         return_date: data.returnDate,
         notes: data.notes ?? null,
         created_by: currentMember.id,
-        uses_vendor: usesVendor === true,
-        primary_vendor_id: selectedVendorId,
+        uses_vendor: false,
+        primary_vendor_id: null,
       });
       router.replace(`/(app)/(activity)/${trip.id}`);
     } catch (e: any) {
@@ -159,65 +153,6 @@ export default function NewActivityScreen() {
             />
           )}
         />
-
-        {/* Vendor prompt */}
-        <Text className="text-sm font-medium text-gray-700 mb-2 mt-2">
-          Will a Vendor Be Used?
-        </Text>
-        <View className="flex-row gap-3 mb-4">
-          {(["Yes", "No"] as const).map((opt) => {
-            const val = opt === "Yes";
-            const active = usesVendor === val;
-            return (
-              <TouchableOpacity
-                key={opt}
-                onPress={() => {
-                  setUsesVendor(val);
-                  if (!val) setSelectedVendorId(null);
-                }}
-                className={`flex-1 py-2.5 rounded-xl border items-center ${
-                  active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                }`}
-              >
-                <Text className={`text-sm font-semibold ${active ? "text-white" : "text-gray-700"}`}>
-                  {opt}
-                </Text>
-              </TouchableOpacity>
-            );
-          })}
-        </View>
-
-        {usesVendor && (
-          <>
-            <Text className="text-sm font-medium text-gray-700 mb-2">
-              Select Vendor (optional)
-            </Text>
-            {vendors.length === 0 ? (
-              <Text className="text-sm text-gray-400 mb-4">
-                No vendors saved yet. Add vendors in Projects → Vendors.
-              </Text>
-            ) : (
-              <View className="flex-row flex-wrap gap-2 mb-4">
-                {vendors.map((v) => {
-                  const active = selectedVendorId === v.id;
-                  return (
-                    <TouchableOpacity
-                      key={v.id}
-                      onPress={() => setSelectedVendorId(active ? null : v.id)}
-                      className={`px-3 py-1.5 rounded-full border ${
-                        active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-                      }`}
-                    >
-                      <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-700"}`}>
-                        {v.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </View>
-            )}
-          </>
-        )}
 
         <Button
           title="Create Activity"

@@ -336,6 +336,21 @@ export default function ProjectDetailScreen() {
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
+  const handleMoveTask = async (task: ProjectTask, direction: "up" | "down") => {
+    const checklistName = task.checklist_name ?? "General";
+    const group = (allTasks)
+      .filter((t) => (t.checklist_name ?? "General") === checklistName)
+      .sort((a, b) => a.sort_order - b.sort_order);
+    const idx = group.findIndex((t) => t.id === task.id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= group.length) return;
+    const swapTask = group[swapIdx];
+    try {
+      await updateTask.mutateAsync({ id: task.id, project_id: task.project_id, updates: { sort_order: swapTask.sort_order } });
+      await updateTask.mutateAsync({ id: swapTask.id, project_id: swapTask.project_id, updates: { sort_order: task.sort_order } });
+    } catch (e: any) { showAlert("Error", e.message); }
+  };
+
   if (!project) return null;
 
   const owners = (project.project_owners ?? [])
@@ -356,13 +371,7 @@ export default function ProjectDetailScreen() {
   for (const name of checklistNames) {
     tasksByChecklist[name] = allTasks
       .filter((t) => (t.checklist_name ?? "General") === name)
-      .sort((a, b) => {
-        // Sort by due_date soonest first; nulls go last
-        if (!a.due_date && !b.due_date) return a.sort_order - b.sort_order;
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
-      });
+      .sort((a, b) => a.sort_order - b.sort_order);
   }
 
   const isFinished = project.status === "finished" || project.status === "completed";
@@ -596,17 +605,31 @@ export default function ProjectDetailScreen() {
                           )}
                         </View>
                       </View>
-                      <TouchableOpacity
-                        onPress={(e) => {
-                          e.stopPropagation();
-                          showConfirm("Remove task?", `"${task.title}"`, () => {
-                            deleteTask.mutate({ id: task.id, project_id: task.project_id });
-                          }, true);
-                        }}
-                        className="p-1 ml-1 mt-0.5"
-                      >
-                        <Text className="text-gray-300 text-xl leading-none">×</Text>
-                      </TouchableOpacity>
+                      <View className="flex-col items-center ml-1">
+                        <TouchableOpacity
+                          onPress={(e) => { e.stopPropagation(); handleMoveTask(task, "up"); }}
+                          className="px-1 py-0.5"
+                        >
+                          <Text className="text-gray-300 text-xs leading-none">▲</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={(e) => { e.stopPropagation(); handleMoveTask(task, "down"); }}
+                          className="px-1 py-0.5"
+                        >
+                          <Text className="text-gray-300 text-xs leading-none">▼</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={(e) => {
+                            e.stopPropagation();
+                            showConfirm("Remove task?", `"${task.title}"`, () => {
+                              deleteTask.mutate({ id: task.id, project_id: task.project_id });
+                            }, true);
+                          }}
+                          className="px-1 py-0.5 mt-0.5"
+                        >
+                          <Text className="text-gray-300 text-base leading-none">×</Text>
+                        </TouchableOpacity>
+                      </View>
                     </TouchableOpacity>
                   );
                 })

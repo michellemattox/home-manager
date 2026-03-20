@@ -24,6 +24,8 @@ export type ProjectTask = Database["public"]["Tables"]["project_tasks"]["Row"];
 export type Task = Database["public"]["Tables"]["tasks"]["Row"];
 export type PreferredVendor = Database["public"]["Tables"]["preferred_vendors"]["Row"];
 export type HouseholdInvite = Database["public"]["Tables"]["household_invites"]["Row"];
+export type Goal = Database["public"]["Tables"]["goals"]["Row"];
+export type GoalUpdate = Database["public"]["Tables"]["goal_updates"]["Row"];
 
 export type ProjectStatus = Project["status"];
 export type ProjectPriority = Project["priority"];
@@ -56,6 +58,10 @@ export interface IdeaWithAuthor extends Idea {
 
 export interface IdeaTopicWithIdeas extends IdeaTopic {
   ideas: IdeaWithAuthor[];
+}
+
+export interface GoalWithUpdates extends Goal {
+  goal_updates: GoalUpdate[];
 }
 
 export const PROJECT_CATEGORIES = [

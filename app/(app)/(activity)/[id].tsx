@@ -133,12 +133,16 @@ function TaskRow({
   onComplete,
   onEdit,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   task: TripTask;
   members: { id: string; display_name: string; color_hex: string }[];
   onComplete: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) {
   const assignedMember = task.assigned_member_id
     ? members.find((m) => m.id === task.assigned_member_id)
@@ -164,9 +168,17 @@ function TaskRow({
           )}
         </View>
       </View>
-      <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDelete(); }} className="p-1 ml-2 mt-0.5">
-        <Text className="text-gray-300 text-xl leading-none">×</Text>
-      </TouchableOpacity>
+      <View className="flex-col items-center ml-1">
+        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onMoveUp(); }} className="px-1 py-0.5">
+          <Text className="text-gray-300 text-xs leading-none">▲</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onMoveDown(); }} className="px-1 py-0.5">
+          <Text className="text-gray-300 text-xs leading-none">▼</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={(e) => { e.stopPropagation(); onDelete(); }} className="px-1 py-0.5 mt-0.5">
+          <Text className="text-gray-300 text-base leading-none">×</Text>
+        </TouchableOpacity>
+      </View>
     </TouchableOpacity>
   );
 }
@@ -352,6 +364,22 @@ export default function TripDetailScreen() {
     }
   };
 
+  const handleMoveTask = async (task: TripTask, direction: "up" | "down") => {
+    const allTasks = trip?.tasks ?? [];
+    const checklistName = task.checklist_name ?? "General";
+    const group = allTasks
+      .filter((t) => (t.checklist_name ?? "General") === checklistName)
+      .sort((a, b) => a.sort_order - b.sort_order);
+    const idx = group.findIndex((t) => t.id === task.id);
+    const swapIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (swapIdx < 0 || swapIdx >= group.length) return;
+    const swapTask = group[swapIdx];
+    try {
+      await updateTask.mutateAsync({ id: task.id, tripId: task.trip_id, updates: { sort_order: swapTask.sort_order } });
+      await updateTask.mutateAsync({ id: swapTask.id, tripId: swapTask.trip_id, updates: { sort_order: task.sort_order } });
+    } catch (e: any) { showAlert("Error", e.message); }
+  };
+
   const handleDelete = (task: TripTask) => {
     showConfirm(
       "Remove task?",
@@ -458,6 +486,8 @@ export default function TripDetailScreen() {
                     onComplete={() => handleComplete(task)}
                     onEdit={() => openEditTask(task)}
                     onDelete={() => handleDelete(task)}
+                    onMoveUp={() => handleMoveTask(task, "up")}
+                    onMoveDown={() => handleMoveTask(task, "down")}
                   />
                 ))
               )}

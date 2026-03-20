@@ -659,6 +659,75 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      goals: {
+        Row: {
+          id: string;
+          household_id: string;
+          title: string;
+          description: string | null;
+          user_type: "family" | "individual";
+          member_id: string | null;
+          due_date: string | null;
+          reminder_frequency: "daily" | "weekly" | "monthly" | null;
+          status: "active" | "completed" | "paused";
+          created_by: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          title: string;
+          description?: string | null;
+          user_type?: "family" | "individual";
+          member_id?: string | null;
+          due_date?: string | null;
+          reminder_frequency?: "daily" | "weekly" | "monthly" | null;
+          status?: "active" | "completed" | "paused";
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          title?: string;
+          description?: string | null;
+          user_type?: "family" | "individual";
+          member_id?: string | null;
+          due_date?: string | null;
+          reminder_frequency?: "daily" | "weekly" | "monthly" | null;
+          status?: "active" | "completed" | "paused";
+          created_by?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
+      goal_updates: {
+        Row: {
+          id: string;
+          goal_id: string;
+          household_id: string;
+          body: string;
+          author_id: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          goal_id: string;
+          household_id: string;
+          body: string;
+          author_id?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          goal_id?: string;
+          household_id?: string;
+          body?: string;
+          author_id?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;
