@@ -26,7 +26,7 @@ Deno.serve(async (req) => {
     );
 
     const { error } = await supabaseAdmin.auth.admin.inviteUserByEmail(email, {
-      redirectTo: `homemanager://join?token=${token}`,
+      redirectTo: `home-manager://join?token=${token}`,
       data: { display_name: name, household_id: householdId },
     });
 
