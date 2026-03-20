@@ -44,10 +44,11 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : undefined}
-      className="flex-1"
+      className="flex-1 bg-[#FFFFED]"
     >
       <ScrollView
         contentContainerClassName="flex-grow justify-center px-6 py-12"
+        className="bg-[#FFFFED]"
         keyboardShouldPersistTaps="handled"
       >
         <View className="mb-10">
