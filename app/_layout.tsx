@@ -100,21 +100,23 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    // Not logged in → always go to login
+    // Not logged in → always go to login (but allow /join through)
     if (session === null) {
       const inAuth = segments[0] === "(auth)";
-      if (!inAuth) router.replace("/(auth)/login");
+      const inJoin = segments[0] === "join";
+      if (!inAuth && !inJoin) router.replace("/(auth)/login");
       return;
     }
 
     // Logged in but household check still in flight → wait
     if (!householdChecked) return;
 
-    // Logged in, no household → onboarding
+    // Logged in, no household → onboarding (but allow /join through)
     if (!household) {
       const inOnboarding =
         segments[0] === "(auth)" && (segments as string[])[1] === "onboarding";
-      if (!inOnboarding) router.replace("/(auth)/onboarding");
+      const inJoin = segments[0] === "join";
+      if (!inOnboarding && !inJoin) router.replace("/(auth)/onboarding");
       return;
     }
 
