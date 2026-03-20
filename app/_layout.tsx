@@ -83,7 +83,8 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             const { data: members } = await supabase
               .from("household_members")
               .select("*")
-              .eq("household_id", m.household_id);
+              .eq("household_id", m.household_id)
+              .is("invite_token", null);
             setMembers((members ?? []) as any);
           }
 
