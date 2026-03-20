@@ -265,7 +265,7 @@ export default function HomeScreen() {
   const hasUpcoming = dueSoonProjects.length > 0 || dueSoonTasks.length > 0 || dueSoonOneOff.length > 0;
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#E4F2E4]" edges={["top"]}>
       <ScrollView
         contentContainerClassName="px-4 pb-8"
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}

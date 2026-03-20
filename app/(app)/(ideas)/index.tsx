@@ -445,7 +445,7 @@ export default function IdeasScreen() {
   const isConverting = createRecurring.isPending || createTask.isPending || addProjectTask.isPending || createProject.isPending || convertIdea.isPending;
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#FBFCCF]" edges={["top"]}>
       <View className="px-4 py-3 border-b border-gray-100 bg-white">
         <Text className="text-2xl font-bold text-gray-900 mb-1">Ideas</Text>
         <Text className="text-xs text-gray-400">Capture an idea, then move it where it belongs.</Text>
@@ -546,7 +546,7 @@ export default function IdeasScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setTaskModalIdea(null)}
       >
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#FBFCCF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setTaskModalIdea(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>

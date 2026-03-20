@@ -462,7 +462,7 @@ export default function GoalsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#F7EBFC]" edges={["top"]}>
       <View className="px-4 py-3 border-b border-gray-100 bg-white flex-row items-center">
         <View className="flex-1">
           <Text className="text-2xl font-bold text-gray-900">Goals</Text>
@@ -574,7 +574,7 @@ export default function GoalsScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setShowNewModal(false)}
       >
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#F7EBFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setShowNewModal(false)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
@@ -612,7 +612,7 @@ export default function GoalsScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setEditingGoal(null)}
       >
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#F7EBFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setEditingGoal(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
@@ -650,7 +650,7 @@ export default function GoalsScreen() {
         presentationStyle="formSheet"
         onRequestClose={() => setAddUpdateGoalId(null)}
       >
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#F7EBFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => { setAddUpdateGoalId(null); setUpdateBody(""); }} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>

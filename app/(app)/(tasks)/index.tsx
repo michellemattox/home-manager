@@ -451,7 +451,7 @@ export default function TasksScreen() {
   });
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#FCEBFC]" edges={["top"]}>
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100 bg-white">
         <Text className="text-2xl font-bold text-gray-900">Tasks</Text>
         <TouchableOpacity
@@ -590,7 +590,7 @@ export default function TasksScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setEditingLowLift(null)}
       >
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#FCEBFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setEditingLowLift(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
@@ -681,7 +681,7 @@ export default function TasksScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setEditingPA(null)}
       >
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#FCEBFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setEditingPA(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
@@ -750,7 +750,7 @@ export default function TasksScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setEditingStandalone(null)}
       >
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#FCEBFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setEditingStandalone(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>

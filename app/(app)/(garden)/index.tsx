@@ -4,7 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function GardenScreen() {
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
       <View className="px-4 py-3 border-b border-gray-100 bg-white">
         <Text className="text-2xl font-bold text-gray-900">Garden</Text>
       </View>

@@ -433,7 +433,7 @@ function ServicesTab() {
           ) : null
         }
         renderSectionHeader={({ section }) => (
-          <View className="flex-row items-center justify-between py-2 bg-gray-50">
+          <View className="flex-row items-center justify-between py-2 bg-[#EBFAFC]">
             <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wider">{section.title}</Text>
             <Text className="text-sm font-semibold text-gray-600">{centsToDisplay(section.total)}</Text>
           </View>
@@ -460,7 +460,7 @@ function ServicesTab() {
       />
 
       <Modal visible={!!editingRecord} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setEditingRecord(null)}>
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#EBFAFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setEditingRecord(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
@@ -714,7 +714,7 @@ function VendorsTab() {
       )}
 
       <Modal visible={showModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowModal(false)}>
-        <SafeAreaView className="flex-1 bg-gray-50">
+        <SafeAreaView className="flex-1 bg-[#EBFAFC]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setShowModal(false)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
@@ -755,7 +755,7 @@ export default function ProjectsScreen() {
   const [subTab, setSubTab] = useState<SubTab>("projects");
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#EBFAFC]" edges={["top"]}>
       {/* Header */}
       <View className="px-4 pt-3 pb-2 bg-white border-b border-gray-100">
         <Text className="text-2xl font-bold text-gray-900 mb-3">Projects</Text>

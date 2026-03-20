@@ -62,7 +62,7 @@ export default function ActivityScreen() {
     .sort((a, b) => parseISO(b.departure_date).getTime() - parseISO(a.departure_date).getTime());
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#FCF5EB]" edges={["top"]}>
       <View className="flex-row items-center justify-between px-4 py-3">
         <Text className="text-2xl font-bold text-gray-900">Activity</Text>
         <TouchableOpacity
