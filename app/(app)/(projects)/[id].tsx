@@ -680,18 +680,6 @@ export default function ProjectDetailScreen() {
                         </View>
                       </View>
                       <View className="flex-row items-center gap-0.5">
-                        <TouchableOpacity
-                          onPress={(e) => { e.stopPropagation(); handleMoveTask(task, "up"); }}
-                          className="px-1 py-1"
-                        >
-                          <Text className="text-gray-300 text-xs leading-none">▲</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          onPress={(e) => { e.stopPropagation(); handleMoveTask(task, "down"); }}
-                          className="px-1 py-1"
-                        >
-                          <Text className="text-gray-300 text-xs leading-none">▼</Text>
-                        </TouchableOpacity>
                         {checklistNames.length > 1 && (
                           <TouchableOpacity
                             onPress={(e) => { e.stopPropagation(); handleQuickMoveToChecklist(task); }}

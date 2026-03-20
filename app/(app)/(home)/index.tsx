@@ -1,10 +1,11 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   RefreshControl,
+  Modal,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -18,6 +19,7 @@ import { useServiceRecords } from "@/hooks/useServices";
 import { isOverdue, isDueSoon, formatDate, formatDateShort } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
 import { showAlert } from "@/lib/alert";
+import { supabase } from "@/lib/supabase";
 import { notificationSuccess } from "@/lib/haptics";
 import type { ProjectWithOwners, RecurringTask, Task } from "@/types/app.types";
 
@@ -185,6 +187,18 @@ export default function HomeScreen() {
   const { data: serviceRecords, refetch: refetchServices } = useServiceRecords(household?.id);
   const completeRecurring = useCompleteRecurringTask();
   const completeOneOff = useCompleteTask();
+
+  const [connectingReminderId, setConnectingReminderId] = useState<string | null>(null);
+
+  const handleConnectToProject = async (reminderId: string, projectId: string) => {
+    const { error } = await supabase
+      .from("service_records")
+      .update({ event_type: "project", event_id: projectId })
+      .eq("id", reminderId);
+    if (error) { showAlert("Error", error.message); return; }
+    refetchServices();
+    setConnectingReminderId(null);
+  };
 
   const isLoading = loadingProjects || loadingTasks;
 
@@ -398,12 +412,20 @@ export default function HomeScreen() {
                     </View>
                     <Text className="text-xs text-gray-400">{formatDateShort(r.nextDue.toISOString().slice(0, 10))}</Text>
                   </View>
-                  <TouchableOpacity
-                    onPress={() => router.push(`/(app)/(projects)/new?title=${encodeURIComponent(r.vendor_name + " — " + r.service_type)}`)}
-                    className="self-start bg-blue-600 rounded-lg px-3 py-1.5"
-                  >
-                    <Text className="text-white text-xs font-semibold">+ Create Project</Text>
-                  </TouchableOpacity>
+                  <View className="flex-row gap-2 flex-wrap">
+                    <TouchableOpacity
+                      onPress={() => setConnectingReminderId(r.id)}
+                      className="bg-indigo-600 rounded-lg px-3 py-1.5"
+                    >
+                      <Text className="text-white text-xs font-semibold">Connect to Project</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={() => router.push(`/(app)/(projects)/new?title=${encodeURIComponent(r.vendor_name + " — " + r.service_type)}`)}
+                      className="bg-blue-600 rounded-lg px-3 py-1.5"
+                    >
+                      <Text className="text-white text-xs font-semibold">+ Create Project</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
               );
             })}
@@ -419,6 +441,44 @@ export default function HomeScreen() {
           <Text className="text-sm text-gray-400 font-medium">Settings</Text>
         </TouchableOpacity>
       </ScrollView>
+
+      {/* Connect Service Reminder to Project Modal */}
+      <Modal
+        visible={!!connectingReminderId}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setConnectingReminderId(null)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <Text className="flex-1 text-base font-semibold text-gray-900">Connect to Project</Text>
+            <TouchableOpacity onPress={() => setConnectingReminderId(null)}>
+              <Text className="text-blue-600 text-sm font-medium">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          <Text className="text-xs text-gray-400 px-4 pt-3 pb-1">
+            Select a project to link this service reminder to. They will share the same record for reporting.
+          </Text>
+          <ScrollView>
+            {activeProjects.length === 0 && (
+              <Text className="text-sm text-gray-400 text-center py-8">No active projects found.</Text>
+            )}
+            {activeProjects.map((p) => (
+              <TouchableOpacity
+                key={p.id}
+                onPress={() => connectingReminderId && handleConnectToProject(connectingReminderId, p.id)}
+                className="flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-100"
+              >
+                <View className="flex-1 mr-3">
+                  <Text className="text-sm font-medium text-gray-900" numberOfLines={1}>{p.title}</Text>
+                  {p.category && <Text className="text-xs text-gray-400 mt-0.5">{p.category}</Text>}
+                </View>
+                <Text className="text-gray-400 text-base">→</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
     </SafeAreaView>
   );
 }
