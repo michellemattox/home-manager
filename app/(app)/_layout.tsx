@@ -4,12 +4,6 @@ import { Text, View } from "react-native";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 
-// Mounts the scheduler as a side-effect component inside the authenticated tab tree
-function NotificationScheduler() {
-  useNotificationScheduler();
-  return null;
-}
-
 function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
   return (
     <View className="items-center pt-1">
@@ -45,10 +39,12 @@ function TasksTabIcon({ focused }: { focused: boolean }) {
 }
 
 export default function AppLayout() {
+  // Schedule local notifications for the authenticated user.
+  // Must be called here (not in a child component) so Tabs remains the root element.
+  useNotificationScheduler();
+
   return (
-    <>
-      <NotificationScheduler />
-      <Tabs
+    <Tabs
       screenOptions={{
         headerShown: false,
         tabBarStyle: {
@@ -120,6 +116,5 @@ export default function AppLayout() {
       <Tabs.Screen name="(vendors)" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
-    </>
   );
 }

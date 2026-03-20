@@ -1,6 +1,13 @@
+import { Platform } from "react-native";
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+
+// Use localStorage on web, AsyncStorage on native
+const notifStorage =
+  Platform.OS === "web"
+    ? createJSONStorage(() => localStorage)
+    : createJSONStorage(() => AsyncStorage);
 
 export type ReminderFrequency = "daily" | "every_other_day" | "weekly" | "monthly";
 
@@ -45,7 +52,7 @@ export const useNotificationStore = create<NotificationState>()(
     }),
     {
       name: "notification-prefs",
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: notifStorage,
       // Don't persist runtime state — only user preferences
       partialize: (state) => ({
         overdueEnabled: state.overdueEnabled,
