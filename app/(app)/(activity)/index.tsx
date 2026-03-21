@@ -40,6 +40,11 @@ function ActivityCard({ trip }: { trip: Trip }) {
             {trip.uses_vendor && (
               <Text className="text-xs text-blue-500 mt-0.5">Has vendor</Text>
             )}
+            <Text className="text-xs text-indigo-500 mt-0.5">
+              {(trip as any).assigned_to && (trip as any).assigned_to !== "all"
+                ? `👤 ${(trip as any).assigned_to}`
+                : "👥 All"}
+            </Text>
           </View>
           <Text className="text-2xl ml-3">🗓️</Text>
         </View>

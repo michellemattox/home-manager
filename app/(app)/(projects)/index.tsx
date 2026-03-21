@@ -79,7 +79,14 @@ function ProjectCard({ project }: { project: ProjectWithOwners }) {
           <Text className="text-base font-semibold text-gray-900 flex-1 mr-2" numberOfLines={2}>
             {project.title}
           </Text>
-          <MemberAvatarGroup members={owners} />
+          <View className="items-end">
+            <MemberAvatarGroup members={owners} />
+            {owners.length > 0 && (
+              <Text className="text-xs text-gray-500 mt-1">
+                {owners.length > 1 ? "All" : owners[0]?.display_name ?? ""}
+              </Text>
+            )}
+          </View>
         </View>
         <View className="flex-row gap-2 flex-wrap mb-2">
           <Badge label={sc.label} variant={sc.variant} size="sm" />
@@ -319,7 +326,7 @@ function ServiceRow({ record, onEdit, onDelete }: { record: ServiceRecord; onEdi
   );
 }
 
-function ServicesTab() {
+function ServicesTab({ onGoToVendors }: { onGoToVendors: () => void }) {
   const router = useRouter();
   const { household } = useHouseholdStore();
   const { data: records, isLoading, refetch } = useServiceRecords(household?.id);
@@ -391,6 +398,20 @@ function ServicesTab() {
           <Text className="text-white text-xl font-light">+</Text>
         </TouchableOpacity>
       </View>
+
+      <TouchableOpacity
+        onPress={onGoToVendors}
+        className="flex-row items-center justify-between mx-4 mb-3 px-4 py-3 bg-white border border-gray-100 rounded-xl"
+      >
+        <View className="flex-row items-center gap-3">
+          <Text className="text-lg">⭐</Text>
+          <View>
+            <Text className="text-sm font-semibold text-gray-900">Vendors</Text>
+            <Text className="text-xs text-gray-400">Manage preferred vendors &amp; find new ones</Text>
+          </View>
+        </View>
+        <Text className="text-gray-300 text-base">›</Text>
+      </TouchableOpacity>
 
       <SectionList
         sections={sections}
@@ -538,7 +559,7 @@ function VendorCard({ vendor, lastService, onEdit }: { vendor: PreferredVendor; 
   );
 }
 
-function VendorsTab() {
+function VendorsTab({ onBack }: { onBack: () => void }) {
   const { household } = useHouseholdStore();
   const [findTab, setFindTab] = useState<"my" | "find">("my");
   const [selectedType, setSelectedType] = useState<ServiceType | null>(null);
@@ -618,7 +639,12 @@ function VendorsTab() {
   return (
     <>
       <View className="flex-row items-center justify-between px-4 py-2">
-        <Text className="text-xs text-gray-400">{(preferredVendors ?? []).length} vendors</Text>
+        <View className="flex-row items-center gap-3">
+          <TouchableOpacity onPress={onBack}>
+            <Text className="text-blue-600 text-sm font-medium">← Services</Text>
+          </TouchableOpacity>
+          <Text className="text-xs text-gray-400">{(preferredVendors ?? []).length} vendors</Text>
+        </View>
         {findTab === "my" && (
           <TouchableOpacity onPress={() => openAdd()} className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center">
             <Text className="text-white text-xl font-light">+</Text>
@@ -761,14 +787,14 @@ export default function ProjectsScreen() {
         <Text className="text-2xl font-bold text-gray-900 mb-3">Projects</Text>
         {/* Sub-tab switcher */}
         <View className="flex-row bg-gray-100 rounded-xl p-1">
-          {(["projects", "services", "vendors"] as SubTab[]).map((tab) => (
+          {(["projects", "services"] as SubTab[]).map((tab) => (
             <TouchableOpacity
               key={tab}
               onPress={() => setSubTab(tab)}
-              className={`flex-1 py-2 rounded-lg items-center ${subTab === tab ? "bg-white shadow-sm" : ""}`}
+              className={`flex-1 py-2 rounded-lg items-center ${subTab === tab || (tab === "services" && subTab === "vendors") ? "bg-white shadow-sm" : ""}`}
             >
-              <Text className={`text-sm font-semibold ${subTab === tab ? "text-gray-900" : "text-gray-500"}`}>
-                {tab === "projects" ? "Projects" : tab === "services" ? "Services" : "Vendors"}
+              <Text className={`text-sm font-semibold ${subTab === tab || (tab === "services" && subTab === "vendors") ? "text-gray-900" : "text-gray-500"}`}>
+                {tab === "projects" ? "Projects" : "Services"}
               </Text>
             </TouchableOpacity>
           ))}
@@ -776,8 +802,8 @@ export default function ProjectsScreen() {
       </View>
 
       {subTab === "projects" && <ProjectsTab />}
-      {subTab === "services" && <ServicesTab />}
-      {subTab === "vendors" && <VendorsTab />}
+      {subTab === "services" && <ServicesTab onGoToVendors={() => setSubTab("vendors")} />}
+      {subTab === "vendors" && <VendorsTab onBack={() => setSubTab("services")} />}
     </SafeAreaView>
   );
 }
