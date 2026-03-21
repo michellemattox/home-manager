@@ -244,6 +244,7 @@ export default function HomeScreen() {
   const upcomingServiceReminders = (serviceRecords ?? [])
     .filter((r) => {
       if (!r.frequency) return false;
+      if (r.event_type === "project" && r.event_id) return false; // connected to a project — shown there instead
       const days = r.frequency === "monthly" ? 30 : r.frequency === "quarterly" ? 90 : r.frequency === "bi-annually" ? 180 : 365;
       const nextDue = new Date(new Date(r.service_date).getTime() + days * 86400000);
       const daysUntil = Math.ceil((nextDue.getTime() - now.getTime()) / 86400000);

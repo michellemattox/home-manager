@@ -27,6 +27,7 @@ import {
   useDeleteCompletedChecklistItem,
 } from "@/hooks/useChecklistItems";
 import { useEventServiceRecords } from "@/hooks/useServices";
+import { useQueryClient } from "@tanstack/react-query";
 import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -125,6 +126,7 @@ export default function ProjectDetailScreen() {
   const { data: completedItems = [] } = useCompletedChecklistItems("project", id);
   const { data: eventServiceRecords = [] } = useEventServiceRecords("project", id);
   const { data: vendors = [] } = usePreferredVendors(household?.id);
+  const qc = useQueryClient();
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
@@ -309,6 +311,18 @@ export default function ProjectDetailScreen() {
     }
     try {
       await updateProject.mutateAsync({ id, updates });
+      // Restart service reminder clocks for any linked records with a frequency
+      if (newStatus === "finished" || newStatus === "completed") {
+        const today = toISODateString(new Date());
+        const linked = eventServiceRecords.filter((r) => r.frequency);
+        for (const rec of linked) {
+          await supabase.from("service_records").update({ service_date: today }).eq("id", rec.id);
+        }
+        if (linked.length > 0) {
+          qc.invalidateQueries({ queryKey: ["service_records"] });
+          qc.invalidateQueries({ queryKey: ["service_records_event", "project", id] });
+        }
+      }
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
@@ -630,6 +644,50 @@ export default function ProjectDetailScreen() {
             </Card>
           );
         })()}
+
+        {/* Linked Service Reminders (connected from Home dashboard, no vendor set) */}
+        {!(project as any).uses_vendor && eventServiceRecords.length > 0 && (
+          <Card className="mb-4">
+            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+              Linked Service Reminders
+            </Text>
+            {eventServiceRecords.map((rec) => {
+              const freqLabel = rec.frequency === "monthly" ? "Monthly"
+                : rec.frequency === "quarterly" ? "Quarterly"
+                : rec.frequency === "bi-annually" ? "Bi-Annually"
+                : rec.frequency === "yearly" ? "Yearly" : null;
+              return (
+                <View key={rec.id} className="py-2 border-b border-gray-50 last:border-b-0">
+                  <View className="flex-row items-start justify-between">
+                    <View className="flex-1 mr-2">
+                      <Text className="text-sm font-semibold text-gray-800">{rec.vendor_name}</Text>
+                      <Text className="text-xs text-gray-500 mt-0.5">{rec.service_type}</Text>
+                    </View>
+                    {rec.cost_cents > 0 && (
+                      <Text className="text-sm font-semibold text-gray-700">
+                        ${(rec.cost_cents / 100).toFixed(2)}
+                      </Text>
+                    )}
+                  </View>
+                  <View className="flex-row items-center gap-3 mt-1 flex-wrap">
+                    {rec.service_date && (
+                      <Text className="text-xs text-gray-400">Last: {formatDateShort(rec.service_date)}</Text>
+                    )}
+                    {freqLabel && (
+                      <Text className="text-xs text-indigo-500 font-medium">🔁 {freqLabel}</Text>
+                    )}
+                  </View>
+                  {rec.notes && (
+                    <Text className="text-xs text-gray-500 mt-1">{rec.notes}</Text>
+                  )}
+                </View>
+              );
+            })}
+            <Text className="text-xs text-gray-400 mt-2">
+              Clock resets to today when this project is marked complete.
+            </Text>
+          </Card>
+        )}
 
         {/* Checklists */}
         {checklistNames.map((name) => (
