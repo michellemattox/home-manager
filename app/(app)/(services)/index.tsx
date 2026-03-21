@@ -185,6 +185,21 @@ export default function ServicesScreen() {
         </TouchableOpacity>
       </View>
 
+      {/* Vendors navigation */}
+      <TouchableOpacity
+        onPress={() => router.push("/(app)/(vendors)")}
+        className="flex-row items-center justify-between mx-4 mb-3 px-4 py-3 bg-white border border-gray-100 rounded-xl"
+      >
+        <View className="flex-row items-center gap-3">
+          <Text className="text-lg">⭐</Text>
+          <View>
+            <Text className="text-sm font-semibold text-gray-900">Vendors</Text>
+            <Text className="text-xs text-gray-400">Manage preferred vendors &amp; find new ones</Text>
+          </View>
+        </View>
+        <Text className="text-gray-300 text-base">›</Text>
+      </TouchableOpacity>
+
       <SectionList
         sections={sections}
         keyExtractor={(item) => item.id}

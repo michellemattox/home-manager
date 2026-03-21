@@ -241,6 +241,7 @@ export default function TripDetailScreen() {
   const [editDeparture, setEditDeparture] = useState("");
   const [editReturn, setEditReturn] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const [editAssignedTo, setEditAssignedTo] = useState<string>("all");
 
   // Add checklist modal
   const [showAddChecklist, setShowAddChecklist] = useState(false);
@@ -273,6 +274,7 @@ export default function TripDetailScreen() {
     setEditDeparture(trip.departure_date);
     setEditReturn(trip.return_date);
     setEditNotes(trip.notes ?? "");
+    setEditAssignedTo((trip as any).assigned_to ?? "all");
     setShowEditModal(true);
   };
 
@@ -287,6 +289,7 @@ export default function TripDetailScreen() {
           departure_date: editDeparture,
           return_date: editReturn,
           notes: editNotes.trim() || null,
+          assigned_to: editAssignedTo,
         },
       });
       setShowEditModal(false);
@@ -723,6 +726,23 @@ export default function TripDetailScreen() {
               numberOfLines={3}
               placeholder="Packing notes, reservations, etc..."
             />
+            <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
+            <View className="flex-row flex-wrap gap-2 mb-6">
+              {[{ label: "All", value: "all" }, ...members.map((m) => ({ label: m.display_name, value: m.display_name }))].map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => setEditAssignedTo(opt.value)}
+                  className={`px-3 py-1.5 rounded-full border ${
+                    editAssignedTo === opt.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`text-sm font-medium ${editAssignedTo === opt.value ? "text-white" : "text-gray-700"}`}>
+                    {opt.label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <Button title="Save Changes" onPress={handleSaveEdit} loading={updateTrip.isPending} />
             <TouchableOpacity onPress={handleDeleteTrip} className="mt-3 items-center py-3">
               <Text className="text-red-500 font-medium">Delete Trip</Text>
