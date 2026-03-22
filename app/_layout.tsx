@@ -4,6 +4,7 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { queryClient } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
@@ -49,6 +50,17 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
+        // If this is the initial session load, check whether the user chose
+        // not to be remembered. If so, sign them out immediately.
+        if (event === "INITIAL_SESSION" && newSession) {
+          const remember = await AsyncStorage.getItem("@mattox_remember_device");
+          if (remember === "false") {
+            await AsyncStorage.removeItem("@mattox_remember_device");
+            await supabase.auth.signOut();
+            return;
+          }
+        }
+
         setSession(newSession);
 
         if (event === "SIGNED_OUT") {
