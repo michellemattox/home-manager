@@ -170,7 +170,7 @@ export default function NewProjectScreen() {
         });
       }
 
-      router.replace("/(app)/(projects)");
+      router.back();
     } catch (e: any) {
       showAlert("Error", e.message);
     }

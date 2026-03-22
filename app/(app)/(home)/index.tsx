@@ -57,14 +57,14 @@ function OverdueProjectCard({ project, onPress }: { project: ProjectWithOwners; 
     : 0;
 
   return (
-    <TouchableOpacity onPress={onPress} className="bg-red-50 border border-red-200 rounded-xl p-3 mb-2">
+    <TouchableOpacity onPress={onPress} className="rounded-xl p-3 mb-2" style={{ backgroundColor: "#F05665" }}>
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-2">
-          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{project.title}</Text>
-          {project.category && <Text className="text-xs text-gray-500 mt-0.5">{project.category}</Text>}
+          <Text className="text-sm font-semibold text-white" numberOfLines={1}>{project.title}</Text>
+          {project.category && <Text className="text-xs text-white/70 mt-0.5">{project.category}</Text>}
         </View>
-        <View className="bg-red-100 rounded-lg px-2 py-0.5">
-          <Text className="text-red-700 text-xs font-semibold">{daysOverdue}d overdue</Text>
+        <View className="bg-black/20 rounded-lg px-2 py-0.5">
+          <Text className="text-white text-xs font-semibold">{daysOverdue}d overdue</Text>
         </View>
       </View>
     </TouchableOpacity>
@@ -77,14 +77,14 @@ function DueSoonProjectCard({ project, onPress }: { project: ProjectWithOwners; 
     : 0;
 
   return (
-    <TouchableOpacity onPress={onPress} className="bg-amber-50 border border-amber-200 rounded-xl p-3 mb-2">
+    <TouchableOpacity onPress={onPress} className="rounded-xl p-3 mb-2" style={{ backgroundColor: "#F5F55F" }}>
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-2">
           <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{project.title}</Text>
-          {project.category && <Text className="text-xs text-gray-500 mt-0.5">{project.category}</Text>}
+          {project.category && <Text className="text-xs text-gray-600 mt-0.5">{project.category}</Text>}
         </View>
-        <View className="bg-amber-100 rounded-lg px-2 py-0.5">
-          <Text className="text-amber-700 text-xs font-semibold">
+        <View className="bg-black/10 rounded-lg px-2 py-0.5">
+          <Text className="text-gray-800 text-xs font-semibold">
             {days === 0 ? "Due today" : `${days}d left`}
           </Text>
         </View>
@@ -304,21 +304,23 @@ export default function HomeScreen() {
           <StatCard
             label="Active Projects"
             value={String(activeProjects.length)}
-            color="bg-blue-50"
+            color=""
+            bgColor="#1BC9E0"
             onPress={() => router.push("/(app)/(projects)")}
           />
           <StatCard
             label="Overdue"
             value={String(totalAlerts)}
             sub={totalAlerts > 0 ? "needs attention" : "all clear"}
-            color={totalAlerts > 0 ? "bg-red-50" : ""}
-            bgColor={totalAlerts === 0 ? "#ABF7AD" : undefined}
+            color=""
+            bgColor={totalAlerts > 0 ? "#F05665" : "#ABF7AD"}
             onPress={() => router.push("/(app)/(tasks)")}
           />
           <StatCard
             label={`Spent ${new Date().getFullYear()}`}
             value={centsToDisplay(yearlySpend, true)}
-            color="bg-purple-50"
+            color=""
+            bgColor="#FA9B75"
             onPress={() => router.push("/(app)/(services)")}
           />
         </View>

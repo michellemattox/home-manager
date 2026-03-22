@@ -55,7 +55,6 @@ const PRIORITY_CONFIG: Record<ProjectPriority, { label: string; variant: any }> 
   low: { label: "Low", variant: "default" },
 };
 const OPEN_STATUSES: ProjectStatus[] = ["in_progress", "planned", "on_hold"];
-type SortOption = "newest" | "oldest" | "priority" | "due_date";
 type DueFilter = "overdue" | "due_soon" | null;
 
 function ProjectCard({ project }: { project: ProjectWithOwners }) {
@@ -125,10 +124,7 @@ function ProjectsTab() {
   const { household, members } = useHouseholdStore();
   const { data: projects, isLoading, refetch } = useProjects(household?.id);
   const [showFinished, setShowFinished] = useState(false);
-  const [sortBy, setSortBy] = useState<SortOption>("due_date");
-  const [filterOwner, setFilterOwner] = useState<string | null>(null);
   const [filterPriority, setFilterPriority] = useState<ProjectPriority | null>(null);
-  const [filterCategory, setFilterCategory] = useState<string | null>(null);
   const [filterDue, setFilterDue] = useState<DueFilter>(null);
 
   const openCount = (projects ?? []).filter((p) => OPEN_STATUSES.includes(p.status as ProjectStatus)).length;
@@ -137,12 +133,6 @@ function ProjectsTab() {
     (p) => OPEN_STATUSES.includes(p.status as ProjectStatus) && p.expected_date && isOverdue(p.expected_date)
   ).length;
 
-  const usedCategories = useMemo(() => {
-    const cats = new Set<string>();
-    (projects ?? []).forEach((p) => { if (p.category) cats.add(p.category); });
-    return Array.from(cats).sort();
-  }, [projects]);
-
   const filtered = useMemo(() => {
     if (!projects) return [];
     let list = projects.filter((p) =>
@@ -150,24 +140,16 @@ function ProjectsTab() {
         ? p.status === "finished" || p.status === "completed"
         : OPEN_STATUSES.includes(p.status as ProjectStatus)
     );
-    if (filterOwner) list = list.filter((p) => (p.project_owners ?? []).some((po) => po.member_id === filterOwner));
     if (filterPriority) list = list.filter((p) => p.priority === filterPriority);
-    if (filterCategory) list = list.filter((p) => p.category === filterCategory);
     if (filterDue === "overdue") list = list.filter((p) => p.expected_date && isOverdue(p.expected_date));
     else if (filterDue === "due_soon") list = list.filter((p) => p.expected_date && isDueSoon(p.expected_date));
     return [...list].sort((a, b) => {
-      if (sortBy === "newest") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-      if (sortBy === "oldest") return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
-      if (sortBy === "due_date") {
-        if (!a.expected_date && !b.expected_date) return 0;
-        if (!a.expected_date) return 1;
-        if (!b.expected_date) return -1;
-        return new Date(a.expected_date).getTime() - new Date(b.expected_date).getTime();
-      }
-      const ORDER = { high: 0, medium: 1, low: 2 };
-      return ORDER[a.priority] - ORDER[b.priority];
+      if (!a.expected_date && !b.expected_date) return 0;
+      if (!a.expected_date) return 1;
+      if (!b.expected_date) return -1;
+      return new Date(a.expected_date).getTime() - new Date(b.expected_date).getTime();
     });
-  }, [projects, showFinished, sortBy, filterOwner, filterPriority, filterCategory, filterDue]);
+  }, [projects, showFinished, filterPriority, filterDue]);
 
   return (
     <>
@@ -185,98 +167,87 @@ function ProjectsTab() {
         </TouchableOpacity>
       </View>
 
-      {/* Filter bar */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        className="border-b border-gray-100 bg-white"
-        contentContainerStyle={{ paddingHorizontal: 16, paddingVertical: 8, gap: 8 }}
-      >
-        <TouchableOpacity
-          onPress={() => setShowFinished(false)}
-          className={`px-3 py-1.5 rounded-full border ${!showFinished ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"}`}
-        >
-          <Text className={`text-sm font-medium ${!showFinished ? "text-white" : "text-gray-600"}`}>Open</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => setShowFinished(true)}
-          className={`px-3 py-1.5 rounded-full border ${showFinished ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"}`}
-        >
-          <Text className={`text-sm font-medium ${showFinished ? "text-white" : "text-gray-600"}`}>
-            Finished{finishedCount > 0 ? ` (${finishedCount})` : ""}
-          </Text>
-        </TouchableOpacity>
-        <View className="w-px bg-gray-200 mx-1" />
-        {!showFinished && (
-          <>
+      {/* Filter panel */}
+      <View className="px-4 pt-2 pb-3">
+        {/* Status row */}
+        <View className="flex-row items-center mb-2">
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 60 }}>Status</Text>
+          <View className="flex-row flex-wrap gap-2">
             <TouchableOpacity
-              onPress={() => setFilterDue(filterDue === "overdue" ? null : "overdue")}
-              className={`px-3 py-1.5 rounded-full border ${filterDue === "overdue" ? "bg-red-500 border-red-500" : "bg-white border-gray-200"}`}
+              onPress={() => setShowFinished(false)}
+              className={`px-3 py-1 rounded-full border ${!showFinished ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
             >
-              <Text className={`text-sm font-medium ${filterDue === "overdue" ? "text-white" : "text-gray-600"}`}>Overdue</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => setFilterDue(filterDue === "due_soon" ? null : "due_soon")}
-              className={`px-3 py-1.5 rounded-full border ${filterDue === "due_soon" ? "bg-amber-500 border-amber-500" : "bg-white border-gray-200"}`}
-            >
-              <Text className={`text-sm font-medium ${filterDue === "due_soon" ? "text-white" : "text-gray-600"}`}>Due Soon</Text>
-            </TouchableOpacity>
-            <View className="w-px bg-gray-200 mx-1" />
-          </>
-        )}
-        {(["newest", "oldest", "priority", "due_date"] as SortOption[]).map((s) => (
-          <TouchableOpacity
-            key={s}
-            onPress={() => setSortBy(s)}
-            className={`px-3 py-1.5 rounded-full border ${sortBy === s ? "bg-gray-800 border-gray-800" : "bg-white border-gray-200"}`}
-          >
-            <Text className={`text-sm font-medium ${sortBy === s ? "text-white" : "text-gray-600"}`}>
-              {s === "newest" ? "Newest" : s === "oldest" ? "Oldest" : s === "priority" ? "Priority" : "Due Date"}
-            </Text>
-          </TouchableOpacity>
-        ))}
-        <View className="w-px bg-gray-200 mx-1" />
-        {(["high", "medium", "low"] as ProjectPriority[]).map((p) => {
-          const active = filterPriority === p;
-          return (
-            <TouchableOpacity
-              key={p}
-              onPress={() => setFilterPriority(active ? null : p)}
-              className={`px-3 py-1.5 rounded-full border ${active ? (p === "high" ? "bg-red-500 border-red-500" : p === "medium" ? "bg-amber-500 border-amber-500" : "bg-gray-600 border-gray-600") : "bg-white border-gray-200"}`}
-            >
-              <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-600"}`}>
-                {p.charAt(0).toUpperCase() + p.slice(1)}
+              <Text className={`text-xs font-semibold ${!showFinished ? "text-white" : "text-gray-600"}`}>
+                Open{openCount > 0 ? ` (${openCount})` : ""}
               </Text>
             </TouchableOpacity>
-          );
-        })}
-        {usedCategories.length > 0 && <View className="w-px bg-gray-200 mx-1" />}
-        {usedCategories.map((cat) => {
-          const active = filterCategory === cat;
-          return (
             <TouchableOpacity
-              key={cat}
-              onPress={() => setFilterCategory(active ? null : cat)}
-              className={`px-3 py-1.5 rounded-full border ${active ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"}`}
+              onPress={() => setShowFinished(true)}
+              className={`px-3 py-1 rounded-full border ${showFinished ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
             >
-              <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-600"}`}>{cat}</Text>
+              <Text className={`text-xs font-semibold ${showFinished ? "text-white" : "text-gray-600"}`}>
+                Finished{finishedCount > 0 ? ` (${finishedCount})` : ""}
+              </Text>
             </TouchableOpacity>
-          );
-        })}
-        {members.length > 0 && <View className="w-px bg-gray-200 mx-1" />}
-        {members.map((m) => {
-          const active = filterOwner === m.id;
-          return (
-            <TouchableOpacity
-              key={m.id}
-              onPress={() => setFilterOwner(active ? null : m.id)}
-              className={`px-3 py-1.5 rounded-full border ${active ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"}`}
-            >
-              <Text className={`text-sm font-medium ${active ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>
-            </TouchableOpacity>
-          );
-        })}
-      </ScrollView>
+          </View>
+        </View>
+
+        {!showFinished && (
+          <>
+            {/* Due date row */}
+            <View className="flex-row items-center mb-2">
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 60 }}>Due</Text>
+              <View className="flex-row flex-wrap gap-2">
+                <TouchableOpacity
+                  onPress={() => setFilterDue(null)}
+                  className={`px-3 py-1 rounded-full border ${filterDue === null ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+                >
+                  <Text className={`text-xs font-semibold ${filterDue === null ? "text-white" : "text-gray-600"}`}>All</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setFilterDue(filterDue === "overdue" ? null : "overdue")}
+                  className={`px-3 py-1 rounded-full border ${filterDue === "overdue" ? "bg-red-500 border-red-500" : "bg-white border-gray-300"}`}
+                >
+                  <Text className={`text-xs font-semibold ${filterDue === "overdue" ? "text-white" : "text-gray-600"}`}>Overdue</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setFilterDue(filterDue === "due_soon" ? null : "due_soon")}
+                  className={`px-3 py-1 rounded-full border ${filterDue === "due_soon" ? "bg-amber-500 border-amber-500" : "bg-white border-gray-300"}`}
+                >
+                  <Text className={`text-xs font-semibold ${filterDue === "due_soon" ? "text-white" : "text-gray-600"}`}>Due Soon</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
+            {/* Priority row */}
+            <View className="flex-row items-center">
+              <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 60 }}>Priority</Text>
+              <View className="flex-row flex-wrap gap-2">
+                <TouchableOpacity
+                  onPress={() => setFilterPriority(null)}
+                  className={`px-3 py-1 rounded-full border ${filterPriority === null ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+                >
+                  <Text className={`text-xs font-semibold ${filterPriority === null ? "text-white" : "text-gray-600"}`}>All</Text>
+                </TouchableOpacity>
+                {(["high", "medium", "low"] as ProjectPriority[]).map((p) => {
+                  const active = filterPriority === p;
+                  return (
+                    <TouchableOpacity
+                      key={p}
+                      onPress={() => setFilterPriority(active ? null : p)}
+                      className={`px-3 py-1 rounded-full border ${active ? (p === "high" ? "bg-red-500 border-red-500" : p === "medium" ? "bg-amber-500 border-amber-500" : "bg-gray-500 border-gray-500") : "bg-white border-gray-300"}`}
+                    >
+                      <Text className={`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`}>
+                        {p.charAt(0).toUpperCase() + p.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </View>
+          </>
+        )}
+      </View>
 
       <FlatList
         data={filtered}

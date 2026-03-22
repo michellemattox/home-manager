@@ -68,7 +68,7 @@ export default function ActivityScreen() {
     .sort((a, b) => parseISO(b.departure_date).getTime() - parseISO(a.departure_date).getTime());
 
   return (
-    <SafeAreaView className="flex-1 bg-[#FCF5EB]" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#FADCDF]" edges={["top"]}>
       <AppHeader compact />
       <View className="flex-row items-center justify-between px-4 py-3">
         <Text className="text-xl font-bold text-gray-900">Activity</Text>
