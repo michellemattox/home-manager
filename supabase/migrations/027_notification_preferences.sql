@@ -21,13 +21,13 @@ CREATE POLICY "household members can read notification prefs"
 CREATE POLICY "members can insert own notification prefs"
   ON notification_preferences FOR INSERT
   WITH CHECK (
-    member_id IN (SELECT id FROM household_members WHERE user_id = auth.uid())
+    member_id IN (SELECT id FROM household_members WHERE user_id = auth.uid()::text)
   );
 
 CREATE POLICY "members can update own notification prefs"
   ON notification_preferences FOR UPDATE
   USING (
-    member_id IN (SELECT id FROM household_members WHERE user_id = auth.uid())
+    member_id IN (SELECT id FROM household_members WHERE user_id = auth.uid()::text)
   );
 
 -- Service role can read all (for Edge Function)

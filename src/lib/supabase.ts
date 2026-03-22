@@ -20,11 +20,21 @@ function makeStorage() {
   };
 }
 
+// On web, React Strict Mode double-mounts components which orphans the
+// navigator.locks auth token lock, causing all Supabase requests to hang
+// for 5+ seconds. Bypass the lock entirely on web — safe for a single-tab app.
+const webLock = async (
+  _name: string,
+  _acquireTimeout: number,
+  fn: () => Promise<void>
+): Promise<void> => fn();
+
 export const supabase = createClient<Database>(supabaseUrl, supabaseAnonKey, {
   auth: {
     storage: makeStorage(),
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: Platform.OS === "web",
+    ...(Platform.OS === "web" ? { lock: webLock } : {}),
   },
 });

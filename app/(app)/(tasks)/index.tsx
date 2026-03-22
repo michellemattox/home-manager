@@ -216,6 +216,7 @@ export default function TasksScreen() {
   const [llAssignedId, setLlAssignedId] = useState<string | undefined>(undefined);
 
   const openLowLiftEdit = (task: RecurringTask) => {
+    updateRecurring.reset(); // clear any stuck pending state from a previous save
     setEditingLowLift(task);
     setLlTitle(task.title);
     setLlNotes(task.description ?? "");
@@ -234,7 +235,8 @@ export default function TasksScreen() {
   }, [openTaskId, recurringTasks]);
 
   const handleSaveLowLift = async () => {
-    if (!editingLowLift || !llTitle.trim() || !household) return;
+    if (!editingLowLift || !llTitle.trim()) return;
+    if (!household) { showAlert("Error", "Household not loaded. Please wait a moment and try again."); return; }
     const freqDays = llFreqType === "custom"
       ? parseInt(llCustomDays || "30", 10)
       : frequencyToDays(llFreqType);
@@ -302,6 +304,7 @@ export default function TasksScreen() {
   const [stAssignedId, setStAssignedId] = useState<string | undefined>(undefined);
 
   const openPAEdit = (task: ProjectTask & { notes?: string | null; project_title?: string }) => {
+    updateProjectTask.reset();
     setEditingPA(task);
     setPaTitle(task.title);
     setPaNotes((task as any).notes ?? "");
