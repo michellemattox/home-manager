@@ -23,6 +23,7 @@ import { supabase } from "@/lib/supabase";
 import { notificationSuccess } from "@/lib/haptics";
 import type { ProjectWithOwners, RecurringTask, Task } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
+import { useWowUpdates, useGenerateWow, type WowUpdate } from "@/hooks/useWowUpdates";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -161,6 +162,36 @@ function OneOffTaskRow({
   );
 }
 
+const WOW_COLORS: Record<string, string> = {
+  idea: "#FBFCCF",
+  project: "#EBFAFC",
+  activity: "#FADCDF",
+  goal: "#F5E7D3",
+  task: "#F6EDFF",
+};
+const WOW_LABELS: Record<string, string> = {
+  idea: "Idea", project: "Project", activity: "Activity", goal: "Goal", task: "Task",
+};
+
+function WowCard({ entry, onPress }: { entry: WowUpdate; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      className="rounded-xl p-3 mb-2"
+      style={{ backgroundColor: WOW_COLORS[entry.source_type] ?? "#f9fafb" }}
+    >
+      <View className="flex-row items-center justify-between mb-1">
+        <Text className="text-xs font-bold text-gray-500 uppercase tracking-wide">
+          {WOW_LABELS[entry.source_type]}
+        </Text>
+        <Text className="text-gray-400 text-sm">›</Text>
+      </View>
+      <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{entry.title}</Text>
+      <Text className="text-xs text-gray-600 mt-0.5" numberOfLines={2}>{entry.summary}</Text>
+    </TouchableOpacity>
+  );
+}
+
 function StatCard({ label, value, sub, color, bgColor, onPress }: {
   label: string; value: string; sub?: string; color: string; bgColor?: string; onPress?: () => void;
 }) {
@@ -188,6 +219,35 @@ export default function HomeScreen() {
   const { data: serviceRecords, refetch: refetchServices } = useServiceRecords(household?.id);
   const completeRecurring = useCompleteRecurringTask();
   const completeOneOff = useCompleteTask();
+  const { data: wowUpdates = [], refetch: refetchWow } = useWowUpdates(household?.id);
+  const generateWow = useGenerateWow();
+  const [generatingWow, setGeneratingWow] = useState(false);
+
+  const handleGenerateWow = async () => {
+    if (!household) return;
+    setGeneratingWow(true);
+    try {
+      await generateWow(household.id);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    } finally {
+      setGeneratingWow(false);
+    }
+  };
+
+  const handleWowPress = (entry: WowUpdate) => {
+    if (entry.source_type === "project" && entry.source_id) {
+      router.push(`/(app)/(projects)/${entry.source_id}?from=wow`);
+    } else if (entry.source_type === "activity" && entry.source_id) {
+      router.push(`/(app)/(activity)/${entry.source_id}?from=wow`);
+    } else if (entry.source_tab === "ideas") {
+      router.push("/(app)/(ideas)");
+    } else if (entry.source_tab === "tasks") {
+      router.push("/(app)/(tasks)");
+    } else if (entry.source_tab === "goals") {
+      router.push("/(app)/(goals)");
+    }
+  };
 
   const [connectingReminderId, setConnectingReminderId] = useState<string | null>(null);
 
@@ -208,6 +268,7 @@ export default function HomeScreen() {
     refetchTasks();
     refetchOneOff();
     refetchServices();
+    refetchWow();
   };
 
   // Projects
@@ -383,6 +444,30 @@ export default function HomeScreen() {
               />
             ))}
           </>
+        )}
+
+        {/* WoW Updates */}
+        <View className="flex-row items-center justify-between mt-4 mb-1">
+          <SectionHeader title="WoW Updates" count={wowUpdates.length} />
+          <TouchableOpacity
+            onPress={handleGenerateWow}
+            disabled={generatingWow}
+            className="px-3 py-1 rounded-full bg-white/60 border border-gray-200"
+          >
+            <Text className="text-xs font-semibold text-gray-500">
+              {generatingWow ? "Generating…" : "↻ Refresh"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {wowUpdates.length === 0 ? (
+          <View className="rounded-xl p-4 mb-2 items-center bg-white/50 border border-gray-100">
+            <Text className="text-sm text-gray-400">No updates yet for this week.</Text>
+            <Text className="text-xs text-gray-300 mt-1">Tap ↻ Refresh to generate.</Text>
+          </View>
+        ) : (
+          wowUpdates.map((entry) => (
+            <WowCard key={entry.id} entry={entry} onPress={() => handleWowPress(entry)} />
+          ))
         )}
 
         {/* All clear banner */}

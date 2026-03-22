@@ -23,7 +23,11 @@ async function sendDigestEmail(
   firstName: string,
   items: ReminderItem[]
 ) {
-  if (!resendApiKey) return null;
+  if (!resendApiKey) {
+    throw new Error(
+      "RESEND_API_KEY is not set. Go to Supabase Dashboard → Edge Functions → send-reminders → Secrets and add RESEND_API_KEY."
+    );
+  }
 
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric",
@@ -91,7 +95,9 @@ async function sendDigestEmail(
       html,
     }),
   });
-  return res.json();
+  const json = await res.json();
+  if (!res.ok) throw new Error(`Resend error ${res.status}: ${JSON.stringify(json)}`);
+  return json;
 }
 
 async function sendPushNotifications(messages: object[]) {

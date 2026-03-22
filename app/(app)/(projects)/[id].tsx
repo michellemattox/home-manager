@@ -109,8 +109,9 @@ function BudgetRow({ budget, total }: { budget: number; total: number }) {
 }
 
 export default function ProjectDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const router = useRouter();
+  const fromWow = from === "wow";
   const { data: project, isLoading, refetch } = useProject(id);
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
@@ -535,10 +536,20 @@ export default function ProjectDetailScreen() {
             <Text className="text-blue-600 text-sm font-medium">Edit</Text>
           </TouchableOpacity>
         )}
-        <TouchableOpacity onPress={handleDelete} className="ml-3">
+        <TouchableOpacity onPress={handleDelete} className="ml-2">
           <Text className="text-gray-300 text-lg">🗑️</Text>
         </TouchableOpacity>
       </View>
+      {fromWow && (
+        <View className="flex-row items-center px-4 py-2 gap-4" style={{ backgroundColor: "#FFF8F0" }}>
+          <TouchableOpacity onPress={() => router.replace("/(app)/(home)")}>
+            <Text className="text-xs font-semibold" style={{ color: "#FC9853" }}>← Dashboard</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => router.push("/(app)/(projects)")}>
+            <Text className="text-xs font-semibold text-blue-500">Projects →</Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <ScrollView contentContainerClassName="px-4 py-4 pb-28">
         {/* Meta card */}

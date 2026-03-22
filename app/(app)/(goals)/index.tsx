@@ -463,7 +463,7 @@ export default function GoalsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#FFBDD9]" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#F5E7D3]" edges={["top"]}>
       <AppHeader compact />
       <View className="px-4 py-3 flex-row items-center">
         <View className="flex-1">
