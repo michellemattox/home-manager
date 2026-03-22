@@ -16,6 +16,7 @@ interface ReminderItem {
   title: string;
   dueDate: string;
   overdue: boolean;
+  timeOfDay?: string | null;
 }
 
 async function sendDigestEmail(
@@ -35,16 +36,15 @@ async function sendDigestEmail(
   const overdueItems = items.filter((i) => i.overdue);
   const dueItems = items.filter((i) => !i.overdue);
 
-  const listItems = (arr: ReminderItem[], color: string) =>
+  const listItems = (arr: ReminderItem[]) =>
     arr
-      .map(
-        (i) =>
-          `<li style="margin-bottom:6px;color:#374151;">${i.title}${
-            i.overdue
-              ? ` <span style="color:#9ca3af;font-size:12px;">(was due ${i.dueDate})</span>`
-              : ""
-          }</li>`
-      )
+      .map((i) => {
+        const time = i.timeOfDay ? ` <span style="color:#6b7280;font-size:12px;">@ ${i.timeOfDay}</span>` : "";
+        const overdueMeta = i.overdue
+          ? ` <span style="color:#9ca3af;font-size:12px;">(was due ${i.dueDate})</span>`
+          : "";
+        return `<li style="margin-bottom:8px;color:#374151;">${i.title}${time}${overdueMeta}</li>`;
+      })
       .join("");
 
   const html = `
@@ -61,7 +61,7 @@ async function sendDigestEmail(
     overdueItems.length > 0
       ? `<div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
            <p style="color:#dc2626;font-weight:700;margin:0 0 8px;">⚠ Overdue (${overdueItems.length})</p>
-           <ul style="margin:0;padding-left:18px;">${listItems(overdueItems, "#dc2626")}</ul>
+           <ul style="margin:0;padding-left:18px;">${listItems(overdueItems)}</ul>
          </div>`
       : ""
   }
@@ -70,7 +70,7 @@ async function sendDigestEmail(
     dueItems.length > 0
       ? `<div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
            <p style="color:#d97706;font-weight:700;margin:0 0 8px;">📋 Due Today (${dueItems.length})</p>
-           <ul style="margin:0;padding-left:18px;">${listItems(dueItems, "#374151")}</ul>
+           <ul style="margin:0;padding-left:18px;">${listItems(dueItems)}</ul>
          </div>`
       : ""
   }
@@ -167,7 +167,7 @@ Deno.serve(async (req) => {
     const { data: recurringTasks, error: rtError } = await supabase
       .from("recurring_tasks")
       .select(`
-        id, title, next_due_date, household_id, assigned_member_id,
+        id, title, next_due_date, household_id, assigned_member_id, time_of_day,
         household_members!assigned_member_id (id, user_id, display_name)
       `)
       .eq("is_active", true)
@@ -206,27 +206,31 @@ Deno.serve(async (req) => {
 
     for (const task of recurringTasks) {
       const overdue = task.next_due_date < today;
-      const item: ReminderItem = { title: task.title, dueDate: task.next_due_date, overdue };
+      const item: ReminderItem = {
+        title: task.title,
+        dueDate: task.next_due_date,
+        overdue,
+        timeOfDay: (task as any).time_of_day ?? null,
+      };
 
       if (task.assigned_member_id) {
         const member = task.household_members as any;
         if (member?.user_id) {
-          // Check prefs for this member
           const prefs = prefsByMemberId[task.assigned_member_id];
-          if (prefs) {
-            if (overdue && !prefs.overdue_enabled) continue;
-            if (!overdue && !prefs.due_soon_enabled) continue;
-          }
+          // Skip entirely if this member has no saved notification preferences
+          if (!prefs) continue;
+          if (overdue && !prefs.overdue_enabled) continue;
+          if (!overdue && !prefs.due_soon_enabled) continue;
           addItem(member.user_id, item);
         }
       } else {
+        // Unassigned task — add to all members who have prefs set up
         for (const m of membersByHousehold[task.household_id] ?? []) {
           if (!m.user_id) continue;
           const prefs = prefsByMemberId[m.id];
-          if (prefs) {
-            if (overdue && !prefs.overdue_enabled) continue;
-            if (!overdue && !prefs.due_soon_enabled) continue;
-          }
+          if (!prefs) continue; // skip members with no saved preferences
+          if (overdue && !prefs.overdue_enabled) continue;
+          if (!overdue && !prefs.due_soon_enabled) continue;
           addItem(m.user_id, item);
         }
       }
@@ -246,16 +250,17 @@ Deno.serve(async (req) => {
       const items = tasksByUserId[userId];
       if (!items.length) continue;
 
-      // Find this user's member record to get their prefs (default: 8 AM daily)
+      // Find this user's member record and their saved prefs
       const member = (allMembers ?? []).find((m) => m.user_id === userId);
       const prefs = member ? prefsByMemberId[member.id] : undefined;
-      const reminderHour = prefs?.reminder_hour ?? 8;
-      const reminderFrequency = prefs?.reminder_frequency ?? "daily";
+
+      // No saved preferences = user has not opted in to reminders
+      if (!prefs) { skipped++; continue; }
 
       // Only send at the matching PT hour
-      if (currentHourPT !== reminderHour) { skipped++; continue; }
-      // Only send on the right day based on frequency
-      if (!shouldSendToday(reminderFrequency)) { skipped++; continue; }
+      if (currentHourPT !== prefs.reminder_hour) { skipped++; continue; }
+      // Only send on the right day based on their chosen frequency
+      if (!shouldSendToday(prefs.reminder_frequency)) { skipped++; continue; }
 
       const { data: userData } = await supabase.auth.admin.getUserById(userId);
       const email = userData?.user?.email;
