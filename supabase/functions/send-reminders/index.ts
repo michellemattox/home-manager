@@ -118,8 +118,6 @@ Deno.serve(async (req) => {
   try {
     const now = new Date();
     const today = now.toISOString().split("T")[0];
-    // Current hour in PT (UTC-7 PDT / UTC-8 PST). Use UTC-7 as approximation.
-    const currentHourPT = (now.getUTCHours() + 17) % 24; // UTC - 7
 
     // ── Test mode: send a sample digest to a specific email ──────────────────
     let body: Record<string, unknown> = {};
@@ -257,8 +255,6 @@ Deno.serve(async (req) => {
       // No saved preferences = user has not opted in to reminders
       if (!prefs) { skipped++; continue; }
 
-      // Only send at the matching PT hour
-      if (currentHourPT !== prefs.reminder_hour) { skipped++; continue; }
       // Only send on the right day based on their chosen frequency
       if (!shouldSendToday(prefs.reminder_frequency)) { skipped++; continue; }
 

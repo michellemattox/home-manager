@@ -32,11 +32,11 @@ function greeting() {
   return "Good evening";
 }
 
-function SectionHeader({ title, count, onSeeAll }: { title: string; count?: number; onSeeAll?: () => void }) {
+function SectionHeader({ title, count, onSeeAll, raw }: { title: string; count?: number; onSeeAll?: () => void; raw?: boolean }) {
   return (
     <View className="flex-row items-center justify-between mb-2 mt-4">
       <View className="flex-row items-center gap-2">
-        <Text className="text-sm font-bold text-gray-700 uppercase tracking-wide">{title}</Text>
+        <Text className={`text-sm font-bold text-gray-700 tracking-wide${raw ? "" : " uppercase"}`}>{title}</Text>
         {count !== undefined && count > 0 && (
           <View className="bg-red-500 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
             <Text className="text-white text-xs font-bold">{count}</Text>
@@ -222,11 +222,26 @@ export default function HomeScreen() {
   const { data: wowUpdates = [], refetch: refetchWow } = useWowUpdates(household?.id);
   const generateWow = useGenerateWow();
   const [generatingWow, setGeneratingWow] = useState(false);
+  // Track which entries have been seen — dismissed on manual refresh if unchanged
+  const [dismissedHashes, setDismissedHashes] = useState<Set<string>>(new Set());
+
+  const wowEntryHash = (e: WowUpdate) =>
+    `${e.source_type}:${e.source_id ?? ""}:${e.summary}`;
+
+  // Ordered: idea → task → project → activity → goal
+  const WOW_ORDER: Record<string, number> = { idea: 0, task: 1, project: 2, activity: 3, goal: 4 };
+  const visibleWow = wowUpdates
+    .filter((e) => !dismissedHashes.has(wowEntryHash(e)))
+    .sort((a, b) => (WOW_ORDER[a.source_type] ?? 9) - (WOW_ORDER[b.source_type] ?? 9));
 
   const handleGenerateWow = async () => {
     if (!household) return;
     setGeneratingWow(true);
     try {
+      // Mark everything currently shown as dismissed before regenerating
+      const newDismissed = new Set(dismissedHashes);
+      wowUpdates.forEach((e) => newDismissed.add(wowEntryHash(e)));
+      setDismissedHashes(newDismissed);
       await generateWow(household.id);
     } catch (e: any) {
       showAlert("Error", e.message);
@@ -448,7 +463,7 @@ export default function HomeScreen() {
 
         {/* WoW Updates */}
         <View className="flex-row items-center justify-between mt-4 mb-1">
-          <SectionHeader title="WoW Updates" count={wowUpdates.length} />
+          <SectionHeader title="WoW Updates" count={visibleWow.length} raw />
           <TouchableOpacity
             onPress={handleGenerateWow}
             disabled={generatingWow}
@@ -459,13 +474,13 @@ export default function HomeScreen() {
             </Text>
           </TouchableOpacity>
         </View>
-        {wowUpdates.length === 0 ? (
+        {visibleWow.length === 0 ? (
           <View className="rounded-xl p-4 mb-2 items-center bg-white/50 border border-gray-100">
             <Text className="text-sm text-gray-400">No updates yet for this week.</Text>
             <Text className="text-xs text-gray-300 mt-1">Tap ↻ Refresh to generate.</Text>
           </View>
         ) : (
-          wowUpdates.map((entry) => (
+          visibleWow.map((entry) => (
             <WowCard key={entry.id} entry={entry} onPress={() => handleWowPress(entry)} />
           ))
         )}
