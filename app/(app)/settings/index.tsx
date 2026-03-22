@@ -62,10 +62,16 @@ export default function SettingsScreen() {
   const handleTestReminder = useCallback(async () => {
     setTestReminderLoading(true);
     try {
-      const { error } = await supabase.functions.invoke("send-reminders", {
-        body: { testEmail: "michellemattox1@gmail.com" },
-      });
-      if (error) throw error;
+      const res = await fetch(
+        "https://sjtlmvcxcffftsdleftf.supabase.co/functions/v1/send-reminders",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ testEmail: "michellemattox1@gmail.com" }),
+        }
+      );
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error ?? `Error ${res.status}`);
       showAlert("Test Sent", "A test reminder email was sent to michellemattox1@gmail.com.");
     } catch (err: any) {
       showAlert("Error", err?.message ?? "Failed to send test reminder.");
