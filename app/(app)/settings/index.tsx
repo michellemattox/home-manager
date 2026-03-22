@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -57,6 +57,25 @@ export default function SettingsScreen() {
   } = useNotificationStore();
 
   const isAllMembers = notifyMemberIds.includes("all") || notifyMemberIds.length === 0;
+
+  // Auto-sync notification prefs to DB whenever they change (debounced 800ms)
+  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!currentMember || !household) return;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(async () => {
+      await supabase.from("notification_preferences" as any).upsert({
+        member_id: currentMember.id,
+        household_id: household.id,
+        overdue_enabled: overdueEnabled,
+        due_soon_enabled: dueSoonEnabled,
+        reminder_hour: reminderHour,
+        reminder_frequency: reminderFrequency,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "member_id" });
+    }, 800);
+    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
+  }, [overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency, currentMember?.id, household?.id]);
 
   const [testReminderLoading, setTestReminderLoading] = useState(false);
   const handleTestReminder = useCallback(async () => {

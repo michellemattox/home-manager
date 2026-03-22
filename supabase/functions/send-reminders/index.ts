@@ -116,7 +116,10 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const today = new Date().toISOString().split("T")[0];
+    const now = new Date();
+    const today = now.toISOString().split("T")[0];
+    // Current hour in PT (UTC-7 PDT / UTC-8 PST). Use UTC-7 as approximation.
+    const currentHourPT = (now.getUTCHours() + 17) % 24; // UTC - 7
 
     // ── Test mode: send a sample digest to a specific email ──────────────────
     let body: Record<string, unknown> = {};
@@ -133,7 +136,34 @@ Deno.serve(async (req) => {
       );
     }
 
-    // ── 1. Fetch all active recurring tasks due today or overdue ──────────────
+    // ── 1. Load notification preferences for all members ─────────────────────
+    const { data: allPrefs } = await supabase
+      .from("notification_preferences")
+      .select("member_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency");
+
+    const prefsByMemberId: Record<string, {
+      overdue_enabled: boolean;
+      due_soon_enabled: boolean;
+      reminder_hour: number;
+      reminder_frequency: string;
+    }> = {};
+    for (const p of allPrefs ?? []) {
+      prefsByMemberId[p.member_id] = p;
+    }
+
+    // Helper: should this member receive a reminder today based on frequency?
+    function shouldSendToday(frequency: string): boolean {
+      if (frequency === "daily") return true;
+      if (frequency === "every_other_day") {
+        const daysSinceEpoch = Math.floor(now.getTime() / 86400000);
+        return daysSinceEpoch % 2 === 0;
+      }
+      if (frequency === "weekly") return now.getUTCDay() === 1; // Monday
+      if (frequency === "monthly") return now.getUTCDate() === 1;
+      return true;
+    }
+
+    // ── 2. Fetch all active recurring tasks due today or overdue ──────────────
     const { data: recurringTasks, error: rtError } = await supabase
       .from("recurring_tasks")
       .select(`
@@ -150,7 +180,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── 2. Load all household members (needed for unassigned tasks) ───────────
+    // ── 3. Load all household members (needed for unassigned tasks) ───────────
     const householdIds = [...new Set(recurringTasks.map((t) => t.household_id))];
     const { data: allMembers } = await supabase
       .from("household_members")
@@ -164,12 +194,11 @@ Deno.serve(async (req) => {
       membersByHousehold[m.household_id]!.push(m);
     }
 
-    // ── 3. Group tasks by user_id ─────────────────────────────────────────────
+    // ── 4. Group tasks by user_id ─────────────────────────────────────────────
     const tasksByUserId: Record<string, ReminderItem[]> = {};
 
     const addItem = (userId: string, item: ReminderItem) => {
       if (!tasksByUserId[userId]) tasksByUserId[userId] = [];
-      // Deduplicate by title within the same user
       if (!tasksByUserId[userId].some((i) => i.title === item.title)) {
         tasksByUserId[userId].push(item);
       }
@@ -180,13 +209,25 @@ Deno.serve(async (req) => {
       const item: ReminderItem = { title: task.title, dueDate: task.next_due_date, overdue };
 
       if (task.assigned_member_id) {
-        // Assigned task — notify only the assigned member
         const member = task.household_members as any;
-        if (member?.user_id) addItem(member.user_id, item);
+        if (member?.user_id) {
+          // Check prefs for this member
+          const prefs = prefsByMemberId[task.assigned_member_id];
+          if (prefs) {
+            if (overdue && !prefs.overdue_enabled) continue;
+            if (!overdue && !prefs.due_soon_enabled) continue;
+          }
+          addItem(member.user_id, item);
+        }
       } else {
-        // Unassigned / household-level task — notify all members
         for (const m of membersByHousehold[task.household_id] ?? []) {
-          if (m.user_id) addItem(m.user_id, item);
+          if (!m.user_id) continue;
+          const prefs = prefsByMemberId[m.id];
+          if (prefs) {
+            if (overdue && !prefs.overdue_enabled) continue;
+            if (!overdue && !prefs.due_soon_enabled) continue;
+          }
+          addItem(m.user_id, item);
         }
       }
     }
@@ -198,11 +239,24 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── 4. Send email digest to each user ─────────────────────────────────────
+    // ── 5. Send email digest to each user (respecting their prefs) ────────────
     let emailsSent = 0;
+    let skipped = 0;
     for (const userId of userIds) {
       const items = tasksByUserId[userId];
       if (!items.length) continue;
+
+      // Find this user's member record to get their prefs
+      const member = (allMembers ?? []).find((m) => m.user_id === userId);
+      if (member) {
+        const prefs = prefsByMemberId[member.id];
+        if (prefs) {
+          // Check if this hour matches their reminder_hour preference
+          if (Math.abs(currentHourPT - prefs.reminder_hour) > 0) { skipped++; continue; }
+          // Check frequency
+          if (!shouldSendToday(prefs.reminder_frequency)) { skipped++; continue; }
+        }
+      }
 
       const { data: userData } = await supabase.auth.admin.getUserById(userId);
       const email = userData?.user?.email;
@@ -241,7 +295,7 @@ Deno.serve(async (req) => {
     const pushResult = await sendPushNotifications(pushMessages);
 
     return new Response(
-      JSON.stringify({ emailsSent, pushSent: pushMessages.length, pushResult }),
+      JSON.stringify({ emailsSent, skipped, pushSent: pushMessages.length, pushResult }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
