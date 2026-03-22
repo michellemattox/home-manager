@@ -7,7 +7,7 @@ export default function GardenScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
       <AppHeader compact />
-      <View className="px-4 py-3 border-b border-gray-100 bg-white">
+      <View className="px-4 py-3 border-b border-black/5">
         <Text className="text-xl font-bold text-gray-900">Garden</Text>
       </View>
       <View className="flex-1 items-center justify-center px-8">

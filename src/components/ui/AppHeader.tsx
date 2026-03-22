@@ -12,7 +12,7 @@ interface AppHeaderProps {
 export function AppHeader({ compact = false }: AppHeaderProps) {
   if (compact) {
     return (
-      <View className="flex-row items-center px-4 py-2 bg-white border-b border-gray-100">
+      <View className="flex-row items-center px-4 py-2 border-b border-black/5">
         <Logo width={30} height={30} style={{ marginRight: 10 }} />
         <Text
           numberOfLines={1}
