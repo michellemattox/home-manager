@@ -353,6 +353,27 @@ export default function ProjectDetailScreen() {
     setAddItemChecklist(name);
   };
 
+  const handleDeleteChecklist = (name: string) => {
+    const tasks = tasksByChecklist[name] ?? [];
+    showConfirm(
+      `Delete "${name}"?`,
+      tasks.length > 0
+        ? `This will permanently remove ${tasks.length} item${tasks.length === 1 ? "" : "s"}.`
+        : "This checklist is empty and will be removed.",
+      async () => {
+        try {
+          for (const task of tasks) {
+            await deleteTask.mutateAsync({ id: task.id, project_id: task.project_id });
+          }
+          setLocalChecklists((prev) => prev.filter((n) => n !== name));
+        } catch (e: any) {
+          showAlert("Error", e.message);
+        }
+      },
+      true
+    );
+  };
+
   const handleAddChecklistItem = async () => {
     if (!addItemTitle.trim() || !addItemChecklist || !id) return;
     const tasks = (project?.project_tasks ?? []) as ProjectTask[];
@@ -730,12 +751,20 @@ export default function ProjectDetailScreen() {
             <View className="flex-row items-center justify-between mb-2">
               <Text className="text-sm font-bold text-gray-500 uppercase tracking-wider">{name}</Text>
               {!isFinished && (
-                <TouchableOpacity
-                  onPress={() => setAddItemChecklist(name)}
-                  className="bg-blue-600 rounded-full px-3 py-0.5"
-                >
-                  <Text className="text-white text-xs font-semibold">+ Add</Text>
-                </TouchableOpacity>
+                <View className="flex-row items-center gap-2">
+                  <TouchableOpacity
+                    onPress={() => handleDeleteChecklist(name)}
+                    className="w-6 h-6 rounded-full bg-red-50 border border-red-200 items-center justify-center"
+                  >
+                    <Text className="text-red-400 text-xs font-bold leading-none">×</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => setAddItemChecklist(name)}
+                    className="bg-blue-600 rounded-full px-3 py-0.5"
+                  >
+                    <Text className="text-white text-xs font-semibold">+ Add</Text>
+                  </TouchableOpacity>
+                </View>
               )}
             </View>
             <Card>

@@ -327,6 +327,27 @@ export default function TripDetailScreen() {
     setAddItemChecklist(name);
   };
 
+  const handleDeleteChecklist = (name: string) => {
+    const tasks = tasksByChecklist[name] ?? [];
+    showConfirm(
+      `Delete "${name}"?`,
+      tasks.length > 0
+        ? `This will permanently remove ${tasks.length} item${tasks.length === 1 ? "" : "s"}.`
+        : "This checklist is empty and will be removed.",
+      async () => {
+        try {
+          for (const task of tasks) {
+            await deleteTask.mutateAsync({ taskId: task.id, tripId: task.trip_id });
+          }
+          setLocalChecklists((prev) => prev.filter((n) => n !== name));
+        } catch (e: any) {
+          showAlert("Error", e.message);
+        }
+      },
+      true
+    );
+  };
+
   const handleAddItem = async (
     title: string,
     assignedMemberId: string | null,
@@ -457,12 +478,20 @@ export default function TripDetailScreen() {
               <Text className="text-sm font-bold text-gray-700 uppercase tracking-wide">
                 {name}
               </Text>
-              <TouchableOpacity
-                onPress={() => setAddItemChecklist(name)}
-                className="bg-blue-600 rounded-full px-3 py-0.5"
-              >
-                <Text className="text-white text-xs font-semibold">+ Add</Text>
-              </TouchableOpacity>
+              <View className="flex-row items-center gap-2">
+                <TouchableOpacity
+                  onPress={() => handleDeleteChecklist(name)}
+                  className="w-6 h-6 rounded-full bg-red-50 border border-red-200 items-center justify-center"
+                >
+                  <Text className="text-red-400 text-xs font-bold leading-none">×</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setAddItemChecklist(name)}
+                  className="bg-blue-600 rounded-full px-3 py-0.5"
+                >
+                  <Text className="text-white text-xs font-semibold">+ Add</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             <Card>
               {tasksByChecklist[name].length === 0 ? (
