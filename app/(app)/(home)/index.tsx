@@ -22,6 +22,7 @@ import { showAlert } from "@/lib/alert";
 import { supabase } from "@/lib/supabase";
 import { notificationSuccess } from "@/lib/haptics";
 import type { ProjectWithOwners, RecurringTask, Task } from "@/types/app.types";
+import { AppHeader } from "@/components/ui/AppHeader";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -285,9 +286,12 @@ export default function HomeScreen() {
         contentContainerClassName="px-4 pb-8"
         refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
       >
-        {/* Header */}
-        <View className="pt-4 pb-2">
-          <Text className="text-2xl font-bold text-gray-900">
+        {/* App header */}
+        <AppHeader />
+
+        {/* Greeting */}
+        <View className="pb-2">
+          <Text className="text-lg font-semibold text-gray-800">
             {greeting()}{currentMember ? `, ${currentMember.display_name.split(" ")[0]}` : ""}
           </Text>
           {household && (

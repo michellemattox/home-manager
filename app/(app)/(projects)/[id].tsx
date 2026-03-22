@@ -438,7 +438,42 @@ export default function ProjectDetailScreen() {
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
-  if (!project) return null;
+  if (isLoading) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+        <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+          <TouchableOpacity onPress={() => router.back()} className="mr-4">
+            <Text className="text-blue-600 text-base">←</Text>
+          </TouchableOpacity>
+          <Text className="flex-1 text-lg font-semibold text-gray-400">Loading…</Text>
+        </View>
+        <View className="flex-1 items-center justify-center">
+          <Text className="text-gray-400 text-sm">Loading project…</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  if (!project) {
+    return (
+      <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+        <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+          <TouchableOpacity onPress={() => router.back()} className="mr-4">
+            <Text className="text-blue-600 text-base">←</Text>
+          </TouchableOpacity>
+          <Text className="flex-1 text-lg font-semibold text-gray-400">Project not found</Text>
+        </View>
+        <View className="flex-1 items-center justify-center px-8">
+          <Text className="text-gray-400 text-sm text-center">
+            This project could not be loaded. It may have been deleted.
+          </Text>
+          <TouchableOpacity onPress={() => router.back()} className="mt-4">
+            <Text className="text-blue-600 text-sm font-medium">← Go back</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   const owners = (project.project_owners ?? [])
     .map((po: any) => members.find((m) => m.id === po.member_id))

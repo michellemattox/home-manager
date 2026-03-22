@@ -26,6 +26,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateShort, formatDateTime, isOverdue } from "@/utils/dateUtils";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
+import { AppHeader } from "@/components/ui/AppHeader";
 
 type UserTypeFilter = "all" | "family" | "individual";
 
@@ -463,9 +464,10 @@ export default function GoalsScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#FFBDD9]" edges={["top"]}>
+      <AppHeader compact />
       <View className="px-4 py-3 border-b border-gray-100 bg-white flex-row items-center">
         <View className="flex-1">
-          <Text className="text-2xl font-bold text-gray-900">Goals</Text>
+          <Text className="text-xl font-bold text-gray-900">Goals</Text>
           <Text className="text-xs text-gray-400">Track family and personal goals.</Text>
         </View>
         <TouchableOpacity

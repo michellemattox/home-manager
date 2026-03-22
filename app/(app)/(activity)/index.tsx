@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDateShort } from "@/utils/dateUtils";
 import type { Trip } from "@/types/app.types";
+import { AppHeader } from "@/components/ui/AppHeader";
 
 function ActivityCard({ trip }: { trip: Trip }) {
   const router = useRouter();
@@ -68,8 +69,9 @@ export default function ActivityScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#FCF5EB]" edges={["top"]}>
+      <AppHeader compact />
       <View className="flex-row items-center justify-between px-4 py-3">
-        <Text className="text-2xl font-bold text-gray-900">Activity</Text>
+        <Text className="text-xl font-bold text-gray-900">Activity</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(activity)/new")}
           className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center"

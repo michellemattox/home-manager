@@ -30,6 +30,7 @@ import { buildGoogleMapsUrl, buildYelpUrl, getServiceTypeKeyword } from "@/lib/v
 import { formatDate, formatDateTime, isOverdue, isDueSoon } from "@/utils/dateUtils";
 import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
 import { SERVICE_TYPES } from "@/types/app.types";
+import { AppHeader } from "@/components/ui/AppHeader";
 import type {
   ProjectWithOwners,
   ProjectStatus,
@@ -783,8 +784,9 @@ export default function ProjectsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#EBFAFC]" edges={["top"]}>
       {/* Header */}
+      <AppHeader compact />
       <View className="px-4 pt-3 pb-2 bg-white border-b border-gray-100">
-        <Text className="text-2xl font-bold text-gray-900 mb-3">Projects</Text>
+        <Text className="text-xl font-bold text-gray-900 mb-3">Projects</Text>
         {/* Sub-tab switcher */}
         <View className="flex-row bg-gray-100 rounded-xl p-1">
           {(["projects", "services"] as SubTab[]).map((tab) => (

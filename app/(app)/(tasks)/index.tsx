@@ -36,6 +36,7 @@ import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { isOverdue, isDueSoon, formatDate, formatDateShort, toISODateString } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
 import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
+import { AppHeader } from "@/components/ui/AppHeader";
 
 type TaskMode = "low-lift" | "project-adjacent";
 
@@ -452,8 +453,9 @@ export default function TasksScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#F6EDFF]" edges={["top"]}>
+      <AppHeader compact />
       <View className="flex-row items-center justify-between px-4 py-3 border-b border-gray-100 bg-white">
-        <Text className="text-2xl font-bold text-gray-900">Tasks</Text>
+        <Text className="text-xl font-bold text-gray-900">Tasks</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tasks)/new")}
           className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center"

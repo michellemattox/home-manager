@@ -33,6 +33,7 @@ import { formatDateShort } from "@/utils/dateUtils";
 import { toISODateString } from "@/utils/dateUtils";
 import { frequencyToDays } from "@/utils/scheduleUtils";
 import type { Idea, ProjectWithOwners, FrequencyType } from "@/types/app.types";
+import { AppHeader } from "@/components/ui/AppHeader";
 
 type TaskMode = "low-lift" | "project-adjacent";
 
@@ -446,8 +447,9 @@ export default function IdeasScreen() {
 
   return (
     <SafeAreaView className="flex-1 bg-[#FBFCCF]" edges={["top"]}>
+      <AppHeader compact />
       <View className="px-4 py-3 border-b border-gray-100 bg-white">
-        <Text className="text-2xl font-bold text-gray-900 mb-1">Ideas</Text>
+        <Text className="text-xl font-bold text-gray-900 mb-1">Ideas</Text>
         <Text className="text-xs text-gray-400">Capture an idea, then move it where it belongs.</Text>
       </View>
 
