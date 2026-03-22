@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -57,6 +57,22 @@ export default function SettingsScreen() {
   } = useNotificationStore();
 
   const isAllMembers = notifyMemberIds.includes("all") || notifyMemberIds.length === 0;
+
+  const [testReminderLoading, setTestReminderLoading] = useState(false);
+  const handleTestReminder = useCallback(async () => {
+    setTestReminderLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke("send-reminders", {
+        body: { testEmail: "michellemattox1@gmail.com" },
+      });
+      if (error) throw error;
+      showAlert("Test Sent", "A test reminder email was sent to michellemattox1@gmail.com.");
+    } catch (err: any) {
+      showAlert("Error", err?.message ?? "Failed to send test reminder.");
+    } finally {
+      setTestReminderLoading(false);
+    }
+  }, []);
 
   const toggleMember = (id: string) => {
     if (id === "all") {
@@ -414,6 +430,26 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             ))}
           </View>
+        </Card>
+
+        {/* Test Reminder */}
+        <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          Test
+        </Text>
+        <Card className="mb-6">
+          <Text className="text-sm font-semibold text-gray-800 mb-1">Test Reminder Email</Text>
+          <Text className="text-xs text-gray-500 mb-4">
+            Send a sample daily digest to michellemattox1@gmail.com to preview the reminder format.
+          </Text>
+          <TouchableOpacity
+            onPress={handleTestReminder}
+            disabled={testReminderLoading}
+            className={`rounded-xl py-2.5 px-4 items-center ${testReminderLoading ? "bg-gray-100" : "bg-orange-50 border border-orange-200"}`}
+          >
+            <Text style={{ color: testReminderLoading ? "#9ca3af" : "#FC9853" }} className="text-sm font-semibold">
+              {testReminderLoading ? "Sending…" : "Send Test Reminder"}
+            </Text>
+          </TouchableOpacity>
         </Card>
 
         {/* Account */}
