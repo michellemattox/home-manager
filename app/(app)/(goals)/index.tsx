@@ -465,7 +465,7 @@ export default function GoalsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#FFBDD9]" edges={["top"]}>
       <AppHeader compact />
-      <View className="px-4 py-3 border-b border-black/5 flex-row items-center">
+      <View className="px-4 py-3 flex-row items-center">
         <View className="flex-1">
           <Text className="text-xl font-bold text-gray-900">Goals</Text>
           <Text className="text-xs text-gray-400">Track family and personal goals.</Text>
@@ -479,7 +479,7 @@ export default function GoalsScreen() {
       </View>
 
       {/* Filters */}
-      <View className="border-b border-black/5 px-4 py-3">
+      <View className="px-4 py-3">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-2">
           {/* User type filter */}
           {(["all", "family", "individual"] as UserTypeFilter[]).map((f) => (

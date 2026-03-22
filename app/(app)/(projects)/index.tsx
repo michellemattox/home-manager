@@ -837,7 +837,7 @@ export default function ProjectsScreen() {
     <SafeAreaView className="flex-1 bg-[#EBFAFC]" edges={["top"]}>
       {/* Header */}
       <AppHeader compact />
-      <View className="px-4 pt-3 pb-2 border-b border-black/5">
+      <View className="px-4 pt-3 pb-2">
         <Text className="text-xl font-bold text-gray-900 mb-3">Projects</Text>
         {/* Sub-tab switcher */}
         <View className="flex-row bg-gray-100 rounded-xl p-1">

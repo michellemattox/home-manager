@@ -454,7 +454,7 @@ export default function TasksScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#F6EDFF]" edges={["top"]}>
       <AppHeader compact />
-      <View className="flex-row items-center justify-between px-4 py-3 border-b border-black/5">
+      <View className="flex-row items-center justify-between px-4 py-3">
         <Text className="text-xl font-bold text-gray-900">Tasks</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tasks)/new")}
