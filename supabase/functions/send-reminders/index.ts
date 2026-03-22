@@ -1,5 +1,10 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
+const corsHeaders = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+};
+
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
@@ -99,9 +104,28 @@ async function sendPushNotifications(messages: object[]) {
   return res.json();
 }
 
-Deno.serve(async (_req) => {
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   try {
     const today = new Date().toISOString().split("T")[0];
+
+    // ── Test mode: send a sample digest to a specific email ──────────────────
+    let body: Record<string, unknown> = {};
+    try { body = await req.json(); } catch { /* no body */ }
+    if (body.testEmail) {
+      const testItems: ReminderItem[] = [
+        { title: "Drink water (daily)", dueDate: today, overdue: false },
+        { title: "Check HVAC filter", dueDate: today, overdue: true },
+      ];
+      const result = await sendDigestEmail(body.testEmail as string, "Michelle", testItems);
+      return new Response(
+        JSON.stringify({ test: true, email: body.testEmail, result }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
 
     // ── 1. Fetch all active recurring tasks due today or overdue ──────────────
     const { data: recurringTasks, error: rtError } = await supabase
@@ -116,7 +140,7 @@ Deno.serve(async (_req) => {
 
     if (!recurringTasks?.length) {
       return new Response(JSON.stringify({ sent: 0, message: "No tasks due" }), {
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -164,7 +188,7 @@ Deno.serve(async (_req) => {
     const userIds = Object.keys(tasksByUserId);
     if (!userIds.length) {
       return new Response(JSON.stringify({ sent: 0, message: "No users to notify" }), {
-        headers: { "Content-Type": "application/json" },
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
@@ -212,12 +236,12 @@ Deno.serve(async (_req) => {
 
     return new Response(
       JSON.stringify({ emailsSent, pushSent: pushMessages.length, pushResult }),
-      { headers: { "Content-Type": "application/json" } }
+      { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
     return new Response(
       JSON.stringify({ error: (error as Error).message }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
