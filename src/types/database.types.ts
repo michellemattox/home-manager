@@ -646,6 +646,7 @@ export interface Database {
           service_type: string | null;
           phone: string | null;
           notes: string | null;
+          rating: number | null;
           created_at: string;
         };
         Insert: {
@@ -655,6 +656,7 @@ export interface Database {
           service_type?: string | null;
           phone?: string | null;
           notes?: string | null;
+          rating?: number | null;
           created_at?: string;
         };
         Update: {
@@ -664,6 +666,7 @@ export interface Database {
           service_type?: string | null;
           phone?: string | null;
           notes?: string | null;
+          rating?: number | null;
           created_at?: string;
         };
         Relationships: Rel;

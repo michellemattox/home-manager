@@ -64,10 +64,10 @@ export default function LoginScreen() {
       >
         <View className="mb-8 items-center">
           <Logo width={100} height={100} style={{ marginBottom: 12 }} />
-          <Text className="text-2xl font-bold text-gray-900 text-center">
+          <Text style={{ fontFamily: "Lobster_400Regular", fontSize: 26, color: "#4D86E3", letterSpacing: 0.5, lineHeight: 32, textAlign: "center" }}>
             Mattox Family
           </Text>
-          <Text className="text-2xl font-bold text-gray-900 text-center">
+          <Text style={{ fontFamily: "Lobster_400Regular", fontSize: 26, color: "#4D86E3", letterSpacing: 0.5, lineHeight: 32, textAlign: "center" }}>
             Home Management
           </Text>
           <Text className="text-gray-500 mt-1">Sign in to your account</Text>

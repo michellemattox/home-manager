@@ -161,11 +161,11 @@ function OneOffTaskRow({
   );
 }
 
-function StatCard({ label, value, sub, color, onPress }: {
-  label: string; value: string; sub?: string; color: string; onPress?: () => void;
+function StatCard({ label, value, sub, color, bgColor, onPress }: {
+  label: string; value: string; sub?: string; color: string; bgColor?: string; onPress?: () => void;
 }) {
   const content = (
-    <View className={`flex-1 rounded-xl p-3 ${color}`}>
+    <View className={`flex-1 rounded-xl p-3 ${color}`} style={bgColor ? { backgroundColor: bgColor } : undefined}>
       <Text className="text-2xl font-bold text-gray-900">{value}</Text>
       <Text className="text-xs font-semibold text-gray-700 mt-0.5">{label}</Text>
       {sub && <Text className="text-xs text-gray-500 mt-0.5">{sub}</Text>}
@@ -311,7 +311,8 @@ export default function HomeScreen() {
             label="Overdue"
             value={String(totalAlerts)}
             sub={totalAlerts > 0 ? "needs attention" : "all clear"}
-            color={totalAlerts > 0 ? "bg-red-50" : "bg-green-50"}
+            color={totalAlerts > 0 ? "bg-red-50" : ""}
+            bgColor={totalAlerts === 0 ? "#ABF7AD" : undefined}
             onPress={() => router.push("/(app)/(tasks)")}
           />
           <StatCard

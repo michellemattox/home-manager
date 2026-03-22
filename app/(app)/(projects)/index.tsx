@@ -531,15 +531,33 @@ function ServicesTab({ onGoToVendors }: { onGoToVendors: () => void }) {
 
 // ── Vendors sub-tab ───────────────────────────────────────────────────────────
 
-function VendorCard({ vendor, lastService, onEdit }: { vendor: PreferredVendor; lastService?: ServiceRecord; onEdit: () => void }) {
+function StarRating({ rating, onRate, size = "md" }: { rating: number | null; onRate?: (r: number) => void; size?: "sm" | "md" }) {
+  const filled = rating ?? 0;
+  const sz = size === "sm" ? 14 : 18;
   return (
-    <Card className="mb-3">
+    <View className="flex-row gap-0.5">
+      {[1, 2, 3, 4, 5].map((n) => (
+        <TouchableOpacity key={n} onPress={() => onRate?.(n)} disabled={!onRate} hitSlop={{ top: 6, bottom: 6, left: 4, right: 4 }}>
+          <Text style={{ fontSize: sz, color: n <= filled ? "#F59E0B" : "#D1D5DB" }}>★</Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  );
+}
+
+function VendorCard({ vendor, lastService, onEdit }: { vendor: PreferredVendor; lastService?: ServiceRecord; onEdit: () => void }) {
+  const isDNU = (vendor.rating ?? 5) <= 2;
+  return (
+    <Card className={`mb-3 ${isDNU ? "opacity-60" : ""}`}>
       <View className="flex-row items-start justify-between">
         <View className="flex-1 mr-2">
           <Text className="text-base font-semibold text-gray-900">{vendor.name}</Text>
           {vendor.service_type && <Text className="text-sm text-gray-500 mt-0.5">{vendor.service_type}</Text>}
           {vendor.phone && <Text className="text-xs text-blue-600 mt-0.5">{vendor.phone}</Text>}
           {vendor.notes && <Text className="text-xs text-gray-400 mt-1" numberOfLines={2}>{vendor.notes}</Text>}
+          <View className="mt-1.5">
+            <StarRating rating={vendor.rating ?? null} size="sm" />
+          </View>
           {lastService && (
             <View className="mt-2 pt-2 border-t border-gray-100">
               <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-0.5">Last Service</Text>
@@ -575,6 +593,7 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
   const [modalServiceType, setModalServiceType] = useState("Other");
   const [modalPhone, setModalPhone] = useState("");
   const [modalNotes, setModalNotes] = useState("");
+  const [modalRating, setModalRating] = useState<number | null>(null);
 
   const openAdd = (prefillName?: string, prefillType?: string) => {
     setEditingVendor(null);
@@ -582,6 +601,7 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
     setModalServiceType(prefillType ?? "Other");
     setModalPhone("");
     setModalNotes("");
+    setModalRating(null);
     setShowModal(true);
   };
   const openEdit = (vendor: PreferredVendor) => {
@@ -590,15 +610,16 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
     setModalServiceType(vendor.service_type ?? "Other");
     setModalPhone(vendor.phone ?? "");
     setModalNotes(vendor.notes ?? "");
+    setModalRating(vendor.rating ?? null);
     setShowModal(true);
   };
   const handleSave = async () => {
     if (!modalName.trim() || !household) return;
     try {
       if (editingVendor) {
-        await updateVendor.mutateAsync({ id: editingVendor.id, householdId: household.id, updates: { name: modalName.trim(), service_type: modalServiceType || null, phone: modalPhone.trim() || null, notes: modalNotes.trim() || null } });
+        await updateVendor.mutateAsync({ id: editingVendor.id, householdId: household.id, updates: { name: modalName.trim(), service_type: modalServiceType || null, phone: modalPhone.trim() || null, notes: modalNotes.trim() || null, rating: modalRating } });
       } else {
-        await addVendor.mutateAsync({ household_id: household.id, name: modalName.trim(), service_type: modalServiceType || null, phone: modalPhone.trim() || null, notes: modalNotes.trim() || null });
+        await addVendor.mutateAsync({ household_id: household.id, name: modalName.trim(), service_type: modalServiceType || null, phone: modalPhone.trim() || null, notes: modalNotes.trim() || null, rating: modalRating });
       }
       setShowModal(false);
     } catch (e: any) { showAlert("Error", e.message); }
@@ -671,11 +692,28 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
         <ScrollView contentContainerClassName="px-4 pb-8" refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}>
           {(preferredVendors ?? []).length === 0 && !isLoading ? (
             <EmptyState title="No preferred vendors yet" subtitle="Add vendors you trust for quick access." actionLabel="Add Vendor" onAction={() => openAdd()} icon="⭐" />
-          ) : (
-            (preferredVendors ?? []).map((v) => (
-              <VendorCard key={v.id} vendor={v} lastService={lastServiceByVendor[v.name.toLowerCase()]} onEdit={() => openEdit(v)} />
-            ))
-          )}
+          ) : (() => {
+            const active = (preferredVendors ?? []).filter((v) => v.rating === null || v.rating > 2);
+            const dnu = (preferredVendors ?? []).filter((v) => v.rating !== null && v.rating <= 2);
+            return (
+              <>
+                {active.map((v) => (
+                  <VendorCard key={v.id} vendor={v} lastService={lastServiceByVendor[v.name.toLowerCase()]} onEdit={() => openEdit(v)} />
+                ))}
+                {dnu.length > 0 && (
+                  <>
+                    <View className="flex-row items-center gap-2 mt-4 mb-2">
+                      <Text className="text-xs font-semibold text-red-400 uppercase tracking-wider">Do Not Use Again</Text>
+                      <View className="flex-1 h-px bg-red-100" />
+                    </View>
+                    {dnu.map((v) => (
+                      <VendorCard key={v.id} vendor={v} lastService={lastServiceByVendor[v.name.toLowerCase()]} onEdit={() => openEdit(v)} />
+                    ))}
+                  </>
+                )}
+              </>
+            );
+          })()}
           {historyVendors.length > 0 && (
             <>
               <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mt-4 mb-2">From Service History</Text>
@@ -761,6 +799,20 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
             </ScrollView>
             <Input label="Phone (optional)" value={modalPhone} onChangeText={setModalPhone} placeholder="(555) 555-5555" keyboardType="phone-pad" />
             <Input label="Notes (optional)" value={modalNotes} onChangeText={setModalNotes} multiline numberOfLines={3} placeholder="License #, website, contact name..." />
+            <View className="mb-4">
+              <Text className="text-sm font-medium text-gray-700 mb-2">Likelihood to Use Again</Text>
+              <View className="flex-row items-center gap-3">
+                <StarRating rating={modalRating} onRate={setModalRating} />
+                {modalRating !== null && (
+                  <TouchableOpacity onPress={() => setModalRating(null)}>
+                    <Text className="text-xs text-gray-400 underline">Clear</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+              {modalRating !== null && modalRating <= 2 && (
+                <Text className="text-xs text-red-500 mt-1">⚠ This vendor will be moved to "Do Not Use Again"</Text>
+              )}
+            </View>
             <Button title={editingVendor ? "Save Changes" : "Add Vendor"} onPress={handleSave} loading={addVendor.isPending || updateVendor.isPending} />
             {editingVendor && (
               <TouchableOpacity onPress={handleDelete} className="mt-3 items-center py-3">

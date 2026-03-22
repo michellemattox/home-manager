@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text } from "react-native";
 import Logo from "../../../assets/logo.svg";
 
-const TITLE_FONT = "Righteous_400Regular";
+const TITLE_FONT = "Lobster_400Regular";
 
 interface AppHeaderProps {
   /** compact = thin bar shown on all tabs except Home */

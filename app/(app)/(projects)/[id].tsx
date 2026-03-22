@@ -1171,7 +1171,7 @@ export default function ProjectDetailScreen() {
               <>
                 <Text className="text-sm font-medium text-gray-700 mb-2">Select Vendor (optional)</Text>
                 <View className="flex-row flex-wrap gap-2 mb-2">
-                  {vendors.map((v) => {
+                  {vendors.filter((v) => v.rating === null || (v as any).rating > 2).map((v) => {
                     const active = editSelectedVendorId === v.id;
                     return (
                       <TouchableOpacity

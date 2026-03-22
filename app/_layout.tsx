@@ -13,7 +13,7 @@ import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { View } from "react-native";
 import type { HouseholdMember } from "@/types/app.types";
-import { useFonts, Righteous_400Regular } from "@expo-google-fonts/righteous";
+import { useFonts, Lobster_400Regular } from "@expo-google-fonts/lobster";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -143,7 +143,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function RootLayout() {
-  const [fontsLoaded] = useFonts({ Righteous_400Regular });
+  const [fontsLoaded] = useFonts({ Lobster_400Regular });
 
   // Wait for font before rendering so the header never flashes unstyled text
   if (!fontsLoaded) return null;
