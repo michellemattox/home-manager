@@ -17,7 +17,7 @@ export function AppHeader({ compact = false }: AppHeaderProps) {
         <Text
           numberOfLines={1}
           style={{
-            color: "#4D86E3",
+            color: "#FC9853",
             fontFamily: TITLE_FONT,
             fontSize: 15,
             letterSpacing: 0.4,
@@ -37,7 +37,7 @@ export function AppHeader({ compact = false }: AppHeaderProps) {
         <View>
           <Text
             style={{
-              color: "#4D86E3",
+              color: "#FC9853",
               fontFamily: TITLE_FONT,
               fontSize: 26,
               letterSpacing: 0.5,
@@ -48,7 +48,7 @@ export function AppHeader({ compact = false }: AppHeaderProps) {
           </Text>
           <Text
             style={{
-              color: "#4D86E3",
+              color: "#FC9853",
               fontFamily: TITLE_FONT,
               fontSize: 26,
               letterSpacing: 0.5,
