@@ -4,6 +4,7 @@ import {
   Text,
   ScrollView,
   TouchableOpacity,
+  Keyboard,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -63,6 +64,7 @@ export default function NewActivityScreen() {
         primary_vendor_id: null,
         assigned_to: assignedTo,
       });
+      Keyboard.dismiss();
       router.replace(`/(app)/(activity)/${trip.id}`);
     } catch (e: any) {
       showAlert("Error", e.message);

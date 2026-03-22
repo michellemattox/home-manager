@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  Keyboard,
 } from "react-native";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -170,6 +171,7 @@ export default function NewProjectScreen() {
         });
       }
 
+      Keyboard.dismiss();
       router.back();
     } catch (e: any) {
       showAlert("Error", e.message);

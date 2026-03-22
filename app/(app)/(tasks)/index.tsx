@@ -178,6 +178,7 @@ export default function TasksScreen() {
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
   const [ownerFilter, setOwnerFilter] = useState<string | null>(null); // null = All
+  const [filterDue, setFilterDue] = useState<"overdue" | "due_soon" | null>(null);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
@@ -410,10 +411,12 @@ export default function TasksScreen() {
     return assignedMemberId === currentMember?.id;
   };
 
-  // Apply owner filter + personal task visibility
+  // Apply owner + due filter + personal task visibility
   const visibleRecurring = recurringTasks.filter((t) => {
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
     if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    if (filterDue === "overdue" && !isOverdue(t.next_due_date)) return false;
+    if (filterDue === "due_soon" && !isDueSoon(t.next_due_date)) return false;
     return true;
   });
 
@@ -421,12 +424,16 @@ export default function TasksScreen() {
     const personal = (t as any).is_personal ?? false;
     if (!isVisible(t.assigned_member_id, personal)) return false;
     if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
+    if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
     return true;
   });
 
   const visibleStandalone = standaloneTasks.filter((t) => {
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
     if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
+    if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
     return true;
   });
 
@@ -479,36 +486,55 @@ export default function TasksScreen() {
         ))}
       </View>
 
-      {/* Owner filter chips */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerClassName="flex-row gap-2 px-4 py-2"
-      >
-        <TouchableOpacity
-          onPress={() => setOwnerFilter(null)}
-          className={`px-3 py-1.5 rounded-full border ${
-            ownerFilter === null ? "bg-gray-800 border-gray-800" : "bg-white border-gray-200"
-          }`}
-        >
-          <Text className={`text-xs font-semibold ${ownerFilter === null ? "text-white" : "text-gray-600"}`}>
-            All
-          </Text>
-        </TouchableOpacity>
-        {members.map((m) => (
-          <TouchableOpacity
-            key={m.id}
-            onPress={() => setOwnerFilter(ownerFilter === m.id ? null : m.id)}
-            className={`px-3 py-1.5 rounded-full border ${
-              ownerFilter === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
-            }`}
-          >
-            <Text className={`text-xs font-semibold ${ownerFilter === m.id ? "text-white" : "text-gray-600"}`}>
-              {m.display_name}
-            </Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
+      {/* Filter panel */}
+      <View className="px-4 pt-2 pb-3">
+        {/* Assign To row */}
+        <View className="flex-row items-center mb-2">
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 72 }}>Assign To</Text>
+          <View className="flex-row flex-wrap gap-2">
+            <TouchableOpacity
+              onPress={() => setOwnerFilter(null)}
+              className={`px-3 py-1 rounded-full border ${ownerFilter === null ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+            >
+              <Text className={`text-xs font-semibold ${ownerFilter === null ? "text-white" : "text-gray-600"}`}>All</Text>
+            </TouchableOpacity>
+            {members.map((m) => (
+              <TouchableOpacity
+                key={m.id}
+                onPress={() => setOwnerFilter(ownerFilter === m.id ? null : m.id)}
+                className={`px-3 py-1 rounded-full border ${ownerFilter === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
+              >
+                <Text className={`text-xs font-semibold ${ownerFilter === m.id ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Due row */}
+        <View className="flex-row items-center">
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 72 }}>Due</Text>
+          <View className="flex-row flex-wrap gap-2">
+            <TouchableOpacity
+              onPress={() => setFilterDue(null)}
+              className={`px-3 py-1 rounded-full border ${filterDue === null ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+            >
+              <Text className={`text-xs font-semibold ${filterDue === null ? "text-white" : "text-gray-600"}`}>All</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setFilterDue(filterDue === "overdue" ? null : "overdue")}
+              className={`px-3 py-1 rounded-full border ${filterDue === "overdue" ? "bg-red-500 border-red-500" : "bg-white border-gray-300"}`}
+            >
+              <Text className={`text-xs font-semibold ${filterDue === "overdue" ? "text-white" : "text-gray-600"}`}>Overdue</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setFilterDue(filterDue === "due_soon" ? null : "due_soon")}
+              className={`px-3 py-1 rounded-full border ${filterDue === "due_soon" ? "bg-amber-500 border-amber-500" : "bg-white border-gray-300"}`}
+            >
+              <Text className={`text-xs font-semibold ${filterDue === "due_soon" ? "text-white" : "text-gray-600"}`}>Due Soon</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </View>
 
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-8"

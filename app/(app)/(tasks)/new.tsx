@@ -5,6 +5,7 @@ import {
   ScrollView,
   TouchableOpacity,
   Switch,
+  Keyboard,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -116,6 +117,7 @@ export default function NewTaskScreen() {
         time_of_day: data.timeOfDay?.trim() || null,
         is_personal: llIsPersonal,
       });
+      Keyboard.dismiss();
       router.back();
     } catch (e: any) {
       showAlert("Error", e.message);
@@ -159,6 +161,7 @@ export default function NewTaskScreen() {
           is_personal: paIsPersonal,
         });
       }
+      Keyboard.dismiss();
       router.back();
     } catch (e: any) {
       showAlert("Error", e.message);
