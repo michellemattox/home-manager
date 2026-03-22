@@ -1,14 +1,8 @@
 import React from "react";
-import { View, Text, Platform } from "react-native";
+import { View, Text } from "react-native";
 import Logo from "../../../assets/logo.svg";
 
-// Font that best approximates Ananda Black across platforms.
-// Ananda Black is a bold, slightly condensed display font.
-const titleFont = Platform.select({
-  ios: "Georgia",
-  android: undefined, // falls back to system bold
-  default: undefined,
-});
+const TITLE_FONT = "Righteous_400Regular";
 
 interface AppHeaderProps {
   /** compact = thin bar shown on all tabs except Home */
@@ -24,10 +18,9 @@ export function AppHeader({ compact = false }: AppHeaderProps) {
           numberOfLines={1}
           style={{
             color: "#4D86E3",
-            fontWeight: "800",
+            fontFamily: TITLE_FONT,
             fontSize: 15,
-            letterSpacing: 0.6,
-            fontFamily: titleFont,
+            letterSpacing: 0.4,
           }}
         >
           Mattox Family Home Management
@@ -45,11 +38,10 @@ export function AppHeader({ compact = false }: AppHeaderProps) {
           <Text
             style={{
               color: "#4D86E3",
-              fontWeight: "800",
+              fontFamily: TITLE_FONT,
               fontSize: 26,
-              letterSpacing: 1,
-              lineHeight: 30,
-              fontFamily: titleFont,
+              letterSpacing: 0.5,
+              lineHeight: 32,
             }}
           >
             Mattox Family
@@ -57,11 +49,10 @@ export function AppHeader({ compact = false }: AppHeaderProps) {
           <Text
             style={{
               color: "#4D86E3",
-              fontWeight: "800",
+              fontFamily: TITLE_FONT,
               fontSize: 26,
-              letterSpacing: 1,
-              lineHeight: 30,
-              fontFamily: titleFont,
+              letterSpacing: 0.5,
+              lineHeight: 32,
             }}
           >
             Home Management
