@@ -5,7 +5,8 @@
 -- The Edge Function itself decides which users to notify based on
 -- their stored reminder_hour preference.
 
-SELECT cron.unschedule('daily-reminders');
+-- Safe unschedule: only removes the job if it exists (no error if missing)
+SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname = 'daily-reminders';
 
 SELECT cron.schedule(
   'hourly-reminders',

@@ -89,7 +89,7 @@ async function sendDigestEmail(
       Authorization: `Bearer ${resendApiKey}`,
     },
     body: JSON.stringify({
-      from: fromEmail,
+      from: `Mattox Family Home Management <${fromEmail}>`,
       to,
       subject: `Daily Reminders — ${items.length} item${items.length === 1 ? "" : "s"} · ${today}`,
       html,
@@ -246,17 +246,16 @@ Deno.serve(async (req) => {
       const items = tasksByUserId[userId];
       if (!items.length) continue;
 
-      // Find this user's member record to get their prefs
+      // Find this user's member record to get their prefs (default: 8 AM daily)
       const member = (allMembers ?? []).find((m) => m.user_id === userId);
-      if (member) {
-        const prefs = prefsByMemberId[member.id];
-        if (prefs) {
-          // Check if this hour matches their reminder_hour preference
-          if (Math.abs(currentHourPT - prefs.reminder_hour) > 0) { skipped++; continue; }
-          // Check frequency
-          if (!shouldSendToday(prefs.reminder_frequency)) { skipped++; continue; }
-        }
-      }
+      const prefs = member ? prefsByMemberId[member.id] : undefined;
+      const reminderHour = prefs?.reminder_hour ?? 8;
+      const reminderFrequency = prefs?.reminder_frequency ?? "daily";
+
+      // Only send at the matching PT hour
+      if (currentHourPT !== reminderHour) { skipped++; continue; }
+      // Only send on the right day based on frequency
+      if (!shouldSendToday(reminderFrequency)) { skipped++; continue; }
 
       const { data: userData } = await supabase.auth.admin.getUserById(userId);
       const email = userData?.user?.email;
