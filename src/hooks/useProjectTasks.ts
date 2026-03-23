@@ -138,9 +138,13 @@ export function useDeleteProjectTask() {
         .delete()
         .eq("id", id);
       if (error) throw error;
-      return { project_id };
+      return { id, project_id };
     },
-    onSuccess: ({ project_id }) => {
+    onSuccess: ({ id, project_id }) => {
+      // Optimistically remove from the all-tasks cache so the list updates instantly
+      qc.setQueriesData({ queryKey: ["all_project_tasks"] }, (old: ProjectTask[] | undefined) =>
+        old ? old.filter((t) => t.id !== id) : old
+      );
       qc.invalidateQueries({ queryKey: ["project", project_id] });
       qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
     },

@@ -123,10 +123,15 @@ export function useDeleteRecurringTask() {
     mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
       const { error } = await supabase.from("recurring_tasks").update({ is_active: false }).eq("id", id);
       if (error) throw error;
-      return householdId;
+      return { id, householdId };
     },
-    onSuccess: (householdId) =>
-      qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] }),
+    onSuccess: ({ id, householdId }) => {
+      // Optimistically remove from cache so the list updates instantly
+      qc.setQueryData(["recurring_tasks", householdId], (old: RecurringTask[] | undefined) =>
+        old ? old.filter((t) => t.id !== id) : old
+      );
+      qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] });
+    },
   });
 }
 

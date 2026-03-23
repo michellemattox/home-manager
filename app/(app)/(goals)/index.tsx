@@ -18,6 +18,7 @@ import {
   useUpdateGoal,
   useDeleteGoal,
   useAddGoalUpdate,
+  useEditGoalUpdate,
   useDeleteGoalUpdate,
 } from "@/hooks/useGoals";
 import { Card } from "@/components/ui/Card";
@@ -163,6 +164,7 @@ function GoalCard({
   members,
   currentMemberId,
   onAddUpdate,
+  onEditUpdate,
   onEdit,
   onDelete,
   onStatusChange,
@@ -171,6 +173,7 @@ function GoalCard({
   members: { id: string; display_name: string }[];
   currentMemberId: string | undefined;
   onAddUpdate: (goalId: string) => void;
+  onEditUpdate: (update: GoalUpdate) => void;
   onEdit: (goal: GoalWithUpdates) => void;
   onDelete: (goal: GoalWithUpdates) => void;
   onStatusChange: (goal: GoalWithUpdates, status: Goal["status"]) => void;
@@ -242,9 +245,17 @@ function GoalCard({
                 const authorName = u.author_id
                   ? members.find((m) => m.id === u.author_id)?.display_name
                   : undefined;
+                const isMyUpdate = currentMemberId && u.author_id === currentMemberId;
                 return (
                   <View key={u.id} className="mb-2 bg-gray-50 rounded-xl px-3 py-2">
-                    <Text className="text-sm text-gray-700">{u.body}</Text>
+                    <View className="flex-row items-start justify-between">
+                      <Text className="text-sm text-gray-700 flex-1 mr-2">{u.body}</Text>
+                      {isMyUpdate && (
+                        <TouchableOpacity onPress={() => onEditUpdate(u)}>
+                          <Text className="text-blue-500 text-xs font-medium">Edit</Text>
+                        </TouchableOpacity>
+                      )}
+                    </View>
                     <Text className="text-xs text-gray-400 mt-1">
                       {formatDateTime(u.created_at)}{authorName ? ` · ${authorName}` : ""}
                     </Text>
@@ -319,6 +330,7 @@ export default function GoalsScreen() {
   const updateGoal = useUpdateGoal();
   const deleteGoal = useDeleteGoal();
   const addUpdate = useAddGoalUpdate();
+  const editUpdate = useEditGoalUpdate();
   const deleteUpdate = useDeleteGoalUpdate();
 
   // Filters
@@ -350,6 +362,10 @@ export default function GoalsScreen() {
   // Add update modal
   const [addUpdateGoalId, setAddUpdateGoalId] = useState<string | null>(null);
   const [updateBody, setUpdateBody] = useState("");
+
+  // Edit update modal
+  const [editingGoalUpdate, setEditingGoalUpdate] = useState<GoalUpdate | null>(null);
+  const [editGoalUpdateBody, setEditGoalUpdateBody] = useState("");
 
   // Filter logic
   const filteredGoals = goals.filter((g) => {
@@ -470,6 +486,21 @@ export default function GoalsScreen() {
     }
   };
 
+  const handleSaveEditGoalUpdate = async () => {
+    if (!editingGoalUpdate || !editGoalUpdateBody.trim() || !household) return;
+    try {
+      await editUpdate.mutateAsync({
+        id: editingGoalUpdate.id,
+        body: editGoalUpdateBody.trim(),
+        householdId: household.id,
+      });
+      setEditingGoalUpdate(null);
+      setEditGoalUpdateBody("");
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
   const handleStatusChange = async (goal: GoalWithUpdates, status: Goal["status"]) => {
     if (!household) return;
     try {
@@ -564,6 +595,7 @@ export default function GoalsScreen() {
             members={members}
             currentMemberId={currentMember?.id}
             onAddUpdate={(goalId) => setAddUpdateGoalId(goalId)}
+            onEditUpdate={(u) => { setEditingGoalUpdate(u); setEditGoalUpdateBody(u.body); }}
             onEdit={openEditGoal}
             onDelete={handleDelete}
             onStatusChange={handleStatusChange}
@@ -589,6 +621,7 @@ export default function GoalsScreen() {
             members={members}
             currentMemberId={currentMember?.id}
             onAddUpdate={(goalId) => setAddUpdateGoalId(goalId)}
+            onEditUpdate={(u) => { setEditingGoalUpdate(u); setEditGoalUpdateBody(u.body); }}
             onEdit={openEditGoal}
             onDelete={handleDelete}
             onStatusChange={handleStatusChange}
@@ -665,6 +698,40 @@ export default function GoalsScreen() {
               userId={user?.id}
             />
           </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── Edit Update Modal ──────────────────────────────────────────────── */}
+      <Modal
+        visible={!!editingGoalUpdate}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => { setEditingGoalUpdate(null); setEditGoalUpdateBody(""); }}
+      >
+        <SafeAreaView className="flex-1 bg-[#F5E7D3]">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => { setEditingGoalUpdate(null); setEditGoalUpdateBody(""); }} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Update</Text>
+            <TouchableOpacity onPress={handleSaveEditGoalUpdate} disabled={!editGoalUpdateBody.trim() || editUpdate.isPending}>
+              <Text className={`text-base font-semibold ${editGoalUpdateBody.trim() ? "text-blue-600" : "text-gray-300"}`}>
+                {editUpdate.isPending ? "Saving…" : "Save"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <View className="px-4 py-4">
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 min-h-[120px]"
+              value={editGoalUpdateBody}
+              onChangeText={setEditGoalUpdateBody}
+              placeholder="Update your note…"
+              placeholderTextColor="#9ca3af"
+              multiline
+              textAlignVertical="top"
+              autoFocus
+            />
+          </View>
         </SafeAreaView>
       </Modal>
 

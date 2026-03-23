@@ -118,9 +118,14 @@ export function useDeleteTask() {
     }) => {
       const { error } = await supabase.from("tasks").delete().eq("id", id);
       if (error) throw error;
-      return householdId;
+      return { id, householdId };
     },
-    onSuccess: (householdId) =>
-      qc.invalidateQueries({ queryKey: ["tasks", householdId] }),
+    onSuccess: ({ id, householdId }) => {
+      // Optimistically remove from cache so the list updates instantly
+      qc.setQueryData(["tasks", householdId], (old: Task[] | undefined) =>
+        old ? old.filter((t) => t.id !== id) : old
+      );
+      qc.invalidateQueries({ queryKey: ["tasks", householdId] });
+    },
   });
 }

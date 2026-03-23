@@ -92,6 +92,19 @@ export function useAddGoalUpdate() {
   });
 }
 
+export function useEditGoalUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body, householdId }: { id: string; body: string; householdId: string }) => {
+      const { error } = await supabase.from("goal_updates").update({ body }).eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["goals", householdId] }),
+  });
+}
+
 export function useDeleteGoalUpdate() {
   const qc = useQueryClient();
   return useMutation({
