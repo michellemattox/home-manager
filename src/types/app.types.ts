@@ -116,6 +116,7 @@ export type GardenPlot = Database["public"]["Tables"]["garden_plots"]["Row"];
 export type GardenZone = Database["public"]["Tables"]["garden_zones"]["Row"];
 export type GardenCell = Database["public"]["Tables"]["garden_cells"]["Row"];
 export type GardenPlanting = Database["public"]["Tables"]["garden_plantings"]["Row"];
+export type GardenHarvest = Database["public"]["Tables"]["garden_harvests"]["Row"];
 
 export interface GardenZoneWithCells extends GardenZone {
   cells: GardenCell[];

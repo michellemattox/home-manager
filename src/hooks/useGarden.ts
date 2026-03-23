@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { GardenPlot, GardenZone, GardenCell, GardenPlanting } from "@/types/app.types";
+import type { GardenPlot, GardenZone, GardenCell, GardenPlanting, GardenHarvest } from "@/types/app.types";
 
 // ── Plots ──────────────────────────────────────────────────────────────────────
 
@@ -235,6 +235,68 @@ export function useDeleteGardenPlanting() {
       if (error) throw error;
       return plotId;
     },
-    onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_plantings", plotId] }),
+    onSuccess: (plotId) => {
+      qc.invalidateQueries({ queryKey: ["garden_plantings", plotId] });
+      qc.invalidateQueries({ queryKey: ["garden_harvests", plotId] });
+    },
+  });
+}
+
+// ── Harvests ───────────────────────────────────────────────────────────────────
+
+export function useGardenHarvests(plotId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_harvests", plotId],
+    queryFn: async () => {
+      if (!plotId) return [];
+      const { data, error } = await supabase
+        .from("garden_harvests")
+        .select("*")
+        .eq("plot_id", plotId)
+        .order("date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as GardenHarvest[];
+    },
+    enabled: !!plotId,
+  });
+}
+
+export function useCreateGardenHarvest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (harvest: Omit<GardenHarvest, "id" | "created_at">) => {
+      const { data, error } = await supabase
+        .from("garden_harvests")
+        .insert(harvest)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as GardenHarvest;
+    },
+    onSuccess: (data) => qc.invalidateQueries({ queryKey: ["garden_harvests", data.plot_id] }),
+  });
+}
+
+export function useUpdateGardenHarvest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, plotId, updates }: { id: string; plotId: string; updates: Partial<GardenHarvest> }) => {
+      const { error } = await supabase.from("garden_harvests").update(updates).eq("id", id);
+      if (error) throw error;
+      return plotId;
+    },
+    onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_harvests", plotId] }),
+  });
+}
+
+export function useDeleteGardenHarvest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => {
+      const { error } = await supabase.from("garden_harvests").delete().eq("id", id);
+      if (error) throw error;
+      return plotId;
+    },
+    onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_harvests", plotId] }),
   });
 }

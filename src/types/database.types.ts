@@ -839,6 +839,42 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      garden_harvests: {
+        Row: {
+          id: string;
+          planting_id: string;
+          plot_id: string;
+          household_id: string;
+          date: string;
+          quantity_value: number | null;
+          quantity_unit: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          planting_id: string;
+          plot_id: string;
+          household_id: string;
+          date?: string;
+          quantity_value?: number | null;
+          quantity_unit?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          planting_id?: string;
+          plot_id?: string;
+          household_id?: string;
+          date?: string;
+          quantity_value?: number | null;
+          quantity_unit?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
       garden_plantings: {
         Row: {
           id: string;
