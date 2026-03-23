@@ -250,7 +250,7 @@ export default function WeatherScreen() {
                       </View>
                       <View className="items-end">
                         <Text className="text-sm font-bold text-blue-600">
-                          {item.totalMm > 0 ? `${mmToIn(item.totalMm)}"` : "0""}
+                          {item.totalMm > 0 ? `${mmToIn(item.totalMm)}"` : '0"'}
                         </Text>
                         <Text className="text-xs text-gray-400">{item.totalMm?.toFixed(1)} mm</Text>
                       </View>
