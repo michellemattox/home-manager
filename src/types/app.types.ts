@@ -117,6 +117,56 @@ export type GardenZone = Database["public"]["Tables"]["garden_zones"]["Row"];
 export type GardenCell = Database["public"]["Tables"]["garden_cells"]["Row"];
 export type GardenPlanting = Database["public"]["Tables"]["garden_plantings"]["Row"];
 export type GardenHarvest = Database["public"]["Tables"]["garden_harvests"]["Row"];
+export type GardenWeatherLog = Database["public"]["Tables"]["garden_weather_logs"]["Row"];
+export type GardenAmendment = Database["public"]["Tables"]["garden_amendments"]["Row"];
+export type AmendmentType = GardenAmendment["amendment_type"];
+
+export const AMENDMENT_TYPES: { value: AmendmentType; label: string; emoji: string; color: string }[] = [
+  { value: "fertilizer",   label: "Fertilizer",   emoji: "🌿", color: "#16a34a" },
+  { value: "compost",      label: "Compost",       emoji: "♻️", color: "#92400e" },
+  { value: "lime",         label: "Lime",          emoji: "🪨", color: "#6b7280" },
+  { value: "mulch",        label: "Mulch",         emoji: "🍂", color: "#b45309" },
+  { value: "pest_control", label: "Pest Control",  emoji: "🐛", color: "#dc2626" },
+  { value: "foliar",       label: "Foliar Spray",  emoji: "💧", color: "#0891b2" },
+  { value: "other",        label: "Other",         emoji: "🔧", color: "#7c3aed" },
+];
+
+export const AMENDMENT_UNITS = ["cups", "tablespoons", "lbs", "oz", "gallons", "bags", "applications"];
+
+// Weather data shapes returned from the garden-weather Edge Function
+export interface WeatherCurrent {
+  temp: number;
+  feelsLike: number;
+  tempMin: number;
+  tempMax: number;
+  humidity: number;
+  windSpeed: number;
+  condition: string;
+  description: string;
+  icon: string;
+  cityName: string;
+  sunrise: number;
+  sunset: number;
+  rainfallMm: number;
+  dt: number;
+}
+
+export interface WeatherForecastDay {
+  date: string;       // "YYYY-MM-DD"
+  tempMin: number;
+  tempMax: number;
+  humidity: number;
+  precipMm: number;
+  condition: string;
+  description: string;
+  icon: string;
+}
+
+export interface WeatherResponse {
+  current: WeatherCurrent;
+  forecast: WeatherForecastDay[];
+  loggedToday: boolean;
+}
 
 export interface GardenZoneWithCells extends GardenZone {
   cells: GardenCell[];

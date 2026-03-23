@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { GardenPlot, GardenZone, GardenCell, GardenPlanting, GardenHarvest } from "@/types/app.types";
+import type { GardenPlot, GardenZone, GardenCell, GardenPlanting, GardenHarvest, GardenAmendment, GardenWeatherLog } from "@/types/app.types";
 
 // ── Plots ──────────────────────────────────────────────────────────────────────
 
@@ -298,5 +298,107 @@ export function useDeleteGardenHarvest() {
       return plotId;
     },
     onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_harvests", plotId] }),
+  });
+}
+
+// ── Amendments ─────────────────────────────────────────────────────────────────
+
+export function useGardenAmendments(plotId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_amendments", plotId],
+    queryFn: async () => {
+      if (!plotId) return [];
+      const { data, error } = await supabase
+        .from("garden_amendments")
+        .select("*")
+        .eq("plot_id", plotId)
+        .order("application_date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as GardenAmendment[];
+    },
+    enabled: !!plotId,
+  });
+}
+
+export function useCreateGardenAmendment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (amendment: Omit<GardenAmendment, "id" | "created_at">) => {
+      const { data, error } = await supabase
+        .from("garden_amendments")
+        .insert(amendment)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as GardenAmendment;
+    },
+    onSuccess: (data) => qc.invalidateQueries({ queryKey: ["garden_amendments", data.plot_id] }),
+  });
+}
+
+export function useUpdateGardenAmendment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, plotId, updates }: { id: string; plotId: string; updates: Partial<GardenAmendment> }) => {
+      const { error } = await supabase.from("garden_amendments").update(updates).eq("id", id);
+      if (error) throw error;
+      return plotId;
+    },
+    onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_amendments", plotId] }),
+  });
+}
+
+export function useDeleteGardenAmendment() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => {
+      const { error } = await supabase.from("garden_amendments").delete().eq("id", id);
+      if (error) throw error;
+      return plotId;
+    },
+    onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_amendments", plotId] }),
+  });
+}
+
+// ── Weather Logs ───────────────────────────────────────────────────────────────
+
+export function useGardenWeatherLogs(householdId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_weather_logs", householdId],
+    queryFn: async () => {
+      if (!householdId) return [];
+      const cutoff = new Date();
+      cutoff.setDate(cutoff.getDate() - 30);
+      const cutoffStr = cutoff.toISOString().split("T")[0];
+      const { data, error } = await supabase
+        .from("garden_weather_logs")
+        .select("*")
+        .eq("household_id", householdId)
+        .gte("log_date", cutoffStr)
+        .order("log_date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as GardenWeatherLog[];
+    },
+    enabled: !!householdId,
+  });
+}
+
+// Household-wide plantings (for rainfall-since-planting calculations on weather screen)
+export function useGardenPlantingsForHousehold(householdId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_plantings_household", householdId],
+    queryFn: async () => {
+      if (!householdId) return [];
+      const { data, error } = await supabase
+        .from("garden_plantings")
+        .select("*")
+        .eq("household_id", householdId)
+        .is("date_removed", null)
+        .not("date_planted", "is", null)
+        .order("date_planted", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as GardenAmendment[];
+    },
+    enabled: !!householdId,
   });
 }

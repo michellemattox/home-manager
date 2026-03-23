@@ -21,6 +21,7 @@ import {
   useGardenCells,
   useGardenPlantings,
   useGardenHarvests,
+  useGardenAmendments,
   useCreateGardenZone,
   useUpdateGardenZone,
   useDeleteGardenZone,
@@ -32,13 +33,20 @@ import {
   useCreateGardenHarvest,
   useUpdateGardenHarvest,
   useDeleteGardenHarvest,
+  useCreateGardenAmendment,
+  useUpdateGardenAmendment,
+  useDeleteGardenAmendment,
 } from "@/hooks/useGarden";
 import {
   PLANT_FAMILIES,
+  AMENDMENT_TYPES,
+  AMENDMENT_UNITS,
   guessFamilyFromName,
   type GardenZone,
   type GardenPlanting,
   type GardenHarvest,
+  type GardenAmendment,
+  type AmendmentType,
 } from "@/types/app.types";
 
 const SCREEN_W = Dimensions.get("window").width;
@@ -105,6 +113,7 @@ export default function PlotDetailScreen() {
   const { data: cells = [], isLoading: cellsLoading } = useGardenCells(plotId);
   const { data: plantings = [], isLoading: plantingsLoading } = useGardenPlantings(plotId);
   const { data: harvests = [] } = useGardenHarvests(plotId);
+  const { data: amendments = [] } = useGardenAmendments(plotId);
 
   const createZone = useCreateGardenZone();
   const updateZone = useUpdateGardenZone();
@@ -117,6 +126,9 @@ export default function PlotDetailScreen() {
   const createHarvest = useCreateGardenHarvest();
   const updateHarvest = useUpdateGardenHarvest();
   const deleteHarvest = useDeleteGardenHarvest();
+  const createAmendment = useCreateGardenAmendment();
+  const updateAmendment = useUpdateGardenAmendment();
+  const deleteAmendment = useDeleteGardenAmendment();
 
   // ── Grid state ───────────────────────────────────────────────────────────────
   const [editMode, setEditMode] = useState<EditMode>("none");
@@ -228,6 +240,40 @@ export default function PlotDetailScreen() {
   }, [editingHarvest, hDate, hQty, hUnit, hNotes, plotId]);
 
   useAutoSave(!!editingHarvest && showHarvestModal, [hDate, hQty, hUnit, hNotes], doSaveHarvest);
+
+  // ── Amendment form ───────────────────────────────────────────────────────────
+  const [showAmendmentModal, setShowAmendmentModal] = useState(false);
+  const [editingAmendment, setEditingAmendment] = useState<GardenAmendment | null>(null);
+  const [aType, setAType] = useState<AmendmentType>("fertilizer");
+  const [aProduct, setAProduct] = useState("");
+  const [aDate, setADate] = useState("");
+  const [aAmount, setAAmount] = useState("");
+  const [aUnit, setAUnit] = useState("cups");
+  const [aNotes, setANotes] = useState("");
+  const [aZoneId, setAZoneId] = useState<string | null>(null);
+  const [amendmentSaved, setAmendmentSaved] = useState(false);
+
+  const doSaveAmendment = useCallback(() => {
+    if (!editingAmendment || !aProduct.trim() || !plotId) return;
+    updateAmendment.mutate(
+      {
+        id: editingAmendment.id,
+        plotId,
+        updates: {
+          amendment_type: aType,
+          product_name: aProduct.trim(),
+          application_date: aDate || editingAmendment.application_date,
+          amount: aAmount ? parseFloat(aAmount) : null,
+          unit: aUnit,
+          notes: aNotes.trim() || null,
+          zone_id: aZoneId,
+        },
+      },
+      { onSuccess: () => { setAmendmentSaved(true); setTimeout(() => setAmendmentSaved(false), 2000); } }
+    );
+  }, [editingAmendment, aType, aProduct, aDate, aAmount, aUnit, aNotes, aZoneId, plotId]);
+
+  useAutoSave(!!editingAmendment && showAmendmentModal, [aType, aProduct, aDate, aAmount, aUnit, aNotes, aZoneId], doSaveAmendment);
 
   // ── Expanded harvest rows ────────────────────────────────────────────────────
   const [expandedPlantingId, setExpandedPlantingId] = useState<string | null>(null);
@@ -377,6 +423,47 @@ export default function PlotDetailScreen() {
     Alert.alert("Delete Harvest", "Remove this harvest record?", [
       { text: "Cancel", style: "cancel" },
       { text: "Delete", style: "destructive", onPress: () => deleteHarvest.mutate({ id: h.id, plotId: plotId! }) },
+    ]);
+  }
+
+  // ── Amendment CRUD ───────────────────────────────────────────────────────────
+  function openNewAmendment(zoneId: string | null) {
+    setEditingAmendment(null);
+    setAType("fertilizer"); setAProduct(""); setADate(new Date().toISOString().split("T")[0]);
+    setAAmount(""); setAUnit("cups"); setANotes(""); setAZoneId(zoneId);
+    setShowAmendmentModal(true);
+  }
+
+  function openEditAmendment(a: GardenAmendment) {
+    setEditingAmendment(a);
+    setAType(a.amendment_type); setAProduct(a.product_name);
+    setADate(a.application_date); setAAmount(a.amount?.toString() ?? "");
+    setAUnit(a.unit ?? "cups"); setANotes(a.notes ?? ""); setAZoneId(a.zone_id);
+    setShowAmendmentModal(true);
+  }
+
+  async function handleSaveAmendment() {
+    if (!aProduct.trim() || !plotId) return;
+    if (editingAmendment) {
+      await updateAmendment.mutateAsync({
+        id: editingAmendment.id, plotId,
+        updates: { amendment_type: aType, product_name: aProduct.trim(), application_date: aDate, amount: aAmount ? parseFloat(aAmount) : null, unit: aUnit, notes: aNotes.trim() || null, zone_id: aZoneId },
+      });
+    } else {
+      await createAmendment.mutateAsync({
+        plot_id: plotId, zone_id: aZoneId, household_id: householdId,
+        amendment_type: aType, product_name: aProduct.trim(),
+        application_date: aDate || new Date().toISOString().split("T")[0],
+        amount: aAmount ? parseFloat(aAmount) : null, unit: aUnit, notes: aNotes.trim() || null,
+      });
+    }
+    setShowAmendmentModal(false);
+  }
+
+  function confirmDeleteAmendment(a: GardenAmendment) {
+    Alert.alert("Delete Amendment", `Remove "${a.product_name}"?`, [
+      { text: "Cancel", style: "cancel" },
+      { text: "Delete", style: "destructive", onPress: () => deleteAmendment.mutate({ id: a.id, plotId: plotId! }) },
     ]);
   }
 
@@ -556,6 +643,42 @@ export default function PlotDetailScreen() {
                 <TouchableOpacity onPress={() => openNewPlanting(panelZone.id)} className="flex-row items-center gap-1 mt-1">
                   <Text className="text-green-700 text-sm font-semibold">+ Add Planting</Text>
                 </TouchableOpacity>
+
+                {/* Amendments in this zone */}
+                <View className="mt-4 pt-3 border-t border-gray-100">
+                  <View className="flex-row items-center justify-between mb-2">
+                    <Text className="text-xs font-semibold text-gray-600">Amendments</Text>
+                    <TouchableOpacity onPress={() => openNewAmendment(panelZone.id)} className="bg-amber-50 rounded-lg px-2 py-1">
+                      <Text className="text-amber-700 text-xs font-semibold">+ Log</Text>
+                    </TouchableOpacity>
+                  </View>
+                  {amendments.filter((a) => a.zone_id === panelZone.id).length === 0 ? (
+                    <Text className="text-gray-400 text-xs">No amendments logged.</Text>
+                  ) : (
+                    <View className="gap-1.5">
+                      {amendments.filter((a) => a.zone_id === panelZone.id).map((a) => {
+                        const typeInfo = AMENDMENT_TYPES.find((t) => t.value === a.amendment_type);
+                        return (
+                          <View key={a.id} className="flex-row items-center gap-2">
+                            <Text className="text-base">{typeInfo?.emoji ?? "🔧"}</Text>
+                            <View className="flex-1">
+                              <Text className="text-xs font-medium text-gray-800">{a.product_name}</Text>
+                              <Text className="text-xs text-gray-400">
+                                {a.application_date}{a.amount ? ` · ${a.amount} ${a.unit ?? ""}` : ""}
+                              </Text>
+                            </View>
+                            <TouchableOpacity onPress={() => openEditAmendment(a)}>
+                              <Text className="text-blue-400 text-xs">Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => confirmDeleteAmendment(a)}>
+                              <Text className="text-red-300 text-xs">✕</Text>
+                            </TouchableOpacity>
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
               </Card>
             </View>
           )}
@@ -605,6 +728,43 @@ export default function PlotDetailScreen() {
                 })}
               </View>
             )}
+          </View>
+
+          {/* ── Amendment Log (plot-level) ───────────────────────────────────── */}
+          {amendments.filter((a) => !a.zone_id).length > 0 && (
+            <View className="mx-4 mt-5">
+              <Text className="text-sm font-semibold text-gray-700 mb-2">Plot-Wide Amendments</Text>
+              <Card>
+                <View className="gap-2">
+                  {amendments.filter((a) => !a.zone_id).map((a) => {
+                    const typeInfo = AMENDMENT_TYPES.find((t) => t.value === a.amendment_type);
+                    return (
+                      <View key={a.id} className="flex-row items-center gap-2">
+                        <Text className="text-base">{typeInfo?.emoji ?? "🔧"}</Text>
+                        <View className="flex-1">
+                          <Text className="text-sm font-medium text-gray-800">{a.product_name}</Text>
+                          <Text className="text-xs text-gray-400">
+                            {a.application_date}{a.amount ? ` · ${a.amount} ${a.unit ?? ""}` : ""}
+                          </Text>
+                        </View>
+                        <TouchableOpacity onPress={() => openEditAmendment(a)}>
+                          <Text className="text-blue-500 text-xs">Edit</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={() => confirmDeleteAmendment(a)}>
+                          <Text className="text-red-400 text-xs">✕</Text>
+                        </TouchableOpacity>
+                      </View>
+                    );
+                  })}
+                </View>
+              </Card>
+            </View>
+          )}
+          <View className="mx-4 mt-3">
+            <TouchableOpacity onPress={() => openNewAmendment(null)} className="border border-dashed border-amber-300 rounded-xl py-3 items-center flex-row justify-center gap-2">
+              <Text className="text-amber-600 text-sm">🌿</Text>
+              <Text className="text-amber-700 text-sm font-semibold">Log Whole-Plot Amendment</Text>
+            </TouchableOpacity>
           </View>
 
           {/* ── Unzoned plantings ────────────────────────────────────────────── */}
@@ -829,6 +989,88 @@ export default function PlotDetailScreen() {
             <Input label="Notes" placeholder="Quality, color, what stood out…" value={hNotes} onChangeText={setHNotes} multiline numberOfLines={2} />
 
             {editingHarvest && (
+              <View className="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-2">
+                <Text className="text-blue-700 text-xs">Changes auto-save after 3 seconds.</Text>
+              </View>
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+      {/* ── Amendment Modal ───────────────────────────────────────────────────── */}
+      <Modal visible={showAmendmentModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+          <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
+            <TouchableOpacity onPress={() => setShowAmendmentModal(false)}>
+              <Text className="text-gray-500">Cancel</Text>
+            </TouchableOpacity>
+            <View className="flex-row items-center gap-2">
+              <Text className="font-semibold text-gray-900">{editingAmendment ? "Edit Amendment" : "Log Amendment"}</Text>
+              {amendmentSaved && <Text className="text-green-500 text-xs">Saved ✓</Text>}
+            </View>
+            <TouchableOpacity onPress={handleSaveAmendment} disabled={!aProduct.trim() || createAmendment.isPending || updateAmendment.isPending}>
+              <Text className={`font-semibold ${aProduct.trim() ? "text-green-600" : "text-gray-300"}`}>
+                {createAmendment.isPending || updateAmendment.isPending ? "Saving…" : "Save"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView className="flex-1 px-4 py-4">
+            <Text className="text-sm font-medium text-gray-700 mb-2">Type</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+              <View className="flex-row gap-2">
+                {AMENDMENT_TYPES.map((t) => (
+                  <TouchableOpacity key={t.value} onPress={() => setAType(t.value)}
+                    className={`flex-row items-center gap-1.5 px-3 py-2 rounded-xl border ${aType === t.value ? "border-green-600 bg-green-50" : "border-gray-200 bg-white"}`}>
+                    <Text>{t.emoji}</Text>
+                    <Text className={`text-sm ${aType === t.value ? "text-green-700 font-semibold" : "text-gray-700"}`}>{t.label}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <Input label="Product Name *" placeholder="e.g. Dr. Earth Tomato Fertilizer…" value={aProduct} onChangeText={setAProduct} />
+            <DateInput label="Application Date" value={aDate} onChange={setADate} />
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Amount</Text>
+            <View className="flex-row gap-3 mb-4">
+              <View className="flex-1">
+                <Input placeholder="e.g. 2" value={aAmount} onChangeText={setAAmount} keyboardType="decimal-pad" />
+              </View>
+              <View className="flex-1">
+                <Text className="text-sm font-medium text-gray-700 mb-1">Unit</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+                  <View className="flex-row gap-2">
+                    {AMENDMENT_UNITS.map((u) => (
+                      <TouchableOpacity key={u} onPress={() => setAUnit(u)}
+                        className={`px-3 py-2.5 rounded-xl border ${aUnit === u ? "bg-green-600 border-green-600" : "bg-white border-gray-200"}`}>
+                        <Text className={`text-sm ${aUnit === u ? "text-white font-semibold" : "text-gray-700"}`}>{u}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </ScrollView>
+              </View>
+            </View>
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Zone</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
+              <View className="flex-row gap-2">
+                <TouchableOpacity onPress={() => setAZoneId(null)}
+                  className={`px-3 py-1.5 rounded-xl border ${aZoneId === null ? "border-gray-700 bg-gray-100" : "border-gray-200"}`}>
+                  <Text className="text-xs text-gray-600">Whole Plot</Text>
+                </TouchableOpacity>
+                {zones.map((z) => (
+                  <TouchableOpacity key={z.id} onPress={() => setAZoneId(z.id)}
+                    className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl border"
+                    style={{ backgroundColor: aZoneId === z.id ? z.color + "33" : "#f9fafb", borderColor: aZoneId === z.id ? z.color : "#e5e7eb" }}>
+                    <View style={{ backgroundColor: z.color }} className="w-2.5 h-2.5 rounded-sm" />
+                    <Text className="text-xs text-gray-700">{z.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <Input label="Notes" placeholder="Application method, weather conditions, results…" value={aNotes} onChangeText={setANotes} multiline numberOfLines={3} className="min-h-[80px]" />
+
+            {editingAmendment && (
               <View className="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-2">
                 <Text className="text-blue-700 text-xs">Changes auto-save after 3 seconds.</Text>
               </View>

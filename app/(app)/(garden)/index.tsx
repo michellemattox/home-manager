@@ -8,12 +8,12 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
-import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { useHouseholdStore } from "@/stores/householdStore";
 import {
@@ -21,6 +21,7 @@ import {
   useCreateGardenPlot,
   useDeleteGardenPlot,
 } from "@/hooks/useGarden";
+import { useGardenWeather } from "@/hooks/useGardenWeather";
 import type { GardenPlot } from "@/types/app.types";
 
 // Zone type presets for quick-start
@@ -86,6 +87,9 @@ export default function GardenScreen() {
     );
   }
 
+  const zipCode = household?.zip_code ?? null;
+  const { data: weather } = useGardenWeather(zipCode, householdId);
+
   return (
     <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
       <AppHeader compact />
@@ -98,6 +102,43 @@ export default function GardenScreen() {
           className="bg-green-600 rounded-xl px-4 py-2"
         >
           <Text className="text-white font-semibold text-sm">+ New Garden</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Quick-access row */}
+      <View className="px-4 pb-3 flex-row gap-3">
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/weather")}
+          className="flex-1 flex-row items-center gap-2 border border-blue-200 bg-blue-50 rounded-xl px-3 py-2.5"
+        >
+          {weather?.current.icon ? (
+            <Image source={{ uri: `https://openweathermap.org/img/wn/${weather.current.icon}.png` }} style={{ width: 28, height: 28 }} />
+          ) : (
+            <Text className="text-xl">🌦</Text>
+          )}
+          <View className="flex-1">
+            {weather?.current ? (
+              <>
+                <Text className="text-blue-800 text-sm font-semibold">{weather.current.temp}°F — {weather.current.description}</Text>
+                <Text className="text-blue-500 text-xs">{zipCode} · tap for forecast</Text>
+              </>
+            ) : (
+              <>
+                <Text className="text-blue-700 text-sm font-semibold">Weather</Text>
+                <Text className="text-blue-400 text-xs">{zipCode ? "Tap to load" : "Set zip in settings"}</Text>
+              </>
+            )}
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/succession")}
+          className="flex-1 flex-row items-center gap-2 border border-green-200 bg-green-50 rounded-xl px-3 py-2.5"
+        >
+          <Text className="text-xl">📅</Text>
+          <View>
+            <Text className="text-green-800 text-sm font-semibold">Planting</Text>
+            <Text className="text-green-600 text-xs">Succession planner</Text>
+          </View>
         </TouchableOpacity>
       </View>
 

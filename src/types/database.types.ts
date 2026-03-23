@@ -749,6 +749,90 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      garden_weather_logs: {
+        Row: {
+          id: string;
+          household_id: string;
+          log_date: string;
+          zip_code: string;
+          rainfall_mm: number | null;
+          temp_high_f: number | null;
+          temp_low_f: number | null;
+          condition_main: string | null;
+          condition_desc: string | null;
+          icon: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          log_date?: string;
+          zip_code: string;
+          rainfall_mm?: number | null;
+          temp_high_f?: number | null;
+          temp_low_f?: number | null;
+          condition_main?: string | null;
+          condition_desc?: string | null;
+          icon?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          log_date?: string;
+          zip_code?: string;
+          rainfall_mm?: number | null;
+          temp_high_f?: number | null;
+          temp_low_f?: number | null;
+          condition_main?: string | null;
+          condition_desc?: string | null;
+          icon?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
+      garden_amendments: {
+        Row: {
+          id: string;
+          plot_id: string;
+          zone_id: string | null;
+          household_id: string;
+          amendment_type: "fertilizer" | "compost" | "lime" | "mulch" | "pest_control" | "foliar" | "other";
+          product_name: string;
+          application_date: string;
+          amount: number | null;
+          unit: string | null;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          plot_id: string;
+          zone_id?: string | null;
+          household_id: string;
+          amendment_type?: "fertilizer" | "compost" | "lime" | "mulch" | "pest_control" | "foliar" | "other";
+          product_name: string;
+          application_date?: string;
+          amount?: number | null;
+          unit?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          plot_id?: string;
+          zone_id?: string | null;
+          household_id?: string;
+          amendment_type?: "fertilizer" | "compost" | "lime" | "mulch" | "pest_control" | "foliar" | "other";
+          product_name?: string;
+          application_date?: string;
+          amount?: number | null;
+          unit?: string | null;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
       garden_plots: {
         Row: {
           id: string;
