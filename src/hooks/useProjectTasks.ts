@@ -45,12 +45,15 @@ export function useUpdateProjectTask() {
       project_id: string;
       updates: Partial<Pick<ProjectTask, "title" | "due_date" | "assigned_member_id" | "checklist_name" | "notes">>;
     }) => {
-      const { error } = await supabase
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Save timed out. Please check your connection and try again.")), 12000)
+      );
+      const request = supabase
         .from("project_tasks")
         .update(updates)
-        .eq("id", id);
-      if (error) throw error;
-      return { project_id };
+        .eq("id", id)
+        .then(({ error }) => { if (error) throw error; return { project_id }; });
+      return Promise.race([request, timeout]);
     },
     onSuccess: ({ project_id }) => {
       qc.invalidateQueries({ queryKey: ["project", project_id] });

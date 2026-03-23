@@ -1,4 +1,9 @@
-import { format, isAfter, isBefore, addDays, parseISO, differenceInDays } from "date-fns";
+import { format, parseISO, differenceInDays } from "date-fns";
+
+// Returns today's date string (YYYY-MM-DD) in Pacific Time (Seattle/US West Coast)
+function getTodayPT(): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
+}
 
 export function formatDate(dateStr: string): string {
   return format(parseISO(dateStr), "MMM d, yyyy");
@@ -13,17 +18,24 @@ export function formatDateTime(dateStr: string): string {
 }
 
 export function isOverdue(dateStr: string): boolean {
-  return isBefore(parseISO(dateStr), new Date());
+  return dateStr < getTodayPT();
 }
 
 export function isDueSoon(dateStr: string, withinDays = 7): boolean {
-  const due = parseISO(dateStr);
-  const now = new Date();
-  return isAfter(due, now) && isBefore(due, addDays(now, withinDays));
+  const todayPT = getTodayPT();
+  const todayParts = todayPT.split("-").map(Number);
+  const limitDate = new Date(todayParts[0], todayParts[1] - 1, todayParts[2] + withinDays);
+  const limitStr = format(limitDate, "yyyy-MM-dd");
+  return dateStr >= todayPT && dateStr <= limitStr;
 }
 
 export function daysUntilDue(dateStr: string): number {
-  return differenceInDays(parseISO(dateStr), new Date());
+  const todayPT = getTodayPT();
+  const todayParts = todayPT.split("-").map(Number);
+  const dueParts = dateStr.split("-").map(Number);
+  const todayDate = new Date(todayParts[0], todayParts[1] - 1, todayParts[2]);
+  const dueDate = new Date(dueParts[0], dueParts[1] - 1, dueParts[2]);
+  return differenceInDays(dueDate, todayDate);
 }
 
 export function toISODateString(date: Date): string {

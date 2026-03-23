@@ -117,19 +117,58 @@ Deno.serve(async (req) => {
 
   try {
     const now = new Date();
-    const today = now.toISOString().split("T")[0];
+    // Use Pacific Time (Seattle) for "today" date comparisons
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(now);
 
-    // ── Test mode: send a sample digest to a specific email ──────────────────
+    // ── Test mode: send real digest for the given email ──────────────────────
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch { /* no body */ }
     if (body.testEmail) {
-      const testItems: ReminderItem[] = [
-        { title: "Drink water (daily)", dueDate: today, overdue: false },
-        { title: "Check HVAC filter", dueDate: today, overdue: true },
-      ];
-      const result = await sendDigestEmail(body.testEmail as string, "Michelle", testItems);
+      const testEmail = body.testEmail as string;
+      // Look up the user by email
+      const { data: { users }, error: listErr } = await supabase.auth.admin.listUsers();
+      const testUser = users?.find((u) => u.email === testEmail);
+      if (!testUser) {
+        return new Response(
+          JSON.stringify({ error: `No user found with email ${testEmail}` }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      // Get their member record and tasks due today or overdue
+      const { data: testMember } = await supabase
+        .from("household_members")
+        .select("id, display_name, household_id")
+        .eq("user_id", testUser.id)
+        .is("invite_token", null)
+        .single();
+      if (!testMember) {
+        return new Response(
+          JSON.stringify({ error: "No household member found for this user" }),
+          { status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const { data: testTasks } = await supabase
+        .from("recurring_tasks")
+        .select("title, next_due_date, time_of_day")
+        .eq("household_id", testMember.household_id)
+        .eq("is_active", true)
+        .lte("next_due_date", today);
+      const testItems: ReminderItem[] = (testTasks ?? []).map((t) => ({
+        title: t.title,
+        dueDate: t.next_due_date,
+        overdue: t.next_due_date < today,
+        timeOfDay: (t as any).time_of_day ?? null,
+      }));
+      if (!testItems.length) {
+        return new Response(
+          JSON.stringify({ test: true, email: testEmail, message: "No tasks due today or overdue — nothing to send" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+        );
+      }
+      const firstName = testMember.display_name?.split(" ")[0] ?? "there";
+      const result = await sendDigestEmail(testEmail, firstName, testItems);
       return new Response(
-        JSON.stringify({ test: true, email: body.testEmail, result }),
+        JSON.stringify({ test: true, email: testEmail, taskCount: testItems.length, result }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }

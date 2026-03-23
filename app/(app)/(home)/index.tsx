@@ -16,7 +16,7 @@ import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
 import { useTasks, useCompleteTask } from "@/hooks/useTasks";
 import { useServiceRecords } from "@/hooks/useServices";
-import { isOverdue, isDueSoon, formatDate, formatDateShort } from "@/utils/dateUtils";
+import { isOverdue, isDueSoon, daysUntilDue, formatDate, formatDateShort } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
 import { showAlert } from "@/lib/alert";
 import { supabase } from "@/lib/supabase";
@@ -54,7 +54,7 @@ function SectionHeader({ title, count, onSeeAll, raw }: { title: string; count?:
 
 function OverdueProjectCard({ project, onPress }: { project: ProjectWithOwners; onPress: () => void }) {
   const daysOverdue = project.expected_date
-    ? Math.abs(Math.floor((new Date().getTime() - new Date(project.expected_date).getTime()) / 86400000))
+    ? Math.abs(daysUntilDue(project.expected_date))
     : 0;
 
   return (
@@ -73,9 +73,7 @@ function OverdueProjectCard({ project, onPress }: { project: ProjectWithOwners; 
 }
 
 function DueSoonProjectCard({ project, onPress }: { project: ProjectWithOwners; onPress: () => void }) {
-  const days = project.expected_date
-    ? Math.floor((new Date(project.expected_date).getTime() - new Date().getTime()) / 86400000)
-    : 0;
+  const days = project.expected_date ? daysUntilDue(project.expected_date) : 0;
 
   return (
     <TouchableOpacity onPress={onPress} className="rounded-xl p-3 mb-2" style={{ backgroundColor: "#F5F55F" }}>

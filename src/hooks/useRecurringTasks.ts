@@ -4,7 +4,6 @@ import { calculateNextDueDate } from "@/utils/scheduleUtils";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { isOverdue } from "@/utils/dateUtils";
 import type { RecurringTask, RecurringTaskCompletion } from "@/types/app.types";
-import { parseISO } from "date-fns";
 
 export function useRecurringTasks(householdId: string | undefined) {
   const setOverdueCount = useNotificationStore((s) => s.setOverdueTaskCount);
@@ -61,10 +60,11 @@ export function useCompleteRecurringTask() {
       notes?: string;
     }) => {
       const now = new Date().toISOString();
+      // Use local noon to avoid UTC midnight shifting the date backward in PT timezone
       const nextDue = calculateNextDueDate(
         task.frequency_type,
         task.frequency_days,
-        parseISO(task.next_due_date)
+        new Date(task.next_due_date + "T12:00:00")
       );
 
       // Log completion
@@ -96,12 +96,15 @@ export function useUpdateRecurringTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async ({ id, updates, householdId }: { id: string; updates: Partial<RecurringTask>; householdId: string }) => {
-      const { error } = await supabase
+      const timeout = new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error("Save timed out. Please check your connection and try again.")), 12000)
+      );
+      const request = supabase
         .from("recurring_tasks")
         .update(updates)
-        .eq("id", id);
-      if (error) throw error;
-      return householdId;
+        .eq("id", id)
+        .then(({ error }) => { if (error) throw error; return householdId; });
+      return Promise.race([request, timeout]);
     },
     onSuccess: (householdId) =>
       qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] }),
