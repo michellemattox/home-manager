@@ -52,6 +52,15 @@ async function sendDigestEmail(
 <head>
 <meta charset="utf-8"/>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&display=swap"/>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Lobster&display=swap');
+  @font-face {
+    font-family: 'Lobster';
+    font-style: normal;
+    font-weight: 400;
+    src: url('https://fonts.gstatic.com/s/lobster/v30/neILzCirqoswsqX9zoKmMw.woff2') format('woff2');
+  }
+</style>
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;">
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:540px;margin:0 auto;padding:28px 24px;background:#fffff8;">

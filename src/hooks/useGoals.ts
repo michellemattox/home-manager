@@ -1,6 +1,26 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { format, addDays } from "date-fns";
+import { calculateNextDueDate } from "@/utils/scheduleUtils";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
+
+function buildPeriodMessage(frequencyType: string, frequencyDays: number, dueDate: string): string {
+  const date = new Date(dueDate + "T12:00:00");
+  switch (frequencyType) {
+    case "daily":
+      return `Goal achieved for ${format(date, "MMMM d, yyyy")}! 🎉`;
+    case "weekly": {
+      const start = addDays(date, -6);
+      return `Goal achieved for the week of ${format(start, "MMM d")}–${format(date, "MMM d, yyyy")}! 🎉`;
+    }
+    case "monthly":
+      return `Goal achieved for ${format(date, "MMMM yyyy")}! 🎉`;
+    case "yearly":
+      return `Goal achieved for ${format(date, "yyyy")}! 🎉`;
+    default:
+      return `Goal achieved for the ${frequencyDays}-day period ending ${format(date, "MMM d, yyyy")}! 🎉`;
+  }
+}
 
 export function useGoals(householdId: string | undefined) {
   return useQuery({
@@ -89,6 +109,44 @@ export function useAddGoalUpdate() {
     },
     onSuccess: (data) =>
       qc.invalidateQueries({ queryKey: ["goals", data.household_id] }),
+  });
+}
+
+// Complete one recurring period: auto-insert an update and advance the due_date
+export function useCompleteGoalPeriod() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      goal,
+      householdId,
+      authorId,
+    }: {
+      goal: Goal;
+      householdId: string;
+      authorId: string;
+    }) => {
+      const freqType = (goal as any).frequency_type ?? "weekly";
+      const freqDays = (goal as any).frequency_days ?? 7;
+      const currentDue = goal.due_date ?? new Date().toISOString().split("T")[0];
+
+      const body = buildPeriodMessage(freqType, freqDays, currentDue);
+      const nextDue = calculateNextDueDate(freqType, freqDays, new Date(currentDue + "T12:00:00"));
+
+      const { error: updateErr } = await supabase
+        .from("goal_updates")
+        .insert({ goal_id: goal.id, household_id: householdId, body, author_id: authorId });
+      if (updateErr) throw updateErr;
+
+      const { error: goalErr } = await supabase
+        .from("goals")
+        .update({ due_date: nextDue })
+        .eq("id", goal.id);
+      if (goalErr) throw goalErr;
+
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["goals", householdId] }),
   });
 }
 

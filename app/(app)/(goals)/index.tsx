@@ -19,6 +19,7 @@ import {
   useDeleteGoal,
   useAddGoalUpdate,
   useEditGoalUpdate,
+  useCompleteGoalPeriod,
   useDeleteGoalUpdate,
 } from "@/hooks/useGoals";
 import { Card } from "@/components/ui/Card";
@@ -26,10 +27,31 @@ import { Badge } from "@/components/ui/Badge";
 import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateShort, formatDateTime, isOverdue } from "@/utils/dateUtils";
+import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 
 type UserTypeFilter = "all" | "family" | "individual";
+
+const GOAL_FREQUENCIES: { label: string; value: string }[] = [
+  { label: "Daily", value: "daily" },
+  { label: "Weekly", value: "weekly" },
+  { label: "Monthly", value: "monthly" },
+  { label: "Yearly", value: "yearly" },
+  { label: "Custom", value: "custom" },
+];
+
+const REMINDER_OPTIONS: { label: string; value: Goal["reminder_frequency"] }[] = [
+  { label: "Daily", value: "daily" },
+  { label: "Weekly", value: "weekly" },
+  { label: "Monthly", value: "monthly" },
+];
+
+const STATUS_COLORS: Record<Goal["status"], string> = {
+  active: "info",
+  completed: "success",
+  paused: "warning",
+};
 
 // ─── GoalFormFields (defined outside screen to prevent focus loss) ─────────────
 function GoalFormFields({
@@ -39,6 +61,9 @@ function GoalFormFields({
   memberId, setMemberId,
   dueDate, setDueDate,
   reminder, setReminder,
+  isRecurring, setIsRecurring,
+  freqType, setFreqType,
+  freqDays, setFreqDays,
   members,
   userId,
 }: {
@@ -48,6 +73,9 @@ function GoalFormFields({
   memberId: string | null; setMemberId: (v: string | null) => void;
   dueDate: string; setDueDate: (v: string) => void;
   reminder: Goal["reminder_frequency"]; setReminder: (v: Goal["reminder_frequency"]) => void;
+  isRecurring: boolean; setIsRecurring: (v: boolean) => void;
+  freqType: string; setFreqType: (v: string) => void;
+  freqDays: string; setFreqDays: (v: string) => void;
   members: HouseholdMember[];
   userId: string | undefined;
 }) {
@@ -112,11 +140,60 @@ function GoalFormFields({
         </>
       )}
 
+      {/* Recurring toggle */}
+      <Text className="text-sm font-medium text-gray-700 mb-2">Recurring?</Text>
+      <View className="flex-row gap-2 mb-4">
+        {([false, true] as const).map((v) => (
+          <TouchableOpacity
+            key={String(v)}
+            onPress={() => setIsRecurring(v)}
+            className={`flex-1 py-2.5 rounded-xl border items-center ${
+              isRecurring === v ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+            }`}
+          >
+            <Text className={`text-sm font-semibold ${isRecurring === v ? "text-white" : "text-gray-700"}`}>
+              {v ? "Yes" : "No"}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      {isRecurring && (
+        <>
+          <Text className="text-sm font-medium text-gray-700 mb-2">Frequency</Text>
+          <View className="flex-row flex-wrap gap-2 mb-4">
+            {GOAL_FREQUENCIES.map((f) => (
+              <TouchableOpacity
+                key={f.value}
+                onPress={() => setFreqType(f.value)}
+                className={`px-4 py-2 rounded-xl border ${
+                  freqType === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-sm font-medium ${freqType === f.value ? "text-white" : "text-gray-700"}`}>
+                  {f.label}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          {freqType === "custom" && (
+            <TextInput
+              className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-4"
+              value={freqDays}
+              onChangeText={setFreqDays}
+              placeholder="Every how many days? e.g. 14"
+              placeholderTextColor="#9ca3af"
+              keyboardType="number-pad"
+            />
+          )}
+        </>
+      )}
+
       <DateInput
-        label="Due Date (optional)"
+        label={isRecurring ? "First period ends (due date)" : "Due Date (optional)"}
         value={dueDate}
         onChange={setDueDate}
-        hint="Target completion date"
+        hint={isRecurring ? "The end date of the first cycle" : "Target completion date"}
       />
 
       <Text className="text-sm font-medium text-gray-700 mb-2">Reminder Frequency</Text>
@@ -147,18 +224,6 @@ function GoalFormFields({
   );
 }
 
-const REMINDER_OPTIONS: { label: string; value: Goal["reminder_frequency"] }[] = [
-  { label: "Daily", value: "daily" },
-  { label: "Weekly", value: "weekly" },
-  { label: "Monthly", value: "monthly" },
-];
-
-const STATUS_COLORS: Record<Goal["status"], string> = {
-  active: "info",
-  completed: "success",
-  paused: "warning",
-};
-
 function GoalCard({
   goal,
   members,
@@ -168,6 +233,7 @@ function GoalCard({
   onEdit,
   onDelete,
   onStatusChange,
+  onCompleteGoalPeriod,
 }: {
   goal: GoalWithUpdates;
   members: { id: string; display_name: string }[];
@@ -177,8 +243,13 @@ function GoalCard({
   onEdit: (goal: GoalWithUpdates) => void;
   onDelete: (goal: GoalWithUpdates) => void;
   onStatusChange: (goal: GoalWithUpdates, status: Goal["status"]) => void;
+  onCompleteGoalPeriod: (goal: GoalWithUpdates) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
+
+  const isRecurring = (goal as any).is_recurring === true;
+  const freqType = (goal as any).frequency_type ?? "weekly";
+  const freqDays = (goal as any).frequency_days ?? 7;
 
   const ownerName =
     goal.user_type === "family"
@@ -214,9 +285,14 @@ function GoalCard({
           <Text className="text-xs text-gray-400">
             {goal.user_type === "family" ? "👨‍👩‍👧 Family" : `👤 ${ownerName}`}
           </Text>
+          {isRecurring && (
+            <Text className="text-xs font-medium text-indigo-500">
+              🔁 {getFreqLabel(freqType, freqDays)}
+            </Text>
+          )}
           {goal.due_date && (
             <Text className={`text-xs font-medium ${overdue ? "text-red-500" : "text-gray-400"}`}>
-              Due {formatDateShort(goal.due_date)}{overdue ? " · overdue" : ""}
+              {isRecurring ? "Period ends" : "Due"} {formatDateShort(goal.due_date)}{overdue ? " · overdue" : ""}
             </Text>
           )}
           {goal.reminder_frequency && (
@@ -274,14 +350,26 @@ function GoalCard({
               <Text className="text-xs font-semibold text-blue-700">+ Add Update</Text>
             </TouchableOpacity>
 
+            {/* Recurring period completion — restarts the goal with new due date */}
+            {isRecurring && goal.status === "active" && (
+              <TouchableOpacity
+                onPress={() => onCompleteGoalPeriod(goal)}
+                className="px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200"
+              >
+                <Text className="text-xs font-semibold text-indigo-700">✓ Period Done</Text>
+              </TouchableOpacity>
+            )}
+
+            {/* Goal Completed — permanently closes the goal */}
             {goal.status !== "completed" && (
               <TouchableOpacity
                 onPress={() => onStatusChange(goal, "completed")}
                 className="px-3 py-1.5 rounded-full bg-green-50 border border-green-200"
               >
-                <Text className="text-xs font-semibold text-green-700">Mark Complete</Text>
+                <Text className="text-xs font-semibold text-green-700">Goal Completed</Text>
               </TouchableOpacity>
             )}
+
             {goal.status === "active" && (
               <TouchableOpacity
                 onPress={() => onStatusChange(goal, "paused")}
@@ -331,6 +419,7 @@ export default function GoalsScreen() {
   const deleteGoal = useDeleteGoal();
   const addUpdate = useAddGoalUpdate();
   const editUpdate = useEditGoalUpdate();
+  const completeGoalPeriod = useCompleteGoalPeriod();
   const deleteUpdate = useDeleteGoalUpdate();
 
   // Filters
@@ -346,6 +435,9 @@ export default function GoalsScreen() {
   const [newMemberId, setNewMemberId] = useState<string | null>(currentMember?.id ?? null);
   const [newDueDate, setNewDueDate] = useState("");
   const [newReminder, setNewReminder] = useState<Goal["reminder_frequency"]>(null);
+  const [newIsRecurring, setNewIsRecurring] = useState(false);
+  const [newFreqType, setNewFreqType] = useState("weekly");
+  const [newFreqDays, setNewFreqDays] = useState("7");
 
   // Edit goal modal
   const [editingGoal, setEditingGoal] = useState<GoalWithUpdates | null>(null);
@@ -355,7 +447,13 @@ export default function GoalsScreen() {
   const [editMemberId, setEditMemberId] = useState<string | null>(null);
   const [editDueDate, setEditDueDate] = useState("");
   const [editReminder, setEditReminder] = useState<Goal["reminder_frequency"]>(null);
-  const goalInitialRef = useRef<{ title: string; desc: string; userType: string; memberId: string | null; due: string; reminder: string | null } | null>(null);
+  const [editIsRecurring, setEditIsRecurring] = useState(false);
+  const [editFreqType, setEditFreqType] = useState("weekly");
+  const [editFreqDays, setEditFreqDays] = useState("7");
+  const goalInitialRef = useRef<{
+    title: string; desc: string; userType: string; memberId: string | null;
+    due: string; reminder: string | null; isRecurring: boolean; freqType: string; freqDays: string;
+  } | null>(null);
   const goalAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [goalSaved, setGoalSaved] = useState(false);
 
@@ -389,6 +487,12 @@ export default function GoalsScreen() {
     });
   const completedGoals = filteredGoals.filter((g) => g.status === "completed");
 
+  const resetNewForm = () => {
+    setNewTitle(""); setNewDescription(""); setNewUserType("family");
+    setNewMemberId(currentMember?.id ?? null); setNewDueDate(""); setNewReminder(null);
+    setNewIsRecurring(false); setNewFreqType("weekly"); setNewFreqDays("7");
+  };
+
   const handleCreateGoal = async () => {
     if (!newTitle.trim() || !household || !currentMember) return;
     try {
@@ -402,20 +506,21 @@ export default function GoalsScreen() {
         reminder_frequency: newReminder,
         status: "active",
         created_by: currentMember.id,
+        is_recurring: newIsRecurring,
+        frequency_type: newIsRecurring ? (newFreqType as any) : null,
+        frequency_days: newIsRecurring ? (parseInt(newFreqDays || "7", 10)) : 1,
       });
       setShowNewModal(false);
-      setNewTitle("");
-      setNewDescription("");
-      setNewUserType("family");
-      setNewMemberId(currentMember.id);
-      setNewDueDate("");
-      setNewReminder(null);
+      resetNewForm();
     } catch (e: any) {
       showAlert("Error", e.message);
     }
   };
 
   const openEditGoal = (goal: GoalWithUpdates) => {
+    const isRec = (goal as any).is_recurring === true;
+    const fType = (goal as any).frequency_type ?? "weekly";
+    const fDays = String((goal as any).frequency_days ?? 7);
     setEditingGoal(goal);
     setEditTitle(goal.title);
     setEditDescription(goal.description ?? "");
@@ -423,8 +528,15 @@ export default function GoalsScreen() {
     setEditMemberId(goal.member_id);
     setEditDueDate(goal.due_date ?? "");
     setEditReminder(goal.reminder_frequency);
+    setEditIsRecurring(isRec);
+    setEditFreqType(fType);
+    setEditFreqDays(fDays);
     setGoalSaved(false);
-    goalInitialRef.current = { title: goal.title, desc: goal.description ?? "", userType: goal.user_type, memberId: goal.member_id, due: goal.due_date ?? "", reminder: goal.reminder_frequency };
+    goalInitialRef.current = {
+      title: goal.title, desc: goal.description ?? "", userType: goal.user_type,
+      memberId: goal.member_id, due: goal.due_date ?? "", reminder: goal.reminder_frequency,
+      isRecurring: isRec, freqType: fType, freqDays: fDays,
+    };
   };
 
   const doSaveGoalEdit = async () => {
@@ -440,9 +552,16 @@ export default function GoalsScreen() {
           member_id: editUserType === "individual" ? editMemberId : null,
           due_date: editDueDate || null,
           reminder_frequency: editReminder,
+          is_recurring: editIsRecurring,
+          frequency_type: editIsRecurring ? (editFreqType as any) : null,
+          frequency_days: editIsRecurring ? (parseInt(editFreqDays || "7", 10)) : 1,
         },
       });
-      goalInitialRef.current = { title: editTitle, desc: editDescription, userType: editUserType, memberId: editMemberId, due: editDueDate, reminder: editReminder };
+      goalInitialRef.current = {
+        title: editTitle, desc: editDescription, userType: editUserType, memberId: editMemberId,
+        due: editDueDate, reminder: editReminder, isRecurring: editIsRecurring,
+        freqType: editFreqType, freqDays: editFreqDays,
+      };
       setGoalSaved(true);
       setTimeout(() => setGoalSaved(false), 2000);
     } catch (e: any) {
@@ -454,12 +573,13 @@ export default function GoalsScreen() {
     if (!editingGoal || !goalInitialRef.current) return;
     const init = goalInitialRef.current;
     const dirty = editTitle !== init.title || editDescription !== init.desc || editUserType !== init.userType
-      || editMemberId !== init.memberId || editDueDate !== init.due || editReminder !== init.reminder;
+      || editMemberId !== init.memberId || editDueDate !== init.due || editReminder !== init.reminder
+      || editIsRecurring !== init.isRecurring || editFreqType !== init.freqType || editFreqDays !== init.freqDays;
     if (!dirty) return;
     if (goalAutoSaveRef.current) clearTimeout(goalAutoSaveRef.current);
     goalAutoSaveRef.current = setTimeout(() => { doSaveGoalEdit(); }, 3000);
     return () => { if (goalAutoSaveRef.current) clearTimeout(goalAutoSaveRef.current); };
-  }, [editTitle, editDescription, editUserType, editMemberId, editDueDate, editReminder]);
+  }, [editTitle, editDescription, editUserType, editMemberId, editDueDate, editReminder, editIsRecurring, editFreqType, editFreqDays]);
 
   const handleDoneGoalEdit = async () => {
     if (goalAutoSaveRef.current) {
@@ -501,6 +621,19 @@ export default function GoalsScreen() {
     }
   };
 
+  const handleCompleteGoalPeriod = async (goal: GoalWithUpdates) => {
+    if (!household || !currentMember) return;
+    try {
+      await completeGoalPeriod.mutateAsync({
+        goal,
+        householdId: household.id,
+        authorId: currentMember.id,
+      });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
   const handleStatusChange = async (goal: GoalWithUpdates, status: Goal["status"]) => {
     if (!household) return;
     try {
@@ -519,6 +652,18 @@ export default function GoalsScreen() {
       true
     );
   };
+
+  const goalCardProps = (g: GoalWithUpdates) => ({
+    goal: g,
+    members,
+    currentMemberId: currentMember?.id,
+    onAddUpdate: (goalId: string) => setAddUpdateGoalId(goalId),
+    onEditUpdate: (u: GoalUpdate) => { setEditingGoalUpdate(u); setEditGoalUpdateBody(u.body); },
+    onEdit: openEditGoal,
+    onDelete: handleDelete,
+    onStatusChange: handleStatusChange,
+    onCompleteGoalPeriod: handleCompleteGoalPeriod,
+  });
 
   return (
     <SafeAreaView className="flex-1 bg-[#F5E7D3]" edges={["top"]}>
@@ -539,14 +684,10 @@ export default function GoalsScreen() {
       {/* Filters */}
       <View className="px-4 py-3">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="flex-row gap-2">
-          {/* User type filter */}
           {(["all", "family", "individual"] as UserTypeFilter[]).map((f) => (
             <TouchableOpacity
               key={f}
-              onPress={() => {
-                setUserTypeFilter(f);
-                if (f !== "individual") setMemberFilter(null);
-              }}
+              onPress={() => { setUserTypeFilter(f); if (f !== "individual") setMemberFilter(null); }}
               className={`px-3 py-1.5 rounded-full border mr-2 ${
                 userTypeFilter === f ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
               }`}
@@ -556,8 +697,6 @@ export default function GoalsScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-
-          {/* Member filter (shown for individual / all) */}
           {userTypeFilter !== "family" && members.map((m) => (
             <TouchableOpacity
               key={m.id}
@@ -582,27 +721,12 @@ export default function GoalsScreen() {
           <View className="items-center py-16">
             <Text className="text-4xl mb-3">🎯</Text>
             <Text className="text-base font-semibold text-gray-700">No goals yet</Text>
-            <Text className="text-sm text-gray-400 mt-1 text-center">
-              Tap + New to set your first goal.
-            </Text>
+            <Text className="text-sm text-gray-400 mt-1 text-center">Tap + New to set your first goal.</Text>
           </View>
         )}
 
-        {activeGoals.map((g) => (
-          <GoalCard
-            key={g.id}
-            goal={g}
-            members={members}
-            currentMemberId={currentMember?.id}
-            onAddUpdate={(goalId) => setAddUpdateGoalId(goalId)}
-            onEditUpdate={(u) => { setEditingGoalUpdate(u); setEditGoalUpdateBody(u.body); }}
-            onEdit={openEditGoal}
-            onDelete={handleDelete}
-            onStatusChange={handleStatusChange}
-          />
-        ))}
+        {activeGoals.map((g) => <GoalCard key={g.id} {...goalCardProps(g)} />)}
 
-        {/* Completed section */}
         {goals.filter((g) => g.status === "completed").length > 0 && (
           <TouchableOpacity
             onPress={() => setShowCompleted(!showCompleted)}
@@ -614,31 +738,14 @@ export default function GoalsScreen() {
             <Text className="text-xs text-gray-400">{showCompleted ? "Hide" : "Show"}</Text>
           </TouchableOpacity>
         )}
-        {showCompleted && completedGoals.map((g) => (
-          <GoalCard
-            key={g.id}
-            goal={g}
-            members={members}
-            currentMemberId={currentMember?.id}
-            onAddUpdate={(goalId) => setAddUpdateGoalId(goalId)}
-            onEditUpdate={(u) => { setEditingGoalUpdate(u); setEditGoalUpdateBody(u.body); }}
-            onEdit={openEditGoal}
-            onDelete={handleDelete}
-            onStatusChange={handleStatusChange}
-          />
-        ))}
+        {showCompleted && completedGoals.map((g) => <GoalCard key={g.id} {...goalCardProps(g)} />)}
       </ScrollView>
 
       {/* ── New Goal Modal ─────────────────────────────────────────────────── */}
-      <Modal
-        visible={showNewModal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={() => setShowNewModal(false)}
-      >
+      <Modal visible={showNewModal} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setShowNewModal(false)}>
         <SafeAreaView className="flex-1 bg-[#F5E7D3]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setShowNewModal(false)} className="mr-4">
+            <TouchableOpacity onPress={() => { setShowNewModal(false); resetNewForm(); }} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">New Goal</Text>
@@ -651,6 +758,9 @@ export default function GoalsScreen() {
               memberId={newMemberId} setMemberId={setNewMemberId}
               dueDate={newDueDate} setDueDate={setNewDueDate}
               reminder={newReminder} setReminder={setNewReminder}
+              isRecurring={newIsRecurring} setIsRecurring={setNewIsRecurring}
+              freqType={newFreqType} setFreqType={setNewFreqType}
+              freqDays={newFreqDays} setFreqDays={setNewFreqDays}
               members={members}
               userId={user?.id}
             />
@@ -668,12 +778,7 @@ export default function GoalsScreen() {
       </Modal>
 
       {/* ── Edit Goal Modal ────────────────────────────────────────────────── */}
-      <Modal
-        visible={!!editingGoal}
-        animationType="slide"
-        presentationStyle="pageSheet"
-        onRequestClose={handleDoneGoalEdit}
-      >
+      <Modal visible={!!editingGoal} animationType="slide" presentationStyle="pageSheet" onRequestClose={handleDoneGoalEdit}>
         <SafeAreaView className="flex-1 bg-[#F5E7D3]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={handleDoneGoalEdit} className="mr-4">
@@ -694,6 +799,9 @@ export default function GoalsScreen() {
               memberId={editMemberId} setMemberId={setEditMemberId}
               dueDate={editDueDate} setDueDate={setEditDueDate}
               reminder={editReminder} setReminder={setEditReminder}
+              isRecurring={editIsRecurring} setIsRecurring={setEditIsRecurring}
+              freqType={editFreqType} setFreqType={setEditFreqType}
+              freqDays={editFreqDays} setFreqDays={setEditFreqDays}
               members={members}
               userId={user?.id}
             />
@@ -702,12 +810,8 @@ export default function GoalsScreen() {
       </Modal>
 
       {/* ── Edit Update Modal ──────────────────────────────────────────────── */}
-      <Modal
-        visible={!!editingGoalUpdate}
-        animationType="slide"
-        presentationStyle="formSheet"
-        onRequestClose={() => { setEditingGoalUpdate(null); setEditGoalUpdateBody(""); }}
-      >
+      <Modal visible={!!editingGoalUpdate} animationType="slide" presentationStyle="formSheet"
+        onRequestClose={() => { setEditingGoalUpdate(null); setEditGoalUpdateBody(""); }}>
         <SafeAreaView className="flex-1 bg-[#F5E7D3]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => { setEditingGoalUpdate(null); setEditGoalUpdateBody(""); }} className="mr-4">
@@ -736,12 +840,8 @@ export default function GoalsScreen() {
       </Modal>
 
       {/* ── Add Update Modal ───────────────────────────────────────────────── */}
-      <Modal
-        visible={!!addUpdateGoalId}
-        animationType="slide"
-        presentationStyle="formSheet"
-        onRequestClose={() => setAddUpdateGoalId(null)}
-      >
+      <Modal visible={!!addUpdateGoalId} animationType="slide" presentationStyle="formSheet"
+        onRequestClose={() => setAddUpdateGoalId(null)}>
         <SafeAreaView className="flex-1 bg-[#F5E7D3]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => { setAddUpdateGoalId(null); setUpdateBody(""); }} className="mr-4">

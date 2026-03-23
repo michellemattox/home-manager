@@ -1,22 +1,129 @@
 <svg width="200" height="200" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Sky blue background -->
+  <circle cx="100" cy="100" r="85" fill="#7dd3fc" />
+  <circle cx="100" cy="100" r="85" fill="url(#skyGradient)" opacity="0.5" />
+
+  <!-- Grass ground under house -->
+  <ellipse cx="100" cy="160" rx="80" ry="30" fill="#65a30d" />
+  <ellipse cx="100" cy="158" rx="75" ry="25" fill="#84cc16" opacity="0.8" />
+
+  <!-- Clear, prominent letter M -->
+  <g>
+    <!-- Left vertical stroke of M -->
+    <rect x="55" y="70" width="18" height="80" fill="#78350f" rx="3" />
+
+    <!-- Right vertical stroke of M -->
+    <rect x="127" y="70" width="18" height="80" fill="#78350f" rx="3" />
+
+    <!-- Left diagonal stroke - clear and bold -->
+    <path d="M64 70 L64 75 L95 110 L100 110 L100 105 L73 75 L73 70 Z" fill="#92400e" />
+
+    <!-- Right diagonal stroke - clear and bold -->
+    <path d="M136 70 L136 75 L105 110 L100 110 L100 105 L127 75 L127 70 Z" fill="#92400e" />
+
+    <!-- Center vertical stroke of M -->
+    <rect x="91" y="105" width="18" height="45" fill="#78350f" rx="3" />
+
+    <!-- House roof on top of M -->
+    <path d="M100 50 L150 75 L145 80 L100 58 L55 80 L50 75 Z" fill="#b45309" />
+    <path d="M100 50 L150 75 L145 80 L100 58 Z" fill="#92400e" opacity="0.3" />
+  </g>
+
+  <!-- Door detail in center of M -->
+  <rect x="93" y="130" width="14" height="20" fill="#92400e" rx="2" />
+  <circle cx="103" cy="140" r="1.5" fill="#d97706" />
+
+  <!-- Left garden elements - larger, deeper green trees/plants -->
+  <g>
+    <path d="M25 100 Q 12 97 6 105 Q 0 113 2 123 Q 4 133 14 138 Q 24 143 34 136 Q 42 129 40 118 Q 38 107 25 100 Z" fill="#15803d" opacity="0.95" />
+    <path d="M25 100 Q 18 115 14 138" stroke="#14532d" stroke-width="1.2" opacity="0.5" fill="none" />
+    <path d="M20 115 Q 10 113 5 120 Q 0 127 1 137 Q 2 147 13 152 Q 24 157 34 150 Q 42 143 40 132 Q 38 121 20 115 Z" fill="#166534" opacity="0.98" />
+    <path d="M20 115 Q 13 130 13 152" stroke="#14532d" stroke-width="1.2" opacity="0.5" fill="none" />
+    <path d="M35 120 Q 30 117 24 123 Q 18 129 18 138 Q 18 147 25 153 Q 33 158 42 155 Q 49 151 50 142 Q 50 131 43 124 Q 38 119 35 120 Z" fill="#15803d" opacity="0.92" />
+    <path d="M35 120 Q 32 135 33 155" stroke="#14532d" stroke-width="1.2" opacity="0.5" fill="none" />
+    <path d="M18 130 Q 12 128 9 133 Q 6 138 8 143 Q 10 148 17 150 Q 24 152 28 146 Q 30 140 29 135 Q 27 130 18 130 Z" fill="#166534" opacity="0.85" />
+    <path d="M25 108 Q 20 106 17 110 Q 14 114 16 119 Q 18 123 24 125 Q 30 126 34 122 Q 36 118 35 113 Q 33 108 25 108 Z" fill="#15803d" opacity="0.8" />
+    <path d="M25 100 Q 22 115 19 128 Q 16 142 15 152 Q 14 160 16 168" stroke="#14532d" stroke-width="4.5" fill="none" stroke-linecap="round" />
+    <path d="M30 110 Q 28 122 27 135 Q 26 148 27 160" stroke="#14532d" stroke-width="4" fill="none" stroke-linecap="round" />
+    <path d="M36 122 Q 34 135 33 148 Q 32 158 33 165" stroke="#14532d" stroke-width="3.5" fill="none" stroke-linecap="round" />
+  </g>
+
+  <!-- Right garden elements - larger flowers with different colors -->
+  <g>
+    <path d="M170.5 80 Q 167 78 165 83 Q 163 88 166 92 Q 169 95 173 92 Q 176 88 174 83 Q 172 78 170.5 80 Z" fill="#ec4899" />
+    <path d="M178 85 Q 182 82 185 86 Q 188 90 186 95 Q 184 99 179 98 Q 175 96 174 92 Q 173 88 178 85 Z" fill="#f472b6" />
+    <path d="M181 98 Q 186 98 189 103 Q 191 108 188 112 Q 185 116 180 114 Q 176 111 176 106 Q 176 101 181 98 Z" fill="#ec4899" />
+    <path d="M177 114 Q 180 119 178 124 Q 176 129 171 129 Q 166 127 165 122 Q 165 117 169 114 Q 172 112 177 114 Z" fill="#f472b6" />
+    <path d="M170.5 126 Q 167 128 164 125 Q 161 122 161 117 Q 162 112 167 110 Q 171 110 174 114 Q 176 118 170.5 126 Z" fill="#ec4899" />
+    <path d="M164 114 Q 159 116 156 113 Q 153 110 154 105 Q 156 100 161 99 Q 166 99 168 103 Q 170 107 164 114 Z" fill="#f472b6" />
+    <path d="M161 98 Q 156 96 154 91 Q 152 86 155 82 Q 158 78 163 80 Q 167 83 169 88 Q 169 93 161 98 Z" fill="#ec4899" />
+    <path d="M165 85 Q 162 80 165 75 Q 169 71 174 73 Q 178 76 179 81 Q 179 86 174 90 Q 170 92 165 85 Z" fill="#f472b6" />
+    <circle cx="170.5" cy="103" r="7" fill="#d97706" />
+    <circle cx="170.5" cy="103" r="6" fill="#b45309" opacity="0.6" />
+    <circle cx="167.5" cy="101" r="1" fill="#78350f" opacity="0.6" />
+    <circle cx="173.5" cy="101" r="1" fill="#78350f" opacity="0.6" />
+    <circle cx="170.5" cy="105.5" r="1" fill="#78350f" opacity="0.6" />
+    <circle cx="168.5" cy="104" r="0.8" fill="#78350f" opacity="0.5" />
+    <circle cx="172.5" cy="104" r="0.8" fill="#78350f" opacity="0.5" />
+    <circle cx="170.5" cy="100.5" r="0.8" fill="#78350f" opacity="0.5" />
+    <path d="M176 128 Q 172 126 170 131 Q 168 135 172 138 Q 176 140 179 136 Q 181 132 176 128 Z" fill="#a855f7" />
+    <path d="M182 130 Q 187 128 189 133 Q 191 138 188 142 Q 185 145 181 141 Q 178 137 182 130 Z" fill="#c084fc" />
+    <path d="M184 142 Q 187 147 185 152 Q 183 156 178 156 Q 173 154 173 149 Q 173 143 184 142 Z" fill="#a855f7" />
+    <path d="M176 143 Q 171 146 169 151 Q 167 155 172 157 Q 177 158 180 153 Q 182 148 176 143 Z" fill="#c084fc" />
+    <path d="M173 135 Q 170 132 167 134 Q 164 137 165 142 Q 167 146 172 145 Q 176 142 173 135 Z" fill="#a855f7" />
+    <circle cx="177" cy="142" r="4.5" fill="#f97316" />
+    <circle cx="177" cy="142" r="3.5" fill="#ea580c" />
+    <path d="M170.5 110 Q 169 120 168 132 Q 167 145 167 155 Q 166.5 162 167 170" stroke="#14532d" stroke-width="4.5" fill="none" stroke-linecap="round" />
+    <path d="M177 147 Q 178 154 178.5 162 Q 179 168 179 173" stroke="#14532d" stroke-width="4" fill="none" stroke-linecap="round" />
+    <path d="M160 132 Q 153 130 150 136 Q 147 142 149 149 Q 151 156 159 158 Q 167 160 172 154 Q 176 148 174 140 Q 172 133 160 132 Z" fill="#166534" opacity="0.95" />
+    <path d="M160 132 Q 155 143 159 158" stroke="#14532d" stroke-width="1" opacity="0.5" fill="none" />
+    <path d="M176 150 Q 183 148 188 153 Q 193 158 191 165 Q 189 172 181 175 Q 173 177 168 171 Q 164 165 165 157 Q 166 149 176 150 Z" fill="#15803d" opacity="0.95" />
+    <path d="M176 150 Q 183 160 181 175" stroke="#14532d" stroke-width="1" opacity="0.5" fill="none" />
+    <ellipse cx="164" cy="118" rx="3.5" ry="5" fill="#166534" opacity="0.8" transform="rotate(-20 164 118)" />
+    <path d="M164 112 Q 163 116 164 122" stroke="#14532d" stroke-width="2" fill="none" stroke-linecap="round" />
+  </g>
+
+  <!-- Bottom garden bed / organic grass -->
+  <g>
+    <path d="M45 165 Q 43 158 45 152 Q 46 148 47 152 Q 48 158 46 165" stroke="#84cc16" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M50 165 Q 52 157 54 151 Q 55 147 56 151 Q 57 158 54 165" stroke="#a3e635" stroke-width="2.2" fill="none" stroke-linecap="round" />
+    <path d="M55 165 Q 54 160 55 154 Q 56 150 57 154 Q 58 160 56 165" stroke="#84cc16" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M60 165 Q 61 158 60 152 Q 59 148 61 153 Q 63 160 61 165" stroke="#a3e635" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M65 165 Q 64 160 66 154 Q 67 150 68 154 Q 69 160 67 165" stroke="#84cc16" stroke-width="2.2" fill="none" stroke-linecap="round" />
+    <path d="M70 165 Q 71 159 70 153 Q 69 149 71 154 Q 73 160 71 165" stroke="#a3e635" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M130 165 Q 131 159 130 153 Q 129 149 131 154 Q 133 160 131 165" stroke="#a3e635" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M135 165 Q 134 160 136 154 Q 137 150 138 154 Q 139 160 137 165" stroke="#84cc16" stroke-width="2.2" fill="none" stroke-linecap="round" />
+    <path d="M140 165 Q 141 158 140 152 Q 139 148 141 153 Q 143 160 141 165" stroke="#a3e635" stroke-width="2" fill="none" stroke-linecap="round" />
+    <path d="M145 165 Q 143 158 145 152 Q 146 148 147 152 Q 148 158 146 165" stroke="#84cc16" stroke-width="2.5" fill="none" stroke-linecap="round" />
+    <path d="M150 165 Q 148 157 146 151 Q 145 147 147 151 Q 149 158 151 165" stroke="#a3e635" stroke-width="2.2" fill="none" stroke-linecap="round" />
+    <path d="M155 165 Q 154 160 155 154 Q 156 150 157 154 Q 158 160 156 165" stroke="#84cc16" stroke-width="2.5" fill="none" stroke-linecap="round" />
+  </g>
+
+  <!-- Sun element in top right -->
+  <g>
+    <circle cx="160" cy="40" r="14" fill="#fbbf24" opacity="0.6" />
+    <circle cx="160" cy="40" r="10" fill="#fde047" />
+    <path d="M160 22 Q 159 19 160 16" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" />
+    <path d="M178 40 Q 181 39 184 40" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" />
+    <path d="M172 28 Q 175 25 178 23" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" />
+    <path d="M172 52 Q 175 55 178 57" stroke="#fbbf24" stroke-width="3" stroke-linecap="round" />
+    <path d="M148 28 Q 145 25 142 23" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" />
+    <path d="M148 52 Q 145 55 142 57" stroke="#fbbf24" stroke-width="2.5" stroke-linecap="round" />
+  </g>
+
+  <!-- Windows on the M structure -->
+  <rect x="60" y="90" width="8" height="8" fill="#60a5fa" opacity="0.4" rx="1" />
+  <line x1="64" y1="90" x2="64" y2="98" stroke="#1e40af" stroke-width="0.5" opacity="0.3" />
+  <line x1="60" y1="94" x2="68" y2="94" stroke="#1e40af" stroke-width="0.5" opacity="0.3" />
+  <rect x="132" y="90" width="8" height="8" fill="#60a5fa" opacity="0.4" rx="1" />
+  <line x1="136" y1="90" x2="136" y2="98" stroke="#1e40af" stroke-width="0.5" opacity="0.3" />
+  <line x1="132" y1="94" x2="140" y2="94" stroke="#1e40af" stroke-width="0.5" opacity="0.3" />
+
+  <!-- Gradients -->
   <defs>
     <linearGradient id="skyGradient" x1="100" y1="15" x2="100" y2="185">
-      <stop offset="0%" stop-color="#bae6fd"/>
-      <stop offset="100%" stop-color="#7dd3fc"/>
+      <stop offset="0%" stop-color="#bae6fd" />
+      <stop offset="100%" stop-color="#7dd3fc" />
     </linearGradient>
   </defs>
-  <circle cx="100" cy="100" r="85" fill="#7dd3fc"/>
-  <circle cx="100" cy="100" r="85" fill="url(#skyGradient)" opacity="0.5"/>
-  <ellipse cx="100" cy="160" rx="80" ry="30" fill="#65a30d"/>
-  <ellipse cx="100" cy="158" rx="75" ry="25" fill="#84cc16" opacity="0.8"/>
-  <rect x="55" y="70" width="18" height="80" fill="#78350f" rx="3"/>
-  <rect x="127" y="70" width="18" height="80" fill="#78350f" rx="3"/>
-  <path d="M64 70 L64 75 L95 110 L100 110 L100 105 L73 75 L73 70 Z" fill="#92400e"/>
-  <path d="M136 70 L136 75 L105 110 L100 110 L100 105 L127 75 L127 70 Z" fill="#92400e"/>
-  <rect x="91" y="105" width="18" height="45" fill="#78350f" rx="3"/>
-  <path d="M100 50 L150 75 L145 80 L100 58 L55 80 L50 75 Z" fill="#b45309"/>
-  <rect x="93" y="130" width="14" height="20" fill="#92400e" rx="2"/>
-  <circle cx="103" cy="140" r="1.5" fill="#d97706"/>
-  <circle cx="160" cy="40" r="14" fill="#fbbf24" opacity="0.6"/>
-  <circle cx="160" cy="40" r="10" fill="#fde047"/>
 </svg>

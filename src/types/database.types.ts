@@ -684,6 +684,9 @@ export interface Database {
           status: "active" | "completed" | "paused";
           created_by: string | null;
           created_at: string;
+          is_recurring: boolean;
+          frequency_type: "daily" | "weekly" | "monthly" | "yearly" | "custom" | null;
+          frequency_days: number;
         };
         Insert: {
           id?: string;
@@ -697,6 +700,9 @@ export interface Database {
           status?: "active" | "completed" | "paused";
           created_by?: string | null;
           created_at?: string;
+          is_recurring?: boolean;
+          frequency_type?: "daily" | "weekly" | "monthly" | "yearly" | "custom" | null;
+          frequency_days?: number;
         };
         Update: {
           id?: string;
@@ -710,6 +716,9 @@ export interface Database {
           status?: "active" | "completed" | "paused";
           created_by?: string | null;
           created_at?: string;
+          is_recurring?: boolean;
+          frequency_type?: "daily" | "weekly" | "monthly" | "yearly" | "custom" | null;
+          frequency_days?: number;
         };
         Relationships: Rel;
       };
