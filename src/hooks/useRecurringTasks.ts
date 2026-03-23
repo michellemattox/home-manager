@@ -60,12 +60,6 @@ export function useCompleteRecurringTask() {
       notes?: string;
     }) => {
       const now = new Date().toISOString();
-      // Use local noon to avoid UTC midnight shifting the date backward in PT timezone
-      const nextDue = calculateNextDueDate(
-        task.frequency_type,
-        task.frequency_days,
-        new Date(task.next_due_date + "T12:00:00")
-      );
 
       // Log completion
       const { error: logErr } = await supabase
@@ -78,10 +72,22 @@ export function useCompleteRecurringTask() {
         });
       if (logErr) throw logErr;
 
-      // Advance next_due_date
+      // no_repeat tasks are deactivated on completion; all others advance their due date
+      const taskUpdate = task.frequency_type === "no_repeat"
+        ? { last_completed_at: now, is_active: false }
+        : {
+            last_completed_at: now,
+            // Use local noon to avoid UTC midnight shifting the date backward in PT timezone
+            next_due_date: calculateNextDueDate(
+              task.frequency_type,
+              task.frequency_days,
+              new Date(task.next_due_date + "T12:00:00")
+            ),
+          };
+
       const { error: updateErr } = await supabase
         .from("recurring_tasks")
-        .update({ last_completed_at: now, next_due_date: nextDue })
+        .update(taskUpdate)
         .eq("id", task.id);
       if (updateErr) throw updateErr;
 

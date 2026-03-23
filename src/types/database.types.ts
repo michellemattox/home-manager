@@ -375,7 +375,7 @@ export interface Database {
           title: string;
           description: string | null;
           category: string | null;
-          frequency_type: "daily" | "weekly" | "monthly" | "yearly" | "custom";
+          frequency_type: "daily" | "weekly" | "monthly" | "yearly" | "custom" | "no_repeat";
           frequency_days: number;
           anchor_date: string;
           next_due_date: string;
@@ -394,7 +394,7 @@ export interface Database {
           title: string;
           description?: string | null;
           category?: string | null;
-          frequency_type: "daily" | "weekly" | "monthly" | "yearly" | "custom";
+          frequency_type: "daily" | "weekly" | "monthly" | "yearly" | "custom" | "no_repeat";
           frequency_days: number;
           anchor_date: string;
           next_due_date: string;

@@ -41,6 +41,7 @@ import { AppHeader } from "@/components/ui/AppHeader";
 type TaskMode = "low-lift" | "project-adjacent";
 
 const FREQUENCIES: { label: string; value: FrequencyType }[] = [
+  { label: "No Repeat", value: "no_repeat" },
   { label: "Daily", value: "daily" },
   { label: "Weekly", value: "weekly" },
   { label: "Monthly", value: "monthly" },

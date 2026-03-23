@@ -47,15 +47,11 @@ async function sendDigestEmail(
       })
       .join("");
 
-  const logoSvg = `<svg width="60" height="60" viewBox="0 0 200 200" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="100" cy="100" r="85" fill="#7dd3fc"/><circle cx="100" cy="100" r="85" fill="url(#skyGradient)" opacity="0.5"/><ellipse cx="100" cy="160" rx="80" ry="30" fill="#65a30d"/><ellipse cx="100" cy="158" rx="75" ry="25" fill="#84cc16" opacity="0.8"/><rect x="55" y="70" width="18" height="80" fill="#78350f" rx="3"/><rect x="127" y="70" width="18" height="80" fill="#78350f" rx="3"/><path d="M64 70 L64 75 L95 110 L100 110 L100 105 L73 75 L73 70 Z" fill="#92400e"/><path d="M136 70 L136 75 L105 110 L100 110 L100 105 L127 75 L127 70 Z" fill="#92400e"/><rect x="91" y="105" width="18" height="45" fill="#78350f" rx="3"/><path d="M100 50 L150 75 L145 80 L100 58 L55 80 L50 75 Z" fill="#b45309"/><rect x="93" y="130" width="14" height="20" fill="#92400e" rx="2"/><circle cx="103" cy="140" r="1.5" fill="#d97706"/><circle cx="160" cy="40" r="14" fill="#fbbf24" opacity="0.6"/><circle cx="160" cy="40" r="10" fill="#fde047"/><defs><linearGradient id="skyGradient" x1="100" y1="15" x2="100" y2="185"><stop offset="0%" stop-color="#bae6fd"/><stop offset="100%" stop-color="#7dd3fc"/></linearGradient></defs></svg>`;
-
   const html = `<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8"/>
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Lobster&display=swap');
-</style>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lobster&display=swap"/>
 </head>
 <body style="margin:0;padding:0;background:#f3f4f6;">
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:540px;margin:0 auto;padding:28px 24px;background:#fffff8;">
@@ -63,7 +59,9 @@ async function sendDigestEmail(
   <!-- Header: logo + app name -->
   <table cellpadding="0" cellspacing="0" border="0" style="margin-bottom:24px;">
     <tr>
-      <td style="padding-right:14px;vertical-align:middle;width:60px;">${logoSvg}</td>
+      <td style="padding-right:14px;vertical-align:middle;width:60px;">
+        <img src="https://home-manager-michellemattoxs-projects.vercel.app/logo.svg" width="60" height="60" alt="Home Manager Logo" style="display:block;"/>
+      </td>
       <td style="vertical-align:middle;">
         <div style="color:#FC9853;font-family:'Lobster',Georgia,serif;font-size:26px;letter-spacing:0.5px;line-height:1.25;">Mattox Family</div>
         <div style="color:#FC9853;font-family:'Lobster',Georgia,serif;font-size:26px;letter-spacing:0.5px;line-height:1.25;">Home Management</div>

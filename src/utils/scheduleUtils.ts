@@ -30,8 +30,9 @@ export function calculateNextDueDate(
     case "custom":
       next = addDays(fromDate, frequencyDays);
       break;
+    case "no_repeat":
     default:
-      next = addDays(fromDate, frequencyDays);
+      next = fromDate; // no_repeat tasks are deactivated on completion, not rescheduled
   }
   return format(next, "yyyy-MM-dd");
 }
@@ -51,6 +52,8 @@ export function frequencyLabel(
       return "Yearly";
     case "custom":
       return `Every ${frequencyDays} days`;
+    case "no_repeat":
+      return "No Repeat";
     default:
       return "Custom";
   }
