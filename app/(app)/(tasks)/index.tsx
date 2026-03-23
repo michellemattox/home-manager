@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -215,8 +215,13 @@ export default function TasksScreen() {
   const [llCustomDays, setLlCustomDays] = useState("");
   const [llAssignedId, setLlAssignedId] = useState<string | undefined>(undefined);
 
+  // Auto-save state for low-lift modal
+  const llInitialRef = useRef<{ title: string; notes: string; anchor: string; time: string; freq: string; days: string; assigned: string | undefined } | null>(null);
+  const llAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [llSaved, setLlSaved] = useState(false);
+
   const openLowLiftEdit = (task: RecurringTask) => {
-    updateRecurring.reset(); // clear any stuck pending state from a previous save
+    updateRecurring.reset();
     setEditingLowLift(task);
     setLlTitle(task.title);
     setLlNotes(task.description ?? "");
@@ -225,6 +230,12 @@ export default function TasksScreen() {
     setLlFreqType(task.frequency_type);
     setLlCustomDays(String(task.frequency_days));
     setLlAssignedId(task.assigned_member_id ?? undefined);
+    setLlSaved(false);
+    llInitialRef.current = {
+      title: task.title, notes: task.description ?? "", anchor: task.anchor_date,
+      time: (task as any).time_of_day ?? "", freq: task.frequency_type,
+      days: String(task.frequency_days), assigned: task.assigned_member_id ?? undefined,
+    };
   };
 
   // When navigated here from Home with a specific task ID, auto-open that task.
@@ -234,9 +245,8 @@ export default function TasksScreen() {
     if (task) openLowLiftEdit(task);
   }, [openTaskId, recurringTasks]);
 
-  const handleSaveLowLift = async () => {
-    if (!editingLowLift || !llTitle.trim()) return;
-    if (!household) { showAlert("Error", "Household not loaded. Please wait a moment and try again."); return; }
+  const doSaveLowLift = async () => {
+    if (!editingLowLift || !llTitle.trim() || !household) return;
     const freqDays = llFreqType === "custom"
       ? parseInt(llCustomDays || "30", 10)
       : frequencyToDays(llFreqType);
@@ -255,10 +265,34 @@ export default function TasksScreen() {
           time_of_day: llTimeOfDay.trim() || null,
         },
       });
-      setEditingLowLift(null);
+      llInitialRef.current = { title: llTitle, notes: llNotes, anchor: llAnchorDate, time: llTimeOfDay, freq: llFreqType, days: llCustomDays, assigned: llAssignedId };
+      setLlSaved(true);
+      setTimeout(() => setLlSaved(false), 2000);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  // Auto-save low-lift edits after 3s of inactivity
+  useEffect(() => {
+    if (!editingLowLift || !llInitialRef.current) return;
+    const init = llInitialRef.current;
+    const dirty = llTitle !== init.title || llNotes !== init.notes || llAnchorDate !== init.anchor
+      || llTimeOfDay !== init.time || llFreqType !== init.freq || llCustomDays !== init.days
+      || llAssignedId !== init.assigned;
+    if (!dirty) return;
+    if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current);
+    llAutoSaveRef.current = setTimeout(() => { doSaveLowLift(); }, 3000);
+    return () => { if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current); };
+  }, [llTitle, llNotes, llAnchorDate, llTimeOfDay, llFreqType, llCustomDays, llAssignedId]);
+
+  const handleDoneLowLift = async () => {
+    if (llAutoSaveRef.current) {
+      clearTimeout(llAutoSaveRef.current);
+      llAutoSaveRef.current = null;
+      await doSaveLowLift();
+    }
+    setEditingLowLift(null);
   };
 
   const handleCompleteLowLift = async (task: RecurringTask) => {
@@ -302,6 +336,14 @@ export default function TasksScreen() {
   const [stNotes, setStNotes] = useState("");
   const [stDueDate, setStDueDate] = useState("");
   const [stAssignedId, setStAssignedId] = useState<string | undefined>(undefined);
+  const stInitialRef = useRef<{ title: string; notes: string; due: string; assigned: string | undefined } | null>(null);
+  const stAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [stSaved, setStSaved] = useState(false);
+
+  // Auto-save state for PA modal
+  const paInitialRef = useRef<{ title: string; notes: string; due: string; assigned: string | undefined } | null>(null);
+  const paAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [paSaved, setPaSaved] = useState(false);
 
   const openPAEdit = (task: ProjectTask & { notes?: string | null; project_title?: string }) => {
     updateProjectTask.reset();
@@ -310,6 +352,8 @@ export default function TasksScreen() {
     setPaNotes((task as any).notes ?? "");
     setPaDueDate(task.due_date ?? "");
     setPaAssignedId(task.assigned_member_id ?? undefined);
+    setPaSaved(false);
+    paInitialRef.current = { title: task.title, notes: (task as any).notes ?? "", due: task.due_date ?? "", assigned: task.assigned_member_id ?? undefined };
   };
 
   const openStandaloneEdit = (task: Task) => {
@@ -318,9 +362,11 @@ export default function TasksScreen() {
     setStNotes(task.notes ?? "");
     setStDueDate(task.due_date ?? "");
     setStAssignedId(task.assigned_member_id ?? undefined);
+    setStSaved(false);
+    stInitialRef.current = { title: task.title, notes: task.notes ?? "", due: task.due_date ?? "", assigned: task.assigned_member_id ?? undefined };
   };
 
-  const handleSavePA = async () => {
+  const doSavePA = async () => {
     if (!editingPA || !paTitle.trim()) return;
     try {
       await updateProjectTask.mutateAsync({
@@ -333,10 +379,31 @@ export default function TasksScreen() {
           assigned_member_id: paAssignedId ?? null,
         },
       });
-      setEditingPA(null);
+      paInitialRef.current = { title: paTitle, notes: paNotes, due: paDueDate, assigned: paAssignedId };
+      setPaSaved(true);
+      setTimeout(() => setPaSaved(false), 2000);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  useEffect(() => {
+    if (!editingPA || !paInitialRef.current) return;
+    const init = paInitialRef.current;
+    const dirty = paTitle !== init.title || paNotes !== init.notes || paDueDate !== init.due || paAssignedId !== init.assigned;
+    if (!dirty) return;
+    if (paAutoSaveRef.current) clearTimeout(paAutoSaveRef.current);
+    paAutoSaveRef.current = setTimeout(() => { doSavePA(); }, 3000);
+    return () => { if (paAutoSaveRef.current) clearTimeout(paAutoSaveRef.current); };
+  }, [paTitle, paNotes, paDueDate, paAssignedId]);
+
+  const handleDonePA = async () => {
+    if (paAutoSaveRef.current) {
+      clearTimeout(paAutoSaveRef.current);
+      paAutoSaveRef.current = null;
+      await doSavePA();
+    }
+    setEditingPA(null);
   };
 
   const handleCompletePA = async (task: ProjectTask) => {
@@ -365,10 +432,9 @@ export default function TasksScreen() {
     );
   };
 
-  const handleSaveStandalone = async () => {
+  const doSaveStandalone = async () => {
     if (!editingStandalone || !stTitle.trim() || !household) return;
     try {
-      // useUpdateTask from useTasks
       const { supabase } = await import("@/lib/supabase");
       const { error } = await supabase
         .from("tasks")
@@ -376,10 +442,31 @@ export default function TasksScreen() {
         .eq("id", editingStandalone.id);
       if (error) throw error;
       refetchStandalone();
-      setEditingStandalone(null);
+      stInitialRef.current = { title: stTitle, notes: stNotes, due: stDueDate, assigned: stAssignedId };
+      setStSaved(true);
+      setTimeout(() => setStSaved(false), 2000);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  useEffect(() => {
+    if (!editingStandalone || !stInitialRef.current) return;
+    const init = stInitialRef.current;
+    const dirty = stTitle !== init.title || stNotes !== init.notes || stDueDate !== init.due || stAssignedId !== init.assigned;
+    if (!dirty) return;
+    if (stAutoSaveRef.current) clearTimeout(stAutoSaveRef.current);
+    stAutoSaveRef.current = setTimeout(() => { doSaveStandalone(); }, 3000);
+    return () => { if (stAutoSaveRef.current) clearTimeout(stAutoSaveRef.current); };
+  }, [stTitle, stNotes, stDueDate, stAssignedId]);
+
+  const handleDoneStandalone = async () => {
+    if (stAutoSaveRef.current) {
+      clearTimeout(stAutoSaveRef.current);
+      stAutoSaveRef.current = null;
+      await doSaveStandalone();
+    }
+    setEditingStandalone(null);
   };
 
   const handleCompleteStandalone = async (task: Task) => {
@@ -619,17 +706,19 @@ export default function TasksScreen() {
         visible={!!editingLowLift}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setEditingLowLift(null)}
+        onRequestClose={handleDoneLowLift}
       >
         <SafeAreaView className="flex-1 bg-[#F6EDFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setEditingLowLift(null)} className="mr-4">
-              <Text className="text-blue-600 text-base">Cancel</Text>
+            <TouchableOpacity onPress={handleDoneLowLift} className="mr-4">
+              <Text className="text-blue-600 text-base">Done</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
-            <TouchableOpacity onPress={handleSaveLowLift} disabled={!llTitle.trim() || updateRecurring.isPending}>
-              <Text className={`text-base font-semibold ${llTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
-            </TouchableOpacity>
+            {llSaved
+              ? <Text className="text-xs font-semibold text-green-600">Saved ✓</Text>
+              : updateRecurring.isPending
+                ? <Text className="text-xs text-gray-400">Saving…</Text>
+                : null}
           </View>
           <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
             <Input label="Task Name" value={llTitle} onChangeText={setLlTitle} placeholder="e.g. Change HVAC filter" />
@@ -690,17 +779,11 @@ export default function TasksScreen() {
             </View>
 
             <Button
-              title="Save Changes"
-              onPress={handleSaveLowLift}
-              loading={updateRecurring.isPending}
-              className="mb-3"
-            />
-            <TouchableOpacity
+              title="Mark Done"
+              variant="secondary"
               onPress={() => editingLowLift && handleCompleteLowLift(editingLowLift)}
-              className="bg-green-50 border border-green-200 rounded-xl py-3 items-center mb-3"
-            >
-              <Text className="text-green-700 font-semibold">Mark Done</Text>
-            </TouchableOpacity>
+              className="mb-3 bg-green-50 border border-green-200"
+            />
             <TouchableOpacity
               onPress={() => editingLowLift && handleDeleteLowLift(editingLowLift)}
               className="items-center py-3"
@@ -716,17 +799,19 @@ export default function TasksScreen() {
         visible={!!editingPA}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setEditingPA(null)}
+        onRequestClose={handleDonePA}
       >
         <SafeAreaView className="flex-1 bg-[#F6EDFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setEditingPA(null)} className="mr-4">
-              <Text className="text-blue-600 text-base">Cancel</Text>
+            <TouchableOpacity onPress={handleDonePA} className="mr-4">
+              <Text className="text-blue-600 text-base">Done</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
-            <TouchableOpacity onPress={handleSavePA} disabled={!paTitle.trim() || updateProjectTask.isPending}>
-              <Text className={`text-base font-semibold ${paTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
-            </TouchableOpacity>
+            {paSaved
+              ? <Text className="text-xs font-semibold text-green-600">Saved ✓</Text>
+              : updateProjectTask.isPending
+                ? <Text className="text-xs text-gray-400">Saving…</Text>
+                : null}
           </View>
           <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
             {editingPA?.project_title && (
@@ -765,17 +850,11 @@ export default function TasksScreen() {
             </View>
 
             <Button
-              title="Save Changes"
-              onPress={handleSavePA}
-              loading={updateProjectTask.isPending}
-              className="mb-3"
-            />
-            <TouchableOpacity
+              title="Mark Done"
+              variant="secondary"
               onPress={() => editingPA && handleCompletePA(editingPA)}
-              className="bg-green-50 border border-green-200 rounded-xl py-3 items-center mb-3"
-            >
-              <Text className="text-green-700 font-semibold">Mark Done</Text>
-            </TouchableOpacity>
+              className="mb-3 bg-green-50 border border-green-200"
+            />
             <TouchableOpacity
               onPress={() => editingPA && handleDeletePA(editingPA)}
               className="items-center py-3"
@@ -791,17 +870,15 @@ export default function TasksScreen() {
         visible={!!editingStandalone}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setEditingStandalone(null)}
+        onRequestClose={handleDoneStandalone}
       >
         <SafeAreaView className="flex-1 bg-[#F6EDFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setEditingStandalone(null)} className="mr-4">
-              <Text className="text-blue-600 text-base">Cancel</Text>
+            <TouchableOpacity onPress={handleDoneStandalone} className="mr-4">
+              <Text className="text-blue-600 text-base">Done</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
-            <TouchableOpacity onPress={handleSaveStandalone} disabled={!stTitle.trim()}>
-              <Text className={`text-base font-semibold ${stTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
-            </TouchableOpacity>
+            {stSaved && <Text className="text-xs font-semibold text-green-600">Saved ✓</Text>}
           </View>
           <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
             <Input label="Title" value={stTitle} onChangeText={setStTitle} placeholder="Task title" />
@@ -832,11 +909,6 @@ export default function TasksScreen() {
               ))}
             </View>
 
-            <Button
-              title="Save Changes"
-              onPress={handleSaveStandalone}
-              className="mb-3"
-            />
             <TouchableOpacity
               onPress={() => editingStandalone && handleCompleteStandalone(editingStandalone)}
               className="bg-green-50 border border-green-200 rounded-xl py-3 items-center mb-3"

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -191,7 +191,11 @@ export default function ProjectDetailScreen() {
     return () => { supabase.removeChannel(channel); };
   }, [id]);
 
-  // Seed edit modal
+  const projEditInitialRef = useRef<string>("");
+  const projEditAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [projEditSaved, setProjEditSaved] = useState(false);
+
+  // Seed edit modal and capture initial snapshot
   useEffect(() => {
     if (showEditModal && project) {
       setEditTitle(project.title);
@@ -207,6 +211,8 @@ export default function ProjectDetailScreen() {
       setEditOtherVendorName((project as any).contractor_name ?? "");
       setEditNotes(project.notes ?? "");
       setEditFrequency((project as any).frequency ?? null);
+      setProjEditSaved(false);
+      projEditInitialRef.current = JSON.stringify({ title: project.title, desc: project.description ?? "", priority: project.priority, category: project.category, due: project.expected_date ?? "", notes: project.notes ?? "" });
     }
   }, [showEditModal]);
 
@@ -298,8 +304,29 @@ export default function ProjectDetailScreen() {
         });
       }
 
-      setShowEditModal(false);
+      projEditInitialRef.current = JSON.stringify({ title: editTitle, desc: editDescription, priority: editPriority, category: editCategory, due: editDueDate, notes: editNotes });
+      setProjEditSaved(true);
+      setTimeout(() => setProjEditSaved(false), 2000);
     } catch (e: any) { showAlert("Error", e.message); }
+  };
+
+  // Auto-save project edits after 3s of inactivity (core fields only; vendor handled on Done)
+  useEffect(() => {
+    if (!showEditModal) return;
+    const current = JSON.stringify({ title: editTitle, desc: editDescription, priority: editPriority, category: editCategory, due: editDueDate, notes: editNotes });
+    if (current === projEditInitialRef.current) return;
+    if (projEditAutoSaveRef.current) clearTimeout(projEditAutoSaveRef.current);
+    projEditAutoSaveRef.current = setTimeout(() => { handleSaveEditProject(); }, 3000);
+    return () => { if (projEditAutoSaveRef.current) clearTimeout(projEditAutoSaveRef.current); };
+  }, [editTitle, editDescription, editPriority, editCategory, editDueDate, editNotes, editBudget, editTotalCost, editUsesVendor, editSelectedVendorId, editOtherVendorName, editFrequency]);
+
+  const handleDoneProjectEdit = async () => {
+    if (projEditAutoSaveRef.current) {
+      clearTimeout(projEditAutoSaveRef.current);
+      projEditAutoSaveRef.current = null;
+      await handleSaveEditProject();
+    }
+    setShowEditModal(false);
   };
 
   const handleStatusChange = async (newStatus: ProjectStatus) => {
@@ -1069,13 +1096,15 @@ export default function ProjectDetailScreen() {
       <Modal visible={showEditModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setShowEditModal(false)}>
-              <Text className="text-blue-600 text-base">Cancel</Text>
+            <TouchableOpacity onPress={handleDoneProjectEdit}>
+              <Text className="text-blue-600 text-base">Done</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-center text-lg font-semibold">Edit Project</Text>
-            <TouchableOpacity onPress={handleSaveEditProject} disabled={!editTitle.trim() || updateProject.isPending}>
-              <Text className={`text-base font-semibold ${editTitle.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
-            </TouchableOpacity>
+            {projEditSaved
+              ? <Text className="text-xs font-semibold text-green-600">Saved ✓</Text>
+              : updateProject.isPending
+                ? <Text className="text-xs text-gray-400">Saving…</Text>
+                : <View style={{ width: 50 }} />}
           </View>
 
           <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">

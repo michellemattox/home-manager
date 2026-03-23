@@ -37,14 +37,12 @@ interface NotificationState {
   // User preferences (persisted)
   overdueEnabled: boolean;
   dueSoonEnabled: boolean;
-  summaryEnabled: boolean; // single digest covering all item types
   reminderHour: number; // 0-23, default 8 AM
   reminderFrequency: ReminderFrequency;
   // Member filter: ["all"] means all members; otherwise list of member IDs
   notifyMemberIds: string[];
   setOverdueEnabled: (v: boolean) => void;
   setDueSoonEnabled: (v: boolean) => void;
-  setSummaryEnabled: (v: boolean) => void;
   setReminderHour: (h: number) => void;
   setReminderFrequency: (f: ReminderFrequency) => void;
   setNotifyMemberIds: (ids: string[]) => void;
@@ -58,13 +56,11 @@ export const useNotificationStore = create<NotificationState>()(
 
       overdueEnabled: true,
       dueSoonEnabled: true,
-      summaryEnabled: false,
       reminderHour: 8,
       reminderFrequency: "daily",
       notifyMemberIds: ["all"],
       setOverdueEnabled: (v) => set({ overdueEnabled: v }),
       setDueSoonEnabled: (v) => set({ dueSoonEnabled: v }),
-      setSummaryEnabled: (v) => set({ summaryEnabled: v }),
       setReminderHour: (h) => set({ reminderHour: h }),
       setReminderFrequency: (f) => set({ reminderFrequency: f }),
       setNotifyMemberIds: (ids) => set({ notifyMemberIds: ids }),
@@ -72,11 +68,9 @@ export const useNotificationStore = create<NotificationState>()(
     {
       name: "notification-prefs",
       storage: notifStorage,
-      // Don't persist runtime state — only user preferences
       partialize: (state) => ({
         overdueEnabled: state.overdueEnabled,
         dueSoonEnabled: state.dueSoonEnabled,
-        summaryEnabled: state.summaryEnabled,
         reminderHour: state.reminderHour,
         reminderFrequency: state.reminderFrequency,
         notifyMemberIds: state.notifyMemberIds,

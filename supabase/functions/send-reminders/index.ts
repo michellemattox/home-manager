@@ -180,14 +180,12 @@ Deno.serve(async (req) => {
         overdue: t.next_due_date < today,
         timeOfDay: (t as any).time_of_day ?? null,
       }));
-      if (!testItems.length) {
-        return new Response(
-          JSON.stringify({ test: true, email: testEmail, message: "No tasks due today or overdue — nothing to send" }),
-          { headers: { ...corsHeaders, "Content-Type": "application/json" } }
-        );
-      }
+      // Always send so the user can preview the email format
       const firstName = testMember.display_name?.split(" ")[0] ?? "there";
-      const result = await sendDigestEmail(testEmail, firstName, testItems);
+      const itemsToSend: ReminderItem[] = testItems.length > 0
+        ? testItems
+        : [{ title: "You're all caught up — no tasks due today!", dueDate: today, overdue: false }];
+      const result = await sendDigestEmail(testEmail, firstName, itemsToSend);
       return new Response(
         JSON.stringify({ test: true, email: testEmail, taskCount: testItems.length, result }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" } }

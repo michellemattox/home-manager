@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -343,6 +343,9 @@ export default function GoalsScreen() {
   const [editMemberId, setEditMemberId] = useState<string | null>(null);
   const [editDueDate, setEditDueDate] = useState("");
   const [editReminder, setEditReminder] = useState<Goal["reminder_frequency"]>(null);
+  const goalInitialRef = useRef<{ title: string; desc: string; userType: string; memberId: string | null; due: string; reminder: string | null } | null>(null);
+  const goalAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [goalSaved, setGoalSaved] = useState(false);
 
   // Add update modal
   const [addUpdateGoalId, setAddUpdateGoalId] = useState<string | null>(null);
@@ -404,9 +407,11 @@ export default function GoalsScreen() {
     setEditMemberId(goal.member_id);
     setEditDueDate(goal.due_date ?? "");
     setEditReminder(goal.reminder_frequency);
+    setGoalSaved(false);
+    goalInitialRef.current = { title: goal.title, desc: goal.description ?? "", userType: goal.user_type, memberId: goal.member_id, due: goal.due_date ?? "", reminder: goal.reminder_frequency };
   };
 
-  const handleSaveEdit = async () => {
+  const doSaveGoalEdit = async () => {
     if (!editingGoal || !editTitle.trim() || !household) return;
     try {
       await updateGoal.mutateAsync({
@@ -421,10 +426,32 @@ export default function GoalsScreen() {
           reminder_frequency: editReminder,
         },
       });
-      setEditingGoal(null);
+      goalInitialRef.current = { title: editTitle, desc: editDescription, userType: editUserType, memberId: editMemberId, due: editDueDate, reminder: editReminder };
+      setGoalSaved(true);
+      setTimeout(() => setGoalSaved(false), 2000);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  useEffect(() => {
+    if (!editingGoal || !goalInitialRef.current) return;
+    const init = goalInitialRef.current;
+    const dirty = editTitle !== init.title || editDescription !== init.desc || editUserType !== init.userType
+      || editMemberId !== init.memberId || editDueDate !== init.due || editReminder !== init.reminder;
+    if (!dirty) return;
+    if (goalAutoSaveRef.current) clearTimeout(goalAutoSaveRef.current);
+    goalAutoSaveRef.current = setTimeout(() => { doSaveGoalEdit(); }, 3000);
+    return () => { if (goalAutoSaveRef.current) clearTimeout(goalAutoSaveRef.current); };
+  }, [editTitle, editDescription, editUserType, editMemberId, editDueDate, editReminder]);
+
+  const handleDoneGoalEdit = async () => {
+    if (goalAutoSaveRef.current) {
+      clearTimeout(goalAutoSaveRef.current);
+      goalAutoSaveRef.current = null;
+      await doSaveGoalEdit();
+    }
+    setEditingGoal(null);
   };
 
   const handleAddUpdate = async () => {
@@ -612,14 +639,19 @@ export default function GoalsScreen() {
         visible={!!editingGoal}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setEditingGoal(null)}
+        onRequestClose={handleDoneGoalEdit}
       >
         <SafeAreaView className="flex-1 bg-[#F5E7D3]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setEditingGoal(null)} className="mr-4">
-              <Text className="text-blue-600 text-base">Cancel</Text>
+            <TouchableOpacity onPress={handleDoneGoalEdit} className="mr-4">
+              <Text className="text-blue-600 text-base">Done</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Goal</Text>
+            {goalSaved
+              ? <Text className="text-xs font-semibold text-green-600">Saved ✓</Text>
+              : updateGoal.isPending
+                ? <Text className="text-xs text-gray-400">Saving…</Text>
+                : null}
           </View>
           <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
             <GoalFormFields
@@ -632,15 +664,6 @@ export default function GoalsScreen() {
               members={members}
               userId={user?.id}
             />
-            <TouchableOpacity
-              onPress={handleSaveEdit}
-              disabled={!editTitle.trim() || updateGoal.isPending}
-              className={`py-3 rounded-xl items-center ${editTitle.trim() ? "bg-blue-600" : "bg-gray-200"}`}
-            >
-              <Text className={`text-sm font-semibold ${editTitle.trim() ? "text-white" : "text-gray-400"}`}>
-                {updateGoal.isPending ? "Saving..." : "Save Changes"}
-              </Text>
-            </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
       </Modal>

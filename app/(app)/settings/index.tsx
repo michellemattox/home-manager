@@ -50,7 +50,6 @@ export default function SettingsScreen() {
   const {
     overdueEnabled, setOverdueEnabled,
     dueSoonEnabled, setDueSoonEnabled,
-    summaryEnabled, setSummaryEnabled,
     reminderHour, setReminderHour,
     reminderFrequency, setReminderFrequency,
     notifyMemberIds, setNotifyMemberIds,
@@ -58,13 +57,36 @@ export default function SettingsScreen() {
 
   const isAllMembers = notifyMemberIds.includes("all") || notifyMemberIds.length === 0;
 
-  // Auto-sync notification prefs to DB whenever they change (debounced 800ms)
+  // Track whether prefs have been loaded from DB (prevents overwriting DB with stale defaults)
+  const prefsLoadedRef = useRef(false);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [savedIndicator, setSavedIndicator] = useState(false);
+
+  // On mount: load prefs from DB and hydrate local state
   useEffect(() => {
-    if (!currentMember || !household) return;
+    if (!currentMember) return;
+    (async () => {
+      const { data, error } = await supabase
+        .from("notification_preferences" as any)
+        .select("overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency")
+        .eq("member_id", currentMember.id)
+        .maybeSingle();
+      if (!error && data) {
+        setOverdueEnabled((data as any).overdue_enabled);
+        setDueSoonEnabled((data as any).due_soon_enabled);
+        setReminderHour((data as any).reminder_hour);
+        setReminderFrequency((data as any).reminder_frequency);
+      }
+      prefsLoadedRef.current = true;
+    })();
+  }, [currentMember?.id]);
+
+  // Auto-save to DB whenever prefs change (3s debounce, only after initial load)
+  useEffect(() => {
+    if (!currentMember || !household || !prefsLoadedRef.current) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
     syncTimerRef.current = setTimeout(async () => {
-      await supabase.from("notification_preferences" as any).upsert({
+      const { error } = await supabase.from("notification_preferences" as any).upsert({
         member_id: currentMember.id,
         household_id: household.id,
         overdue_enabled: overdueEnabled,
@@ -73,7 +95,13 @@ export default function SettingsScreen() {
         reminder_frequency: reminderFrequency,
         updated_at: new Date().toISOString(),
       }, { onConflict: "member_id" });
-    }, 800);
+      if (error) {
+        showAlert("Save Error", `Could not save notification preferences: ${error.message}`);
+      } else {
+        setSavedIndicator(true);
+        setTimeout(() => setSavedIndicator(false), 2000);
+      }
+    }, 3000);
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
   }, [overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency, currentMember?.id, household?.id]);
 
@@ -339,44 +367,35 @@ export default function SettingsScreen() {
         </Card>
 
         {/* Notifications */}
-        <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
-          Notifications
-        </Text>
+        <View className="flex-row items-center justify-between mb-2">
+          <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider">
+            Notifications
+          </Text>
+          {savedIndicator && (
+            <Text className="text-xs font-semibold text-green-600">Saved ✓</Text>
+          )}
+        </View>
         <Card className="mb-6">
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-1 mr-3">
-              <Text className="text-sm font-semibold text-gray-900">Summary digest</Text>
-              <Text className="text-xs text-gray-400 mt-0.5">One combined reminder covering tasks, projects, activities, and goals</Text>
-            </View>
-            <Switch
-              value={summaryEnabled}
-              onValueChange={setSummaryEnabled}
-              trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
-              thumbColor="#fff"
-            />
-          </View>
-          <View className="flex-row items-center justify-between mb-4">
-            <View className="flex-1 mr-3">
-              <Text className={`text-sm font-semibold ${summaryEnabled ? "text-gray-400" : "text-gray-900"}`}>Overdue alerts</Text>
+              <Text className="text-sm font-semibold text-gray-900">Overdue alerts</Text>
               <Text className="text-xs text-gray-400 mt-0.5">Notify when projects or tasks are past due</Text>
             </View>
             <Switch
               value={overdueEnabled}
               onValueChange={setOverdueEnabled}
-              disabled={summaryEnabled}
               trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
               thumbColor="#fff"
             />
           </View>
           <View className="flex-row items-center justify-between mb-4">
             <View className="flex-1 mr-3">
-              <Text className={`text-sm font-semibold ${summaryEnabled ? "text-gray-400" : "text-gray-900"}`}>Due soon alerts</Text>
+              <Text className="text-sm font-semibold text-gray-900">Due soon alerts</Text>
               <Text className="text-xs text-gray-400 mt-0.5">Notify for items due within 7–14 days</Text>
             </View>
             <Switch
               value={dueSoonEnabled}
               onValueChange={setDueSoonEnabled}
-              disabled={summaryEnabled}
               trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
               thumbColor="#fff"
             />
