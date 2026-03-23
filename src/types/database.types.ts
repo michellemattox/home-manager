@@ -749,6 +749,141 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      garden_plots: {
+        Row: {
+          id: string;
+          household_id: string;
+          name: string;
+          description: string | null;
+          cols: number;
+          rows: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          name: string;
+          description?: string | null;
+          cols?: number;
+          rows?: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          name?: string;
+          description?: string | null;
+          cols?: number;
+          rows?: number;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
+      garden_zones: {
+        Row: {
+          id: string;
+          plot_id: string;
+          household_id: string;
+          name: string;
+          zone_type: "bed" | "walkway" | "container" | "other";
+          color: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          plot_id: string;
+          household_id: string;
+          name: string;
+          zone_type?: "bed" | "walkway" | "container" | "other";
+          color?: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          plot_id?: string;
+          household_id?: string;
+          name?: string;
+          zone_type?: "bed" | "walkway" | "container" | "other";
+          color?: string;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
+      garden_cells: {
+        Row: {
+          id: string;
+          plot_id: string;
+          zone_id: string | null;
+          household_id: string;
+          col: number;
+          row: number;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          plot_id: string;
+          zone_id?: string | null;
+          household_id: string;
+          col: number;
+          row: number;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          plot_id?: string;
+          zone_id?: string | null;
+          household_id?: string;
+          col?: number;
+          row?: number;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
+      garden_plantings: {
+        Row: {
+          id: string;
+          plot_id: string;
+          zone_id: string | null;
+          household_id: string;
+          plant_name: string;
+          plant_family: string | null;
+          variety: string | null;
+          date_planted: string | null;
+          date_removed: string | null;
+          season_year: number;
+          notes: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          plot_id: string;
+          zone_id?: string | null;
+          household_id: string;
+          plant_name: string;
+          plant_family?: string | null;
+          variety?: string | null;
+          date_planted?: string | null;
+          date_removed?: string | null;
+          season_year?: number;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          plot_id?: string;
+          zone_id?: string | null;
+          household_id?: string;
+          plant_name?: string;
+          plant_family?: string | null;
+          variety?: string | null;
+          date_planted?: string | null;
+          date_removed?: string | null;
+          season_year?: number;
+          notes?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
     };
     Views: Record<string, never>;
     Functions: Record<string, never>;

@@ -110,3 +110,46 @@ export const SERVICE_TYPES = [
 ] as const;
 
 export type ServiceType = (typeof SERVICE_TYPES)[number];
+
+// ── Garden ────────────────────────────────────────────────────────────────────
+export type GardenPlot = Database["public"]["Tables"]["garden_plots"]["Row"];
+export type GardenZone = Database["public"]["Tables"]["garden_zones"]["Row"];
+export type GardenCell = Database["public"]["Tables"]["garden_cells"]["Row"];
+export type GardenPlanting = Database["public"]["Tables"]["garden_plantings"]["Row"];
+
+export interface GardenZoneWithCells extends GardenZone {
+  cells: GardenCell[];
+  plantings: GardenPlanting[];
+}
+
+export interface GardenPlotWithZones extends GardenPlot {
+  zones: GardenZoneWithCells[];
+  cells: GardenCell[];
+}
+
+// Plant family → rotation color mapping
+export const PLANT_FAMILIES: Record<string, { label: string; color: string; bg: string }> = {
+  Solanaceae:     { label: "Solanaceae",     color: "#ea580c", bg: "#fff7ed" }, // tomato, pepper, potato
+  Brassicaceae:   { label: "Brassicaceae",   color: "#2563eb", bg: "#eff6ff" }, // kale, broccoli, arugula
+  Leguminosae:    { label: "Leguminosae",    color: "#16a34a", bg: "#f0fdf4" }, // peas, beans
+  Alliaceae:      { label: "Alliaceae",      color: "#7c3aed", bg: "#f5f3ff" }, // onion, garlic, shallot
+  Asteraceae:     { label: "Asteraceae",     color: "#ca8a04", bg: "#fefce8" }, // lettuce, sunflower
+  Chenopodiaceae: { label: "Chenopodiaceae", color: "#db2777", bg: "#fdf2f8" }, // beets, spinach, chard
+  Cucurbitaceae:  { label: "Cucurbitaceae",  color: "#d97706", bg: "#fffbeb" }, // cucumber, squash, melon
+  Apiaceae:       { label: "Apiaceae",       color: "#0891b2", bg: "#ecfeff" }, // carrot, dill, parsley
+  Other:          { label: "Other",          color: "#6b7280", bg: "#f9fafb" },
+};
+
+// Guess plant family from plant name
+export function guessFamilyFromName(name: string): string {
+  const n = name.toLowerCase();
+  if (/tomato|pepper|potato|eggplant|tomatillo/.test(n)) return "Solanaceae";
+  if (/kale|broccoli|cabbage|cauliflower|arugula|radish|turnip|bok choy|kohlrabi|brussels/.test(n)) return "Brassicaceae";
+  if (/pea|bean|lentil|soybean|clover|vetch/.test(n)) return "Leguminosae";
+  if (/onion|garlic|shallot|leek|chive|scallion|green onion|walla/.test(n)) return "Alliaceae";
+  if (/lettuce|sunflower|artichoke|chicory|endive|radicchio/.test(n)) return "Asteraceae";
+  if (/beet|spinach|chard|quinoa|amaranth/.test(n)) return "Chenopodiaceae";
+  if (/cucumber|squash|zucchini|pumpkin|melon|gourd|watermelon/.test(n)) return "Cucurbitaceae";
+  if (/carrot|dill|parsley|cilantro|fennel|parsnip|celery/.test(n)) return "Apiaceae";
+  return "Other";
+}
