@@ -191,6 +191,20 @@ export const PLANT_FAMILIES: Record<string, { label: string; color: string; bg: 
   Other:          { label: "Other",          color: "#6b7280", bg: "#f9fafb" },
 };
 
+export type GardenPestLog = Database["public"]["Tables"]["garden_pest_logs"]["Row"];
+export type GardenSeedInventory = Database["public"]["Tables"]["garden_seed_inventory"]["Row"];
+export type PestLogType = GardenPestLog["log_type"];
+
+export const PEST_LOG_TYPES: { value: PestLogType; label: string; emoji: string; color: string; bg: string }[] = [
+  { value: "pest",        label: "Pest",        emoji: "🐛", color: "#dc2626", bg: "#fef2f2" },
+  { value: "disease",     label: "Disease",     emoji: "🍄", color: "#9333ea", bg: "#faf5ff" },
+  { value: "deficiency",  label: "Deficiency",  emoji: "🌿", color: "#d97706", bg: "#fffbeb" },
+  { value: "observation", label: "Observation", emoji: "👁", color: "#0891b2", bg: "#ecfeff" },
+];
+
+export const SEVERITY_LABELS = ["", "Minimal", "Low", "Moderate", "High", "Severe"];
+export const SEVERITY_COLORS = ["", "#16a34a", "#65a30d", "#d97706", "#ea580c", "#dc2626"];
+
 // Guess plant family from plant name
 export function guessFamilyFromName(name: string): string {
   const n = name.toLowerCase();

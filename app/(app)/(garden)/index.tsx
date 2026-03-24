@@ -105,8 +105,8 @@ export default function GardenScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Quick-access row */}
-      <View className="px-4 pb-3 flex-row gap-3">
+      {/* Quick-access row — weather + succession */}
+      <View className="px-4 pb-2 flex-row gap-3">
         <TouchableOpacity
           onPress={() => router.push("/(app)/(garden)/weather")}
           className="flex-1 flex-row items-center gap-2 border border-blue-200 bg-blue-50 rounded-xl px-3 py-2.5"
@@ -138,6 +138,40 @@ export default function GardenScreen() {
           <View>
             <Text className="text-green-800 text-sm font-semibold">Planting</Text>
             <Text className="text-green-600 text-xs">Succession planner</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Quick-access row 2 — rotation, pests, seeds */}
+      <View className="px-4 pb-3 flex-row gap-2">
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/rotation")}
+          className="flex-1 flex-row items-center gap-2 border border-purple-200 bg-purple-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">🔄</Text>
+          <View>
+            <Text className="text-purple-800 text-xs font-semibold">Rotation</Text>
+            <Text className="text-purple-500 text-xs">By zone</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/pests")}
+          className="flex-1 flex-row items-center gap-2 border border-red-200 bg-red-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">🐛</Text>
+          <View>
+            <Text className="text-red-800 text-xs font-semibold">Pests</Text>
+            <Text className="text-red-500 text-xs">& Diseases</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/seeds")}
+          className="flex-1 flex-row items-center gap-2 border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">🌱</Text>
+          <View>
+            <Text className="text-emerald-800 text-xs font-semibold">Seeds</Text>
+            <Text className="text-emerald-500 text-xs">Inventory</Text>
           </View>
         </TouchableOpacity>
       </View>

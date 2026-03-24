@@ -103,28 +103,54 @@ export default function WeatherScreen() {
           <Text className="text-gray-400 mt-3 text-sm">Fetching weather for {zipCode}…</Text>
         </View>
       ) : error ? (
+        <ScrollView contentContainerStyle={{ padding: 24 }}>
+          <View className="items-center mb-4">
+            <Text className="text-5xl mb-3">⛅</Text>
+            <Text className="text-base font-semibold text-gray-700 text-center">Weather unavailable</Text>
+          </View>
+          {(() => {
+            const msg = (error as Error).message ?? "";
+            const isApiKey = msg.includes("OPENWEATHERMAP_API_KEY");
+            const isNotDeployed = msg.toLowerCase().includes("not found") || msg.includes("non-2xx") || msg.includes("Failed to send") || msg.includes("FunctionsHttpError");
+            if (isNotDeployed) {
+              return (
+                <View className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <Text className="text-amber-800 text-sm font-semibold mb-2">🚀 Deploy the Edge Function</Text>
+                  <Text className="text-amber-700 text-xs leading-5 mb-3">
+                    The garden-weather function needs to be deployed to Supabase:
+                  </Text>
+                  <View className="bg-amber-100 rounded-lg p-3 mb-2">
+                    <Text className="text-amber-900 text-xs font-mono leading-5">
+                      SUPABASE_ACCESS_TOKEN={"<token>"} npx supabase functions deploy garden-weather --project-ref sjtlmvcxcffftsdleftf --no-verify-jwt
+                    </Text>
+                  </View>
+                  <Text className="text-amber-600 text-xs">Then add your OPENWEATHERMAP_API_KEY secret and tap Refresh.</Text>
+                </View>
+              );
+            }
+            if (isApiKey) {
+              return (
+                <View className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                  <Text className="text-amber-800 text-sm font-semibold mb-2">🔑 API Key Required</Text>
+                  <Text className="text-amber-700 text-xs leading-5">
+                    1. Sign up at openweathermap.org (free tier){"\n"}
+                    2. Copy your API key{"\n"}
+                    3. Supabase Dashboard → Edge Functions → garden-weather → Secrets{"\n"}
+                    4. Add: OPENWEATHERMAP_API_KEY = your key{"\n"}
+                    5. Tap Refresh above
+                  </Text>
+                </View>
+              );
+            }
+            return <Text className="text-sm text-gray-400 text-center">{msg}</Text>;
+          })()}
+        </ScrollView>
+      ) : !weather ? (
         <View className="flex-1 items-center justify-center px-8">
-          <Text className="text-4xl mb-4">⛅</Text>
-          <Text className="text-base font-semibold text-gray-700 text-center">Weather unavailable</Text>
-          <Text className="text-sm text-gray-400 mt-2 text-center">
-            {(error as Error).message?.includes("OPENWEATHERMAP_API_KEY")
-              ? "Add your OpenWeatherMap API key — see setup instructions below."
-              : (error as Error).message}
-          </Text>
-          {(error as Error).message?.includes("OPENWEATHERMAP_API_KEY") && (
-            <View className="mt-5 bg-amber-50 border border-amber-200 rounded-xl p-4 w-full">
-              <Text className="text-amber-800 text-sm font-semibold mb-2">Setup Instructions</Text>
-              <Text className="text-amber-700 text-xs leading-5">
-                1. Sign up at openweathermap.org (free tier){"\n"}
-                2. Copy your API key{"\n"}
-                3. Go to Supabase Dashboard → Edge Functions → garden-weather → Secrets{"\n"}
-                4. Add secret: OPENWEATHERMAP_API_KEY = your key{"\n"}
-                5. Tap Refresh above
-              </Text>
-            </View>
-          )}
+          <ActivityIndicator color="#16a34a" size="large" />
+          <Text className="text-gray-400 mt-3 text-sm">Loading weather for {zipCode}…</Text>
         </View>
-      ) : weather ? (
+      ) : (
         <ScrollView
           refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} />}
           contentContainerStyle={{ padding: 16, gap: 16 }}
@@ -276,7 +302,7 @@ export default function WeatherScreen() {
             </Card>
           )}
         </ScrollView>
-      ) : null}
+      )}
     </SafeAreaView>
   );
 }

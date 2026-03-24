@@ -380,6 +380,173 @@ export function getCropStatus(crop: SuccessionCrop, today: Date): CropStatus {
   return "dormant";
 }
 
+// ── Rotation rules (which families should follow which) ───────────────────────
+export const ROTATION_NEXT: Record<string, string[]> = {
+  Solanaceae:     ["Leguminosae", "Chenopodiaceae", "Apiaceae"],
+  Brassicaceae:   ["Solanaceae", "Cucurbitaceae", "Leguminosae"],
+  Leguminosae:    ["Brassicaceae", "Solanaceae", "Cucurbitaceae"],
+  Alliaceae:      ["Leguminosae", "Brassicaceae", "Asteraceae"],
+  Asteraceae:     ["Solanaceae", "Cucurbitaceae", "Apiaceae"],
+  Chenopodiaceae: ["Leguminosae", "Solanaceae", "Cucurbitaceae"],
+  Cucurbitaceae:  ["Leguminosae", "Brassicaceae", "Chenopodiaceae"],
+  Apiaceae:       ["Solanaceae", "Brassicaceae", "Leguminosae"],
+  Other:          ["Leguminosae", "Solanaceae", "Brassicaceae"],
+};
+
+// Try to match a freeform plant name to a SuccessionCrop entry
+export function matchCropByName(plantName: string): SuccessionCrop | null {
+  const lower = plantName.toLowerCase();
+  // Exact name match
+  let match = SUCCESSION_CROPS.find(c => c.name.toLowerCase() === lower);
+  if (match) return match;
+  // Substring match both ways
+  match = SUCCESSION_CROPS.find(
+    c => lower.includes(c.name.toLowerCase()) || c.name.toLowerCase().includes(lower)
+  );
+  return match ?? null;
+}
+
+export interface PlantingInput {
+  id: string;
+  plotId: string;
+  zoneId: string | null;
+  plantName: string;
+  plantFamily: string | null;
+  datePlanted: string | null;
+  dateRemoved: string | null;
+}
+
+export interface ZoneInput {
+  id: string;
+  plotId: string;
+  name: string;
+  zoneType: string;
+}
+
+export interface PlotInput {
+  id: string;
+  name: string;
+}
+
+export interface RecommendedCrop {
+  crop: SuccessionCrop;
+  status: CropStatus;
+  rotationScore: number; // 3 = great, 1 = neutral, 0 = avoid (same family)
+  reasonText: string;
+  sowDate: Date | null;
+}
+
+export interface ZoneRecommendation {
+  zoneKey: string;
+  plotName: string;
+  zoneName: string;
+  currentPlanting: PlantingInput | null;
+  currentFamily: string | null;
+  estimatedFreeDate: Date | null;
+  daysUntilFree: number;
+  isAlreadyFree: boolean;
+  recommendedCrops: RecommendedCrop[];
+}
+
+export function getZoneRecommendations(
+  plots: PlotInput[],
+  zones: ZoneInput[],
+  plantings: PlantingInput[],
+  today: Date
+): ZoneRecommendation[] {
+  // Map active (non-removed) planting by zone id
+  const plantingByZone = new Map<string, PlantingInput>();
+  for (const p of plantings) {
+    if (p.dateRemoved) continue;
+    if (p.zoneId) plantingByZone.set(p.zoneId, p);
+  }
+
+  const recs: ZoneRecommendation[] = [];
+
+  for (const zone of zones) {
+    if (zone.zoneType === "walkway") continue;
+    const plot = plots.find(p => p.id === zone.plotId);
+    if (!plot) continue;
+
+    const current = plantingByZone.get(zone.id) ?? null;
+    let currentFamily: string | null = null;
+    let estimatedFreeDate: Date | null = null;
+    let daysUntilFree = 0;
+
+    if (current) {
+      currentFamily = current.plantFamily;
+      const matched = matchCropByName(current.plantName);
+      if (matched && current.datePlanted) {
+        const planted = new Date(current.datePlanted + "T12:00:00");
+        estimatedFreeDate = addDays(planted, matched.daysToMaturity[1]);
+        daysUntilFree = Math.max(0, differenceInDays(estimatedFreeDate, today));
+      }
+    }
+
+    const isAlreadyFree = !current;
+    const goodFamilies = currentFamily ? (ROTATION_NEXT[currentFamily] ?? []) : [];
+
+    const recommendedCrops: RecommendedCrop[] = SUCCESSION_CROPS
+      .map(crop => {
+        const status = getCropStatus(crop, today);
+        const rotationScore =
+          !currentFamily ? 1
+          : goodFamilies.includes(crop.family) ? 3
+          : crop.family === currentFamily ? 0
+          : 1;
+
+        const spring  = getDirectSowSpringWindow(crop, today);
+        const fall    = getDirectSowFallWindow(crop, today);
+        const indoors = getStartIndoorsWindow(crop, today);
+        const sowDate = spring?.earliest ?? fall?.earliest ?? indoors?.earliest ?? null;
+
+        const actionable = ["direct_sow_now","fall_sow_now","start_indoors_now",
+                            "direct_sow_soon","fall_sow_soon","start_indoors_soon"].includes(status);
+
+        const parts: string[] = [];
+        if (rotationScore === 3) parts.push(`Great rotation after ${currentFamily}`);
+        else if (rotationScore === 0) parts.push(`Avoid — same family`);
+        if (actionable) parts.push(status.replace(/_/g, " "));
+
+        return {
+          crop,
+          status,
+          rotationScore,
+          reasonText: parts.join(" · ") || "Good choice",
+          sowDate,
+        } as RecommendedCrop;
+      })
+      .filter(r => r.rotationScore > 0)
+      .sort((a, b) => {
+        if (b.rotationScore !== a.rotationScore) return b.rotationScore - a.rotationScore;
+        const aAction = ["direct_sow_now","fall_sow_now","start_indoors_now"].includes(a.status) ? 2
+                      : ["direct_sow_soon","fall_sow_soon","start_indoors_soon"].includes(a.status) ? 1 : 0;
+        const bAction = ["direct_sow_now","fall_sow_now","start_indoors_now"].includes(b.status) ? 2
+                      : ["direct_sow_soon","fall_sow_soon","start_indoors_soon"].includes(b.status) ? 1 : 0;
+        return bAction - aAction;
+      })
+      .slice(0, 4);
+
+    recs.push({
+      zoneKey: zone.id,
+      plotName: plot.name,
+      zoneName: zone.name,
+      currentPlanting: current,
+      currentFamily,
+      estimatedFreeDate,
+      daysUntilFree,
+      isAlreadyFree,
+      recommendedCrops,
+    });
+  }
+
+  return recs.sort((a, b) => {
+    // Free zones first, then by days until free
+    if (a.isAlreadyFree !== b.isAlreadyFree) return a.isAlreadyFree ? -1 : 1;
+    return a.daysUntilFree - b.daysUntilFree;
+  });
+}
+
 export const CROP_STATUS_LABELS: Record<CropStatus, { label: string; color: string; bg: string }> = {
   start_indoors_now:  { label: "Start Indoors Now",    color: "#16a34a", bg: "#f0fdf4" },
   start_indoors_soon: { label: "Start Indoors Soon",   color: "#0891b2", bg: "#ecfeff" },
