@@ -40,6 +40,19 @@
           "color": "#2563EB"
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to scan seed barcodes and photograph garden pests and diseases."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Used to attach photos to pest logs and service records.",
+          "cameraPermission": "Used to photograph garden pests and service receipts."
+        }
+      ],
       "@react-native-community/datetimepicker",
       "expo-font"
     ],

@@ -1,15 +1,16 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   Modal,
-  Alert,
   ActivityIndicator,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { CameraView, useCameraPermissions } from "expo-camera";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -49,6 +50,22 @@ function SeedBadge({ label, color, bg }: { label: string; color: string; bg: str
 
 type SortMode = "name" | "family" | "expiry";
 
+// Guess plant name/family from UPC product title
+function parseSeedProductTitle(title: string): { plantName: string; variety: string } {
+  // Remove common seed brand prefixes/suffixes
+  const cleaned = title
+    .replace(/\b(seeds?|seed packet|organic|heirloom|non-gmo|open.pollinated)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  // Try to split on common separators: " - ", ", ", " – "
+  const parts = cleaned.split(/\s*[-–,]\s*/);
+  if (parts.length >= 2) {
+    return { plantName: parts[0].trim(), variety: parts[1].trim() };
+  }
+  return { plantName: cleaned, variety: "" };
+}
+
 export default function SeedsScreen() {
   const router = useRouter();
   const { household } = useHouseholdStore();
@@ -63,6 +80,14 @@ export default function SeedsScreen() {
   const [editTarget, setEditTarget] = useState<GardenSeedInventory | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("name");
   const [filterFamily, setFilterFamily] = useState<string | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
+
+  // Barcode scanner state
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanLookupLoading, setScanLookupLoading] = useState(false);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const scanCooldown = useRef(false);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
   // Form state
   const [plantName, setPlantName] = useState("");
@@ -93,13 +118,56 @@ export default function SeedsScreen() {
     }
   }
 
-  function openAdd() { setEditTarget(null); resetForm(); setShowAdd(true); }
-  function openEdit(seed: GardenSeedInventory) { setEditTarget(seed); resetForm(seed); setShowAdd(true); }
+  function openAdd() { setEditTarget(null); resetForm(); setScanError(null); setShowAdd(true); }
+  function openEdit(seed: GardenSeedInventory) { setEditTarget(seed); resetForm(seed); setScanError(null); setShowAdd(true); }
 
   // Auto-detect family when name changes
   function handleNameChange(val: string) {
     setPlantName(val);
     if (!family) setFamily(guessFamilyFromName(val));
+  }
+
+  async function openScanner() {
+    if (!cameraPermission?.granted) {
+      const result = await requestCameraPermission();
+      if (!result.granted) return;
+    }
+    setScanError(null);
+    setShowScanner(true);
+  }
+
+  async function handleBarcodeScan(barcode: string) {
+    if (scanCooldown.current) return;
+    scanCooldown.current = true;
+    setShowScanner(false);
+    setScanLookupLoading(true);
+    setScanError(null);
+
+    try {
+      const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
+      const data = await res.json();
+      const item = data?.items?.[0];
+
+      if (item) {
+        const title = item.title ?? "";
+        const { plantName: pn, variety: va } = parseSeedProductTitle(title);
+        if (pn) setPlantName(pn);
+        if (va) setVariety(va);
+        if (pn && !family) setFamily(guessFamilyFromName(pn));
+        if (item.brand) setSupplier(item.brand);
+        // Try to extract seed count from description
+        const desc = (item.description ?? "").toLowerCase();
+        const seedMatch = desc.match(/(\d+)\s*seeds?/);
+        if (seedMatch) setQuantity(seedMatch[1]);
+      } else {
+        setScanError(`No product found for barcode ${barcode}. Fill in manually.`);
+      }
+    } catch {
+      setScanError("Could not look up barcode. Check your connection and try again.");
+    } finally {
+      setScanLookupLoading(false);
+      setTimeout(() => { scanCooldown.current = false; }, 2000);
+    }
   }
 
   async function handleSave() {
@@ -125,13 +193,6 @@ export default function SeedsScreen() {
       await createSeed.mutateAsync(payload as any);
     }
     setShowAdd(false);
-  }
-
-  function confirmDelete(seed: GardenSeedInventory) {
-    Alert.alert("Delete Seed", `Remove "${seed.plant_name}${seed.variety ? ` (${seed.variety})` : ""}" from inventory?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteSeed.mutate({ id: seed.id, householdId: householdId! }) },
-    ]);
   }
 
   const families = useMemo(() => Array.from(new Set(seeds.map(s => s.plant_family).filter(Boolean))), [seeds]);
@@ -247,7 +308,6 @@ export default function SeedsScreen() {
               <Card key={seed.id} className="p-0 overflow-hidden">
                 <TouchableOpacity onPress={() => openEdit(seed)} activeOpacity={0.8}>
                   <View className="flex-row items-start px-4 py-3 gap-3">
-                    {/* Family color dot */}
                     <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: famInfo.bg }}>
                       <View className="w-4 h-4 rounded-full" style={{ backgroundColor: famInfo.color }} />
                     </View>
@@ -282,9 +342,31 @@ export default function SeedsScreen() {
                         <Text className="text-xs text-gray-400 mt-0.5">from {seed.supplier}</Text>
                       )}
                     </View>
-                    <TouchableOpacity onPress={() => confirmDelete(seed)} className="px-2 py-1 rounded bg-red-50 ml-1">
-                      <Text className="text-red-400 text-xs">✕</Text>
-                    </TouchableOpacity>
+                    {/* Inline delete confirmation */}
+                    {confirmingId === seed.id ? (
+                      <View className="flex-col items-end gap-1">
+                        <TouchableOpacity onPress={() => setConfirmingId(null)} className="px-2 py-1 rounded-lg bg-gray-100">
+                          <Text className="text-gray-600 text-xs">Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setConfirmingId(null);
+                            deleteSeed.mutate({ id: seed.id, householdId: householdId! });
+                          }}
+                          className="px-2 py-1 rounded-lg bg-red-500"
+                        >
+                          <Text className="text-white text-xs font-semibold">Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => setConfirmingId(seed.id)}
+                        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                        className="px-2 py-1.5"
+                      >
+                        <Text className="text-red-400 text-sm">✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </TouchableOpacity>
               </Card>
@@ -293,7 +375,42 @@ export default function SeedsScreen() {
         )}
       </ScrollView>
 
-      {/* Add / Edit Modal */}
+      {/* ── Barcode Scanner Modal ──────────────────────────────────────────── */}
+      <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
+        <SafeAreaView className="flex-1 bg-black" edges={["top"]}>
+          <View className="flex-row items-center justify-between px-4 py-3">
+            <TouchableOpacity onPress={() => setShowScanner(false)}>
+              <Text className="text-white text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="text-white font-semibold">Scan Seed Packet Barcode</Text>
+            <View style={{ width: 60 }} />
+          </View>
+
+          <View className="flex-1">
+            <CameraView
+              style={{ flex: 1 }}
+              facing="back"
+              barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"] }}
+              onBarcodeScanned={(e) => handleBarcodeScan(e.data)}
+            />
+            {/* Scan guide overlay */}
+            <View
+              style={{
+                position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
+                alignItems: "center", justifyContent: "center",
+              }}
+              pointerEvents="none"
+            >
+              <View style={{ width: 260, height: 120, borderWidth: 2, borderColor: "#4ade80", borderRadius: 12 }} />
+              <Text style={{ color: "#4ade80", marginTop: 12, fontSize: 13, fontWeight: "600" }}>
+                Align barcode within the box
+              </Text>
+            </View>
+          </View>
+        </SafeAreaView>
+      </Modal>
+
+      {/* ── Add / Edit Modal ───────────────────────────────────────────────── */}
       <Modal visible={showAdd} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
           <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
@@ -311,6 +428,33 @@ export default function SeedsScreen() {
           </View>
 
           <ScrollView className="flex-1 px-4 py-4" keyboardShouldPersistTaps="handled">
+            {/* Barcode scan button */}
+            {!editTarget && (
+              <TouchableOpacity
+                onPress={openScanner}
+                disabled={scanLookupLoading}
+                className={`flex-row items-center justify-center gap-2 rounded-xl py-3 mb-4 border ${scanLookupLoading ? "border-gray-200 bg-gray-50" : "border-emerald-300 bg-emerald-50"}`}
+              >
+                {scanLookupLoading ? (
+                  <>
+                    <ActivityIndicator color="#16a34a" size="small" />
+                    <Text className="text-emerald-700 text-sm font-medium">Looking up barcode…</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text className="text-base">📸</Text>
+                    <Text className="text-emerald-700 text-sm font-semibold">Scan Seed Packet Barcode</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            )}
+
+            {scanError && (
+              <View className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mb-3">
+                <Text className="text-amber-700 text-xs">{scanError}</Text>
+              </View>
+            )}
+
             <Input label="Plant Name *" placeholder="e.g. Tomato, Kale, Carrots" value={plantName} onChangeText={handleNameChange} />
             <Input label="Variety" placeholder="e.g. Early Girl, Lacinato, Nantes" value={variety} onChangeText={setVariety} />
 

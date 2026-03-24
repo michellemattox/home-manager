@@ -187,7 +187,7 @@ export default function GardenScreen() {
       </View>
 
       {/* Quick-access row 3 — harvest analytics, journal, watering */}
-      <View className="px-4 pb-3 flex-row gap-2">
+      <View className="px-4 pb-2 flex-row gap-2">
         <TouchableOpacity
           onPress={() => router.push("/(app)/(garden)/harvest-analytics")}
           className="flex-1 flex-row items-center gap-2 border border-amber-200 bg-amber-50 rounded-xl px-3 py-2"
@@ -216,6 +216,40 @@ export default function GardenScreen() {
           <View>
             <Text className="text-blue-800 text-xs font-semibold">Watering</Text>
             <Text className="text-blue-500 text-xs">Tracker</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Quick-access row 4 — calendar, shopping, plant library */}
+      <View className="px-4 pb-3 flex-row gap-2">
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/calendar")}
+          className="flex-1 flex-row items-center gap-2 border border-orange-200 bg-orange-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">🗓</Text>
+          <View>
+            <Text className="text-orange-800 text-xs font-semibold">Calendar</Text>
+            <Text className="text-orange-500 text-xs">Planting guide</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/shopping")}
+          className="flex-1 flex-row items-center gap-2 border border-lime-200 bg-lime-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">🛒</Text>
+          <View>
+            <Text className="text-lime-800 text-xs font-semibold">Shopping</Text>
+            <Text className="text-lime-500 text-xs">Garden list</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/plant-library")}
+          className="flex-1 flex-row items-center gap-2 border border-cyan-200 bg-cyan-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">📚</Text>
+          <View>
+            <Text className="text-cyan-800 text-xs font-semibold">Library</Text>
+            <Text className="text-cyan-500 text-xs">Crop reference</Text>
           </View>
         </TouchableOpacity>
       </View>

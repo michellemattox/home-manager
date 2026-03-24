@@ -1102,6 +1102,8 @@ export interface Database {
           treatment: string | null;
           notes: string | null;
           resolved: boolean;
+          photo_url: string | null;
+          ai_identification: Record<string, any> | null;
           created_at: string;
         };
         Insert: {
@@ -1117,6 +1119,8 @@ export interface Database {
           treatment?: string | null;
           notes?: string | null;
           resolved?: boolean;
+          photo_url?: string | null;
+          ai_identification?: Record<string, any> | null;
           created_at?: string;
         };
         Update: {
@@ -1132,6 +1136,8 @@ export interface Database {
           treatment?: string | null;
           notes?: string | null;
           resolved?: boolean;
+          photo_url?: string | null;
+          ai_identification?: Record<string, any> | null;
           created_at?: string;
         };
         Relationships: Rel;

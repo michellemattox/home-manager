@@ -5,12 +5,13 @@ import {
   ScrollView,
   TouchableOpacity,
   Modal,
-  Alert,
-  TextInput,
   ActivityIndicator,
+  Image,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import * as ImagePicker from "expo-image-picker";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { DateInput } from "@/components/ui/DateInput";
@@ -29,6 +30,7 @@ import {
   type GardenPestLog,
   type PestLogType,
 } from "@/types/app.types";
+import { supabase } from "@/lib/supabase";
 
 const TODAY_STR = new Date().toISOString().split("T")[0];
 
@@ -38,6 +40,33 @@ function formatDate(d: string) {
 }
 
 type FilterType = "all" | "active" | "resolved";
+
+interface AIResult {
+  identified: string;
+  scientific_name?: string;
+  confidence: "high" | "medium" | "low";
+  type: "pest" | "disease" | "deficiency" | "observation";
+  description: string;
+  wsu_notes: string;
+  organic_treatments: string[];
+  cultural_controls: string[];
+  urgency: "immediate" | "this_week" | "monitor" | "low";
+  urgency_reason: string;
+  not_visible_confirmation: boolean;
+}
+
+const URGENCY_STYLES: Record<string, { bg: string; color: string; label: string }> = {
+  immediate: { bg: "#fef2f2", color: "#dc2626", label: "Act Immediately" },
+  this_week: { bg: "#fffbeb", color: "#d97706", label: "This Week" },
+  monitor: { bg: "#eff6ff", color: "#2563eb", label: "Monitor" },
+  low: { bg: "#f0fdf4", color: "#16a34a", label: "Low Priority" },
+};
+
+const CONFIDENCE_COLORS: Record<string, string> = {
+  high: "#16a34a",
+  medium: "#d97706",
+  low: "#6b7280",
+};
 
 export default function PestsScreen() {
   const router = useRouter();
@@ -53,6 +82,7 @@ export default function PestsScreen() {
   const [filter, setFilter] = useState<FilterType>("active");
   const [showAdd, setShowAdd] = useState(false);
   const [editTarget, setEditTarget] = useState<GardenPestLog | null>(null);
+  const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   // Form state
   const [plotId, setPlotId] = useState("");
@@ -63,6 +93,15 @@ export default function PestsScreen() {
   const [notes, setNotes] = useState("");
   const [obsDate, setObsDate] = useState<Date>(new Date());
   const [resolved, setResolved] = useState(false);
+
+  // Photo & AI state
+  const [photoUri, setPhotoUri] = useState<string | null>(null);
+  const [photoBase64, setPhotoBase64] = useState<string | null>(null);
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [identifyingAI, setIdentifyingAI] = useState(false);
+  const [aiResult, setAIResult] = useState<AIResult | null>(null);
+  const [aiError, setAIError] = useState<string | null>(null);
+  const [plantContext, setPlantContext] = useState("");
 
   const defaultPlotId = plots[0]?.id ?? "";
 
@@ -86,6 +125,11 @@ export default function PestsScreen() {
       setObsDate(new Date());
       setResolved(false);
     }
+    setPhotoUri(null);
+    setPhotoBase64(null);
+    setAIResult(null);
+    setAIError(null);
+    setPlantContext("");
   }
 
   function openAdd() {
@@ -100,9 +144,109 @@ export default function PestsScreen() {
     setShowAdd(true);
   }
 
+  async function pickPhoto(useCamera: boolean) {
+    let result: ImagePicker.ImagePickerResult;
+
+    if (useCamera) {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) return;
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: "images",
+        quality: 0.7,
+        base64: true,
+      });
+    } else {
+      const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!perm.granted) return;
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: "images",
+        quality: 0.7,
+        base64: true,
+      });
+    }
+
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    setPhotoUri(asset.uri);
+    setPhotoBase64(asset.base64 ?? null);
+    setAIResult(null);
+    setAIError(null);
+  }
+
+  async function runAIIdentify() {
+    if (!photoBase64) return;
+    setIdentifyingAI(true);
+    setAIError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(
+        `${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/identify-pest`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${session?.access_token ?? ""}`,
+          },
+          body: JSON.stringify({
+            imageBase64: photoBase64,
+            mediaType: "image/jpeg",
+            plantContext: plantContext.trim() || undefined,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok || data.error) {
+        setAIError(data.error ?? "AI identification failed");
+      } else {
+        const result = data as AIResult;
+        setAIResult(result);
+        // Auto-fill form fields from AI result
+        if (!result.not_visible_confirmation) {
+          if (!name.trim()) setName(result.identified);
+          const matchedType = (["pest", "disease", "deficiency", "observation"] as PestLogType[])
+            .find(t => t === result.type);
+          if (matchedType) setLogType(matchedType);
+          // Auto-suggest treatment from top organic recommendation
+          if (!treatment.trim() && result.organic_treatments?.[0]) {
+            setTreatment(result.organic_treatments[0]);
+          }
+          // Auto-set severity based on urgency
+          if (result.urgency === "immediate") setSeverity(5);
+          else if (result.urgency === "this_week") setSeverity(4);
+          else if (result.urgency === "monitor") setSeverity(2);
+        }
+      }
+    } catch (e: any) {
+      setAIError(e.message ?? "Network error");
+    } finally {
+      setIdentifyingAI(false);
+    }
+  }
+
   async function handleSave() {
     if (!householdId || !plotId || !name.trim()) return;
-    const payload = {
+
+    let uploadedPhotoUrl: string | null = null;
+
+    // Upload photo to Supabase Storage if we have one and it's new
+    if (photoUri && photoBase64 && !editTarget?.photo_url) {
+      setUploadingPhoto(true);
+      try {
+        const ext = "jpg";
+        const filePath = `${householdId}/${Date.now()}.${ext}`;
+        const byteArray = Uint8Array.from(atob(photoBase64), c => c.charCodeAt(0));
+        const { error: uploadErr } = await supabase.storage
+          .from("garden-photos")
+          .upload(filePath, byteArray, { contentType: "image/jpeg", upsert: false });
+        if (!uploadErr) {
+          const { data: urlData } = supabase.storage.from("garden-photos").getPublicUrl(filePath);
+          uploadedPhotoUrl = urlData.publicUrl;
+        }
+      } catch {}
+      setUploadingPhoto(false);
+    }
+
+    const payload: any = {
       household_id: householdId,
       plot_id: plotId,
       zone_id: null,
@@ -115,19 +259,15 @@ export default function PestsScreen() {
       notes: notes.trim() || null,
       resolved,
     };
+    if (uploadedPhotoUrl) payload.photo_url = uploadedPhotoUrl;
+    if (aiResult) payload.ai_identification = aiResult as any;
+
     if (editTarget) {
       await updateLog.mutateAsync({ id: editTarget.id, householdId, updates: payload });
     } else {
-      await createLog.mutateAsync(payload as any);
+      await createLog.mutateAsync(payload);
     }
     setShowAdd(false);
-  }
-
-  function confirmDelete(log: GardenPestLog) {
-    Alert.alert("Delete Log", `Remove this ${log.log_type} entry for "${log.name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteLog.mutate({ id: log.id, householdId: householdId! }) },
-    ]);
   }
 
   const filteredLogs = useMemo(() => {
@@ -136,7 +276,7 @@ export default function PestsScreen() {
     return logs;
   }, [logs, filter]);
 
-  const isPending = createLog.isPending || updateLog.isPending;
+  const isPending = createLog.isPending || updateLog.isPending || uploadingPhoto;
 
   return (
     <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
@@ -183,13 +323,23 @@ export default function PestsScreen() {
           {filteredLogs.map(log => {
             const typeInfo = PEST_LOG_TYPES.find(t => t.value === log.log_type)!;
             const plot = plots.find(p => p.id === log.plot_id);
+            const ai = log.ai_identification as AIResult | null;
+            const urgency = ai ? URGENCY_STYLES[ai.urgency] : null;
             return (
               <Card key={log.id} className="p-0 overflow-hidden">
                 <TouchableOpacity onPress={() => openEdit(log)} activeOpacity={0.8}>
                   <View className="flex-row items-start px-4 py-3 gap-3">
-                    <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: typeInfo.bg }}>
-                      <Text className="text-xl">{typeInfo.emoji}</Text>
-                    </View>
+                    {/* Photo thumbnail or type icon */}
+                    {log.photo_url ? (
+                      <Image
+                        source={{ uri: log.photo_url }}
+                        style={{ width: 44, height: 44, borderRadius: 10 }}
+                      />
+                    ) : (
+                      <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: typeInfo.bg }}>
+                        <Text className="text-xl">{typeInfo.emoji}</Text>
+                      </View>
+                    )}
                     <View className="flex-1">
                       <View className="flex-row items-center gap-2 flex-wrap">
                         <Text className="text-sm font-bold text-gray-900">{log.name}</Text>
@@ -199,6 +349,11 @@ export default function PestsScreen() {
                         {log.resolved && (
                           <View className="px-2 py-0.5 rounded bg-green-100">
                             <Text className="text-xs font-medium text-green-700">✓ Resolved</Text>
+                          </View>
+                        )}
+                        {urgency && (
+                          <View className="px-2 py-0.5 rounded" style={{ backgroundColor: urgency.bg }}>
+                            <Text className="text-xs font-medium" style={{ color: urgency.color }}>{urgency.label}</Text>
                           </View>
                         )}
                       </View>
@@ -215,19 +370,41 @@ export default function PestsScreen() {
                             </Text>
                           </View>
                         )}
+                        {log.photo_url && <Text className="text-xs text-blue-400">📷 Photo</Text>}
+                        {log.ai_identification && <Text className="text-xs text-purple-500">🤖 AI ID'd</Text>}
                       </View>
                       {log.treatment && (
-                        <Text className="text-xs text-gray-600 mt-1">
-                          Treatment: {log.treatment}
-                        </Text>
+                        <Text className="text-xs text-gray-600 mt-1">Treatment: {log.treatment}</Text>
                       )}
-                      {log.notes && (
-                        <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={2}>{log.notes}</Text>
+                      {ai?.wsu_notes && (
+                        <Text className="text-xs text-green-700 mt-0.5" numberOfLines={2}>WSU: {ai.wsu_notes}</Text>
                       )}
                     </View>
-                    <TouchableOpacity onPress={() => confirmDelete(log)} className="px-2 py-1 rounded bg-red-50 ml-1">
-                      <Text className="text-red-400 text-xs">✕</Text>
-                    </TouchableOpacity>
+                    {/* Inline delete confirmation */}
+                    {confirmingId === log.id ? (
+                      <View className="flex-col items-end gap-1">
+                        <TouchableOpacity onPress={() => setConfirmingId(null)} className="px-2 py-1 rounded-lg bg-gray-100">
+                          <Text className="text-gray-600 text-xs">Cancel</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => {
+                            setConfirmingId(null);
+                            deleteLog.mutate({ id: log.id, householdId: householdId! });
+                          }}
+                          className="px-2 py-1 rounded-lg bg-red-500"
+                        >
+                          <Text className="text-white text-xs font-semibold">Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : (
+                      <TouchableOpacity
+                        onPress={() => setConfirmingId(log.id)}
+                        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                        className="px-2 py-1.5"
+                      >
+                        <Text className="text-red-400 text-sm">✕</Text>
+                      </TouchableOpacity>
+                    )}
                   </View>
                 </TouchableOpacity>
               </Card>
@@ -254,6 +431,142 @@ export default function PestsScreen() {
           </View>
 
           <ScrollView className="flex-1 px-4 py-4" keyboardShouldPersistTaps="handled">
+
+            {/* ── Photo & AI Identify section ─────────────────────────────── */}
+            <Text className="text-sm font-medium text-gray-700 mb-2">Photo</Text>
+            <View className="mb-4">
+              {photoUri ? (
+                <View className="mb-3">
+                  <Image source={{ uri: photoUri }} style={{ width: "100%", height: 200, borderRadius: 12 }} resizeMode="cover" />
+                  <TouchableOpacity
+                    onPress={() => { setPhotoUri(null); setPhotoBase64(null); setAIResult(null); setAIError(null); }}
+                    className="absolute top-2 right-2 bg-black/50 rounded-full w-7 h-7 items-center justify-center"
+                  >
+                    <Text className="text-white text-xs font-bold">✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ) : (editTarget?.photo_url ? (
+                <View className="mb-3">
+                  <Image source={{ uri: editTarget.photo_url }} style={{ width: "100%", height: 180, borderRadius: 12 }} resizeMode="cover" />
+                  <Text className="text-xs text-gray-400 mt-1 text-center">Existing photo</Text>
+                </View>
+              ) : null)}
+
+              <View className="flex-row gap-2 mb-2">
+                <TouchableOpacity
+                  onPress={() => pickPhoto(true)}
+                  className="flex-1 flex-row items-center justify-center gap-2 border border-blue-200 bg-blue-50 rounded-xl py-2.5"
+                >
+                  <Text className="text-base">📷</Text>
+                  <Text className="text-blue-700 text-sm font-medium">Take Photo</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => pickPhoto(false)}
+                  className="flex-1 flex-row items-center justify-center gap-2 border border-gray-200 bg-gray-50 rounded-xl py-2.5"
+                >
+                  <Text className="text-base">🖼</Text>
+                  <Text className="text-gray-700 text-sm font-medium">Choose Photo</Text>
+                </TouchableOpacity>
+              </View>
+
+              {photoBase64 && (
+                <View>
+                  <Input
+                    label="Plant context (optional)"
+                    placeholder="e.g. tomato plant, kale bed, squash…"
+                    value={plantContext}
+                    onChangeText={setPlantContext}
+                  />
+                  <TouchableOpacity
+                    onPress={runAIIdentify}
+                    disabled={identifyingAI}
+                    className={`flex-row items-center justify-center gap-2 rounded-xl py-3 mb-3 ${identifyingAI ? "bg-purple-200" : "bg-purple-600"}`}
+                  >
+                    {identifyingAI ? (
+                      <>
+                        <ActivityIndicator color="white" size="small" />
+                        <Text className="text-white font-semibold text-sm">Identifying with AI…</Text>
+                      </>
+                    ) : (
+                      <>
+                        <Text className="text-base">🤖</Text>
+                        <Text className="text-white font-semibold text-sm">Identify with AI (WSU Extension)</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
+                </View>
+              )}
+
+              {aiError && (
+                <View className="bg-red-50 border border-red-200 rounded-xl p-3 mb-3">
+                  <Text className="text-red-600 text-sm">{aiError}</Text>
+                </View>
+              )}
+
+              {aiResult && !aiResult.not_visible_confirmation && (
+                <View className="bg-purple-50 border border-purple-200 rounded-xl p-3 mb-3">
+                  <View className="flex-row items-center gap-2 mb-1">
+                    <Text className="text-sm font-bold text-purple-900">{aiResult.identified}</Text>
+                    {aiResult.scientific_name && (
+                      <Text className="text-xs text-purple-500 italic">{aiResult.scientific_name}</Text>
+                    )}
+                    <View className="ml-auto px-2 py-0.5 rounded" style={{ backgroundColor: CONFIDENCE_COLORS[aiResult.confidence] + "22" }}>
+                      <Text className="text-xs font-medium" style={{ color: CONFIDENCE_COLORS[aiResult.confidence] }}>
+                        {aiResult.confidence} confidence
+                      </Text>
+                    </View>
+                  </View>
+                  <Text className="text-xs text-purple-800 mb-2">{aiResult.description}</Text>
+
+                  {/* Urgency */}
+                  {(() => {
+                    const u = URGENCY_STYLES[aiResult.urgency];
+                    return (
+                      <View className="flex-row items-center gap-2 mb-2">
+                        <View className="px-2 py-1 rounded-lg" style={{ backgroundColor: u.bg }}>
+                          <Text className="text-xs font-semibold" style={{ color: u.color }}>{u.label}</Text>
+                        </View>
+                        <Text className="text-xs text-gray-600 flex-1">{aiResult.urgency_reason}</Text>
+                      </View>
+                    );
+                  })()}
+
+                  {/* WSU Notes */}
+                  <View className="bg-green-50 border border-green-200 rounded-lg p-2 mb-2">
+                    <Text className="text-xs font-semibold text-green-800 mb-0.5">WSU Extension (Zone 8b)</Text>
+                    <Text className="text-xs text-green-700">{aiResult.wsu_notes}</Text>
+                  </View>
+
+                  {/* Organic treatments */}
+                  {aiResult.organic_treatments?.length > 0 && (
+                    <View className="mb-1">
+                      <Text className="text-xs font-semibold text-gray-700 mb-1">Organic Treatments</Text>
+                      {aiResult.organic_treatments.map((t, i) => (
+                        <Text key={i} className="text-xs text-gray-600">• {t}</Text>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Cultural controls */}
+                  {aiResult.cultural_controls?.length > 0 && (
+                    <View>
+                      <Text className="text-xs font-semibold text-gray-700 mb-1">Cultural Controls</Text>
+                      {aiResult.cultural_controls.map((c, i) => (
+                        <Text key={i} className="text-xs text-gray-600">• {c}</Text>
+                      ))}
+                    </View>
+                  )}
+                </View>
+              )}
+
+              {aiResult?.not_visible_confirmation && (
+                <View className="bg-gray-50 border border-gray-200 rounded-xl p-3 mb-3">
+                  <Text className="text-sm text-gray-600">No pest or disease detected in the photo. You can still log an observation manually.</Text>
+                </View>
+              )}
+            </View>
+
+            {/* ── Standard form fields ─────────────────────────────────────── */}
             {/* Type picker */}
             <Text className="text-sm font-medium text-gray-700 mb-2">Type</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">
@@ -337,6 +650,8 @@ export default function PestsScreen() {
               </View>
               <Text className={`text-sm font-medium ${resolved ? "text-green-700" : "text-gray-700"}`}>Mark as resolved</Text>
             </TouchableOpacity>
+
+            <View className="h-8" />
           </ScrollView>
         </SafeAreaView>
       </Modal>
