@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import type { GardenPlot, GardenZone, GardenCell, GardenPlanting, GardenHarvest, GardenAmendment, GardenWeatherLog, GardenPestLog, GardenSeedInventory } from "@/types/app.types";
+import type { GardenPlot, GardenZone, GardenCell, GardenPlanting, GardenHarvest, GardenAmendment, GardenWeatherLog, GardenPestLog, GardenSeedInventory, GardenJournalEntry, GardenWateringLog } from "@/types/app.types";
 
 // ── Plots ──────────────────────────────────────────────────────────────────────
 
@@ -554,5 +554,144 @@ export function useDeleteGardenSeed() {
       return householdId;
     },
     onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_seeds", householdId] }),
+  });
+}
+
+// ── Garden Journal ─────────────────────────────────────────────────────────────
+
+export function useGardenJournal(householdId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_journal", householdId],
+    queryFn: async () => {
+      if (!householdId) return [];
+      const { data, error } = await supabase
+        .from("garden_journal_entries")
+        .select("*")
+        .eq("household_id", householdId)
+        .order("entry_date", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as GardenJournalEntry[];
+    },
+    enabled: !!householdId,
+  });
+}
+
+export function useCreateGardenJournalEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (entry: Omit<GardenJournalEntry, "id" | "created_at">) => {
+      const { data, error } = await supabase
+        .from("garden_journal_entries")
+        .insert(entry)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as GardenJournalEntry;
+    },
+    onSuccess: (data) => qc.invalidateQueries({ queryKey: ["garden_journal", data.household_id] }),
+  });
+}
+
+export function useUpdateGardenJournalEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId, updates }: { id: string; householdId: string; updates: Partial<GardenJournalEntry> }) => {
+      const { error } = await supabase.from("garden_journal_entries").update(updates).eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_journal", householdId] }),
+  });
+}
+
+export function useDeleteGardenJournalEntry() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
+      const { error } = await supabase.from("garden_journal_entries").delete().eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_journal", householdId] }),
+  });
+}
+
+// ── Garden Watering Logs ───────────────────────────────────────────────────────
+
+export function useGardenWatering(householdId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_watering", householdId],
+    queryFn: async () => {
+      if (!householdId) return [];
+      const { data, error } = await supabase
+        .from("garden_watering_logs")
+        .select("*")
+        .eq("household_id", householdId)
+        .order("water_date", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as GardenWateringLog[];
+    },
+    enabled: !!householdId,
+  });
+}
+
+export function useCreateGardenWateringLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (log: Omit<GardenWateringLog, "id" | "created_at">) => {
+      const { data, error } = await supabase
+        .from("garden_watering_logs")
+        .insert(log)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as GardenWateringLog;
+    },
+    onSuccess: (data) => qc.invalidateQueries({ queryKey: ["garden_watering", data.household_id] }),
+  });
+}
+
+export function useUpdateGardenWateringLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId, updates }: { id: string; householdId: string; updates: Partial<GardenWateringLog> }) => {
+      const { error } = await supabase.from("garden_watering_logs").update(updates).eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_watering", householdId] }),
+  });
+}
+
+export function useDeleteGardenWateringLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
+      const { error } = await supabase.from("garden_watering_logs").delete().eq("id", id);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_watering", householdId] }),
+  });
+}
+
+// ── Harvest analytics helpers ──────────────────────────────────────────────────
+
+export function useGardenAllHarvests(householdId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_all_harvests", householdId],
+    queryFn: async () => {
+      if (!householdId) return [];
+      const { data, error } = await supabase
+        .from("garden_harvests")
+        .select("*, garden_plantings(plant_name, variety, zone_id, plant_family)")
+        .eq("household_id", householdId)
+        .order("date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as (GardenHarvest & { garden_plantings: { plant_name: string; variety: string | null; zone_id: string | null; plant_family: string | null } | null })[];
+    },
+    enabled: !!householdId,
   });
 }

@@ -143,7 +143,7 @@ export default function GardenScreen() {
       </View>
 
       {/* Quick-access row 2 — rotation, pests, seeds, companion */}
-      <View className="px-4 pb-3 flex-row gap-2">
+      <View className="px-4 pb-2 flex-row gap-2">
         <TouchableOpacity
           onPress={() => router.push("/(app)/(garden)/rotation")}
           className="flex-1 flex-row items-center gap-2 border border-purple-200 bg-purple-50 rounded-xl px-3 py-2"
@@ -181,7 +181,41 @@ export default function GardenScreen() {
           <Text className="text-lg">🌿</Text>
           <View>
             <Text className="text-teal-800 text-xs font-semibold">Companions</Text>
-            <Text className="text-teal-500 text-xs">Compatibility</Text>
+            <Text className="text-teal-500 text-xs">Planting</Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Quick-access row 3 — harvest analytics, journal, watering */}
+      <View className="px-4 pb-3 flex-row gap-2">
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/harvest-analytics")}
+          className="flex-1 flex-row items-center gap-2 border border-amber-200 bg-amber-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">🌾</Text>
+          <View>
+            <Text className="text-amber-800 text-xs font-semibold">Harvests</Text>
+            <Text className="text-amber-500 text-xs">Analytics</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/journal")}
+          className="flex-1 flex-row items-center gap-2 border border-indigo-200 bg-indigo-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">📓</Text>
+          <View>
+            <Text className="text-indigo-800 text-xs font-semibold">Journal</Text>
+            <Text className="text-indigo-500 text-xs">Notes & obs.</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/watering")}
+          className="flex-1 flex-row items-center gap-2 border border-blue-200 bg-blue-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">💧</Text>
+          <View>
+            <Text className="text-blue-800 text-xs font-semibold">Watering</Text>
+            <Text className="text-blue-500 text-xs">Tracker</Text>
           </View>
         </TouchableOpacity>
       </View>

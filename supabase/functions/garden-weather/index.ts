@@ -98,14 +98,21 @@ Deno.serve(async (req) => {
       }));
 
     // ── 4. Upsert today's log ──────────────────────────────────────────────────
+    // Use daily accumulated precip from forecast slots (much more accurate than
+    // the 1-hour current snapshot, which is 0 whenever it's not actively raining).
     const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
+    const todayForecastData = dayMap.get(today);
+    const dailyRainfallMm = todayForecastData
+      ? Math.round(todayForecastData.precipMm * 10) / 10
+      : rainfallMm; // fallback to 1h snapshot
+
     const { error: logErr } = await supabase
       .from("garden_weather_logs")
       .upsert({
         household_id:   householdId,
         log_date:       today,
         zip_code:       zipCode,
-        rainfall_mm:    rainfallMm,
+        rainfall_mm:    dailyRainfallMm,
         temp_high_f:    currentData.tempMax,
         temp_low_f:     currentData.tempMin,
         condition_main: currentData.condition,

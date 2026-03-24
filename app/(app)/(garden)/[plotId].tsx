@@ -148,6 +148,24 @@ export default function PlotDetailScreen() {
     return m;
   }, [zones]);
 
+  // Bounding box per zone (for grid name labels)
+  const zoneBBoxes = useMemo(() => {
+    const result = new Map<string, { minCol: number; maxCol: number; minRow: number; maxRow: number }>();
+    for (const c of cells) {
+      if (!c.zone_id) continue;
+      const existing = result.get(c.zone_id);
+      if (!existing) {
+        result.set(c.zone_id, { minCol: c.col, maxCol: c.col, minRow: c.row, maxRow: c.row });
+      } else {
+        existing.minCol = Math.min(existing.minCol, c.col);
+        existing.maxCol = Math.max(existing.maxCol, c.col);
+        existing.minRow = Math.min(existing.minRow, c.row);
+        existing.maxRow = Math.max(existing.maxRow, c.row);
+      }
+    }
+    return result;
+  }, [cells]);
+
   const panelZone = panelZoneId ? zoneById.get(panelZoneId) ?? null : null;
   const panelPlantings = useMemo(
     () => (panelZoneId ? plantings.filter((p) => p.zone_id === panelZoneId) : []),
@@ -275,8 +293,9 @@ export default function PlotDetailScreen() {
 
   useAutoSave(!!editingAmendment && showAmendmentModal, [aType, aProduct, aDate, aAmount, aUnit, aNotes, aZoneId], doSaveAmendment);
 
-  // ── Expanded harvest rows ────────────────────────────────────────────────────
+  // ── Expanded harvest rows + inline confirm states ────────────────────────────
   const [expandedPlantingId, setExpandedPlantingId] = useState<string | null>(null);
+  const [confirmingAmendmentId, setConfirmingAmendmentId] = useState<string | null>(null);
 
   // ── Grid interaction ─────────────────────────────────────────────────────────
   function togglePendingCell(col: number, row: number) {
@@ -378,12 +397,7 @@ export default function PlotDetailScreen() {
     setShowPlantingModal(false);
   }
 
-  function confirmDeletePlanting(p: GardenPlanting) {
-    Alert.alert("Remove Planting", `Remove "${p.plant_name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Remove", style: "destructive", onPress: () => deletePlanting.mutate({ id: p.id, plotId: plotId! }) },
-    ]);
-  }
+  // Planting delete is confirmed inline within PlantingRow
 
   // ── Harvest CRUD ─────────────────────────────────────────────────────────────
   function openNewHarvest(plantingId: string) {
@@ -419,12 +433,7 @@ export default function PlotDetailScreen() {
     setShowHarvestModal(false);
   }
 
-  function confirmDeleteHarvest(h: GardenHarvest) {
-    Alert.alert("Delete Harvest", "Remove this harvest record?", [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteHarvest.mutate({ id: h.id, plotId: plotId! }) },
-    ]);
-  }
+  // Harvest delete is confirmed inline within PlantingRow
 
   // ── Amendment CRUD ───────────────────────────────────────────────────────────
   function openNewAmendment(zoneId: string | null) {
@@ -460,12 +469,7 @@ export default function PlotDetailScreen() {
     setShowAmendmentModal(false);
   }
 
-  function confirmDeleteAmendment(a: GardenAmendment) {
-    Alert.alert("Delete Amendment", `Remove "${a.product_name}"?`, [
-      { text: "Cancel", style: "cancel" },
-      { text: "Delete", style: "destructive", onPress: () => deleteAmendment.mutate({ id: a.id, plotId: plotId! }) },
-    ]);
-  }
+  // Amendment delete is confirmed inline via confirmingAmendmentId state
 
   // ── Render helpers ───────────────────────────────────────────────────────────
   function getCellColor(col: number, row: number): string {
@@ -568,25 +572,58 @@ export default function PlotDetailScreen() {
               </View>
             )}
 
-            <View style={{ width: GRID_W, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, overflow: "hidden", backgroundColor: "#f9fafb" }}>
-              {Array.from({ length: plot.rows }).map((_, row) => (
-                <View key={row} style={{ flexDirection: "row" }}>
-                  {Array.from({ length: plot.cols }).map((_, col) => (
-                    <TouchableOpacity
-                      key={col}
-                      onPress={() => {
-                        if (editMode === "draw") { togglePendingCell(col, row); }
-                        else {
-                          const zoneId = cellZoneMap.get(`${col},${row}`);
-                          if (zoneId) setPanelZoneId(zoneId === panelZoneId ? null : zoneId);
-                        }
+            <View style={{ position: "relative", width: GRID_W, borderWidth: 1, borderColor: "#d1d5db", borderRadius: 8, overflow: "hidden" }}>
+              <View style={{ backgroundColor: "#f9fafb" }}>
+                {Array.from({ length: plot.rows }).map((_, row) => (
+                  <View key={row} style={{ flexDirection: "row" }}>
+                    {Array.from({ length: plot.cols }).map((_, col) => (
+                      <TouchableOpacity
+                        key={col}
+                        onPress={() => {
+                          if (editMode === "draw") { togglePendingCell(col, row); }
+                          else {
+                            const zoneId = cellZoneMap.get(`${col},${row}`);
+                            if (zoneId) setPanelZoneId(zoneId === panelZoneId ? null : zoneId);
+                          }
+                        }}
+                        activeOpacity={0.7}
+                        style={{ width: CELL_SIZE, height: CELL_SIZE, backgroundColor: getCellColor(col, row), borderWidth: 0.5, borderColor: getCellBorder(col, row) }}
+                      />
+                    ))}
+                  </View>
+                ))}
+              </View>
+              {/* Zone name labels overlay */}
+              {editMode === "none" && zones.map((zone) => {
+                const bbox = zoneBBoxes.get(zone.id);
+                if (!bbox) return null;
+                const labelLeft = bbox.minCol * CELL_SIZE;
+                const labelTop = bbox.minRow * CELL_SIZE;
+                const labelW = (bbox.maxCol - bbox.minCol + 1) * CELL_SIZE;
+                const labelH = (bbox.maxRow - bbox.minRow + 1) * CELL_SIZE;
+                const fontSize = Math.max(7, Math.min(11, CELL_SIZE * 0.38));
+                return (
+                  <View
+                    key={`label-${zone.id}`}
+                    pointerEvents="none"
+                    style={{
+                      position: "absolute", left: labelLeft, top: labelTop,
+                      width: labelW, height: labelH,
+                      alignItems: "center", justifyContent: "center",
+                    }}
+                  >
+                    <Text
+                      style={{
+                        color: "white", fontSize, fontWeight: "700", textAlign: "center",
+                        textShadowColor: "rgba(0,0,0,0.75)", textShadowOffset: { width: 0, height: 1 }, textShadowRadius: 3,
                       }}
-                      activeOpacity={0.7}
-                      style={{ width: CELL_SIZE, height: CELL_SIZE, backgroundColor: getCellColor(col, row), borderWidth: 0.5, borderColor: getCellBorder(col, row) }}
-                    />
-                  ))}
-                </View>
-              ))}
+                      numberOfLines={3}
+                    >
+                      {zone.name}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
 
             {zones.length > 0 && (
@@ -632,10 +669,10 @@ export default function PlotDetailScreen() {
                         expanded={expandedPlantingId === p.id}
                         onToggleExpand={() => setExpandedPlantingId(expandedPlantingId === p.id ? null : p.id)}
                         onEdit={() => openEditPlanting(p)}
-                        onDelete={() => confirmDeletePlanting(p)}
+                        onDelete={() => deletePlanting.mutate({ id: p.id, plotId: plotId! })}
                         onLogHarvest={() => openNewHarvest(p.id)}
                         onEditHarvest={openEditHarvest}
-                        onDeleteHarvest={confirmDeleteHarvest}
+                        onDeleteHarvest={(h) => deleteHarvest.mutate({ id: h.id, plotId: plotId! })}
                       />
                     ))}
                   </View>
@@ -667,12 +704,25 @@ export default function PlotDetailScreen() {
                                 {a.application_date}{a.amount ? ` · ${a.amount} ${a.unit ?? ""}` : ""}
                               </Text>
                             </View>
-                            <TouchableOpacity onPress={() => openEditAmendment(a)}>
-                              <Text className="text-blue-400 text-xs">Edit</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity onPress={() => confirmDeleteAmendment(a)}>
-                              <Text className="text-red-300 text-xs">✕</Text>
-                            </TouchableOpacity>
+                            {confirmingAmendmentId === a.id ? (
+                              <View className="flex-row gap-1">
+                                <TouchableOpacity onPress={() => setConfirmingAmendmentId(null)} className="px-2 py-1 rounded-lg bg-gray-100">
+                                  <Text className="text-gray-600 text-xs">Cancel</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => { setConfirmingAmendmentId(null); deleteAmendment.mutate({ id: a.id, plotId: plotId! }); }} className="px-2 py-1 rounded-lg bg-red-500">
+                                  <Text className="text-white text-xs font-semibold">Delete</Text>
+                                </TouchableOpacity>
+                              </View>
+                            ) : (
+                              <View className="flex-row gap-2">
+                                <TouchableOpacity onPress={() => openEditAmendment(a)}>
+                                  <Text className="text-blue-400 text-xs">Edit</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => setConfirmingAmendmentId(a.id)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                                  <Text className="text-red-300 text-xs">✕</Text>
+                                </TouchableOpacity>
+                              </View>
+                            )}
                           </View>
                         );
                       })}
@@ -747,12 +797,25 @@ export default function PlotDetailScreen() {
                             {a.application_date}{a.amount ? ` · ${a.amount} ${a.unit ?? ""}` : ""}
                           </Text>
                         </View>
-                        <TouchableOpacity onPress={() => openEditAmendment(a)}>
-                          <Text className="text-blue-500 text-xs">Edit</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity onPress={() => confirmDeleteAmendment(a)}>
-                          <Text className="text-red-400 text-xs">✕</Text>
-                        </TouchableOpacity>
+                        {confirmingAmendmentId === a.id ? (
+                          <View className="flex-row gap-1">
+                            <TouchableOpacity onPress={() => setConfirmingAmendmentId(null)} className="px-2 py-1 rounded-lg bg-gray-100">
+                              <Text className="text-gray-600 text-xs">Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => { setConfirmingAmendmentId(null); deleteAmendment.mutate({ id: a.id, plotId: plotId! }); }} className="px-2 py-1 rounded-lg bg-red-500">
+                              <Text className="text-white text-xs font-semibold">Delete</Text>
+                            </TouchableOpacity>
+                          </View>
+                        ) : (
+                          <View className="flex-row gap-2">
+                            <TouchableOpacity onPress={() => openEditAmendment(a)}>
+                              <Text className="text-blue-500 text-xs">Edit</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity onPress={() => setConfirmingAmendmentId(a.id)} hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}>
+                              <Text className="text-red-400 text-xs">✕</Text>
+                            </TouchableOpacity>
+                          </View>
+                        )}
                       </View>
                     );
                   })}
@@ -1104,6 +1167,9 @@ function PlantingRow({
   onEditHarvest: (h: GardenHarvest) => void;
   onDeleteHarvest: (h: GardenHarvest) => void;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [confirmingHarvestId, setConfirmingHarvestId] = useState<string | null>(null);
+
   const fam = planting.plant_family ? PLANT_FAMILIES[planting.plant_family] : PLANT_FAMILIES.Other;
   const isDone = !!planting.date_removed;
   const totalHarvests = harvests.length;
@@ -1112,7 +1178,7 @@ function PlantingRow({
     <View>
       <View className="flex-row items-start gap-2">
         <View style={{ backgroundColor: fam?.color ?? "#6b7280" }} className="w-2.5 rounded-full mt-1 self-stretch min-h-[36px]" />
-        <View className="flex-1">
+        <View className="flex-1 min-w-0">
           <View className="flex-row items-center gap-1.5 flex-wrap">
             <Text className={`font-medium text-sm ${isDone ? "text-gray-400 line-through" : "text-gray-900"}`}>
               {planting.plant_name}{planting.variety ? ` · ${planting.variety}` : ""}
@@ -1124,17 +1190,39 @@ function PlantingRow({
             {planting.plant_family ? ` · ${planting.plant_family}` : ""}
           </Text>
         </View>
-        <View className="flex-row items-center gap-1">
-          <TouchableOpacity onPress={onToggleExpand} className="px-2 py-1 bg-amber-50 rounded-lg">
-            <Text className="text-amber-700 text-xs">🌾 {totalHarvests > 0 ? totalHarvests : "+"}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onEdit} className="px-2 py-1">
-            <Text className="text-blue-500 text-xs">Edit</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={onDelete} className="px-2 py-1">
-            <Text className="text-red-400 text-xs">✕</Text>
-          </TouchableOpacity>
-        </View>
+
+        {confirmingDelete ? (
+          <View className="flex-row items-center gap-1.5">
+            <TouchableOpacity
+              onPress={() => setConfirmingDelete(false)}
+              className="px-2.5 py-1.5 rounded-lg bg-gray-100"
+            >
+              <Text className="text-gray-600 text-xs font-medium">Cancel</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => { setConfirmingDelete(false); onDelete(); }}
+              className="px-2.5 py-1.5 rounded-lg bg-red-500"
+            >
+              <Text className="text-white text-xs font-semibold">Remove</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <View className="flex-row items-center gap-1">
+            <TouchableOpacity onPress={onToggleExpand} className="px-2 py-1.5 bg-amber-50 rounded-lg">
+              <Text className="text-amber-700 text-xs">🌾 {totalHarvests > 0 ? totalHarvests : "+"}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={onEdit} className="px-2 py-1.5">
+              <Text className="text-blue-500 text-xs font-medium">Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => setConfirmingDelete(true)}
+              hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+              className="px-2 py-1.5"
+            >
+              <Text className="text-red-400 text-sm font-medium">✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       {/* Harvest panel */}
@@ -1152,17 +1240,39 @@ function PlantingRow({
             <View className="gap-1.5">
               {harvests.map((h) => (
                 <View key={h.id} className="flex-row items-center gap-2">
-                  <Text className="text-xs text-amber-800 flex-1">
+                  <Text className="text-xs text-amber-800 flex-1" numberOfLines={2}>
                     {h.date}
                     {h.quantity_value ? ` · ${h.quantity_value} ${h.quantity_unit ?? ""}` : ""}
                     {h.notes ? ` — ${h.notes}` : ""}
                   </Text>
-                  <TouchableOpacity onPress={() => onEditHarvest(h)}>
-                    <Text className="text-blue-400 text-xs">Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => onDeleteHarvest(h)}>
-                    <Text className="text-red-300 text-xs">✕</Text>
-                  </TouchableOpacity>
+                  {confirmingHarvestId === h.id ? (
+                    <View className="flex-row gap-1">
+                      <TouchableOpacity
+                        onPress={() => setConfirmingHarvestId(null)}
+                        className="px-2 py-1 rounded-lg bg-gray-200"
+                      >
+                        <Text className="text-gray-600 text-xs">Cancel</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => { setConfirmingHarvestId(null); onDeleteHarvest(h); }}
+                        className="px-2 py-1 rounded-lg bg-red-400"
+                      >
+                        <Text className="text-white text-xs font-semibold">Delete</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <View className="flex-row gap-2 items-center">
+                      <TouchableOpacity onPress={() => onEditHarvest(h)} hitSlop={{ top: 6, right: 6, bottom: 6, left: 6 }}>
+                        <Text className="text-blue-400 text-xs">Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setConfirmingHarvestId(h.id)}
+                        hitSlop={{ top: 8, right: 8, bottom: 8, left: 8 }}
+                      >
+                        <Text className="text-red-300 text-xs">✕</Text>
+                      </TouchableOpacity>
+                    </View>
+                  )}
                 </View>
               ))}
             </View>

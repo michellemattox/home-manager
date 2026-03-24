@@ -202,6 +202,43 @@ export const PEST_LOG_TYPES: { value: PestLogType; label: string; emoji: string;
   { value: "observation", label: "Observation", emoji: "👁", color: "#0891b2", bg: "#ecfeff" },
 ];
 
+// ── Garden Journal + Watering (migration 038) ─────────────────────────────────
+
+export interface GardenJournalEntry {
+  id: string;
+  household_id: string;
+  plot_id: string | null;
+  zone_id: string | null;
+  planting_id: string | null;
+  entry_date: string;
+  title: string | null;
+  body: string;
+  tags: string[];
+  created_at: string;
+}
+
+export type WateringMethod = "hand" | "drip" | "overhead" | "soaker";
+
+export interface GardenWateringLog {
+  id: string;
+  household_id: string;
+  plot_id: string | null;
+  zone_id: string | null;
+  water_date: string;
+  duration_min: number | null;
+  amount_gal: number | null;
+  method: WateringMethod;
+  notes: string | null;
+  created_at: string;
+}
+
+export const WATERING_METHODS: { value: WateringMethod; label: string; emoji: string }[] = [
+  { value: "hand",     label: "Hand",     emoji: "🪣" },
+  { value: "drip",     label: "Drip",     emoji: "💧" },
+  { value: "overhead", label: "Overhead", emoji: "🚿" },
+  { value: "soaker",   label: "Soaker",   emoji: "🌊" },
+];
+
 export const SEVERITY_LABELS = ["", "Minimal", "Low", "Moderate", "High", "Severe"];
 export const SEVERITY_COLORS = ["", "#16a34a", "#65a30d", "#d97706", "#ea580c", "#dc2626"];
 
