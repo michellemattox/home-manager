@@ -142,7 +142,7 @@ export default function GardenScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Quick-access row 2 — rotation, pests, seeds */}
+      {/* Quick-access row 2 — rotation, pests, seeds, companion */}
       <View className="px-4 pb-3 flex-row gap-2">
         <TouchableOpacity
           onPress={() => router.push("/(app)/(garden)/rotation")}
@@ -172,6 +172,16 @@ export default function GardenScreen() {
           <View>
             <Text className="text-emerald-800 text-xs font-semibold">Seeds</Text>
             <Text className="text-emerald-500 text-xs">Inventory</Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={() => router.push("/(app)/(garden)/companion")}
+          className="flex-1 flex-row items-center gap-2 border border-teal-200 bg-teal-50 rounded-xl px-3 py-2"
+        >
+          <Text className="text-lg">🌿</Text>
+          <View>
+            <Text className="text-teal-800 text-xs font-semibold">Companions</Text>
+            <Text className="text-teal-500 text-xs">Compatibility</Text>
           </View>
         </TouchableOpacity>
       </View>
