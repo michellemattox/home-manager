@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -30,6 +30,7 @@ import {
   type GardenPestLog,
   type PestLogType,
 } from "@/types/app.types";
+import { showAlert } from "@/lib/alert";
 import { supabase } from "@/lib/supabase";
 
 const TODAY_STR = new Date().toISOString().split("T")[0];
@@ -104,6 +105,14 @@ export default function PestsScreen() {
   const [plantContext, setPlantContext] = useState("");
 
   const defaultPlotId = plots[0]?.id ?? "";
+
+  // Keep plotId in sync if plots load after the component mounts but before
+  // the user has opened the modal and picked a plot themselves.
+  useEffect(() => {
+    if (defaultPlotId && !showAdd) {
+      setPlotId(defaultPlotId);
+    }
+  }, [defaultPlotId]);
 
   function resetForm(log?: GardenPestLog) {
     if (log) {
@@ -234,7 +243,7 @@ export default function PestsScreen() {
       try {
         const ext = "jpg";
         const filePath = `${householdId}/${Date.now()}.${ext}`;
-        const byteArray = Uint8Array.from(atob(photoBase64), c => c.charCodeAt(0));
+        const byteArray = Uint8Array.from(atob(photoBase64), (c) => c.charCodeAt(0));
         const { error: uploadErr } = await supabase.storage
           .from("garden-photos")
           .upload(filePath, byteArray, { contentType: "image/jpeg", upsert: false });
@@ -242,32 +251,41 @@ export default function PestsScreen() {
           const { data: urlData } = supabase.storage.from("garden-photos").getPublicUrl(filePath);
           uploadedPhotoUrl = urlData.publicUrl;
         }
-      } catch {}
-      setUploadingPhoto(false);
+      } catch {
+        // Photo upload is best-effort; still allow saving the log entry.
+      } finally {
+        setUploadingPhoto(false);
+      }
     }
 
-    const payload: any = {
-      household_id: householdId,
-      plot_id: plotId,
-      zone_id: null,
-      planting_id: null,
-      observation_date: obsDate.toISOString().split("T")[0],
-      log_type: logType,
-      name: name.trim(),
-      severity,
-      treatment: treatment.trim() || null,
-      notes: notes.trim() || null,
-      resolved,
-    };
-    if (uploadedPhotoUrl) payload.photo_url = uploadedPhotoUrl;
-    if (aiResult) payload.ai_identification = aiResult as any;
+    try {
+      const payload: any = {
+        household_id: householdId,
+        plot_id: plotId,
+        zone_id: null,
+        planting_id: null,
+        observation_date: obsDate.toISOString().split("T")[0],
+        log_type: logType,
+        name: name.trim(),
+        severity,
+        treatment: treatment.trim() || null,
+        notes: notes.trim() || null,
+        resolved,
+      };
 
-    if (editTarget) {
-      await updateLog.mutateAsync({ id: editTarget.id, householdId, updates: payload });
-    } else {
-      await createLog.mutateAsync(payload);
+      if (uploadedPhotoUrl) payload.photo_url = uploadedPhotoUrl;
+      if (aiResult) payload.ai_identification = aiResult as any;
+
+      if (editTarget) {
+        await updateLog.mutateAsync({ id: editTarget.id, householdId, updates: payload });
+      } else {
+        await createLog.mutateAsync(payload);
+      }
+
+      setShowAdd(false);
+    } catch (e: any) {
+      showAlert("Save failed", e?.message ?? "Could not save this pest/disease entry.");
     }
-    setShowAdd(false);
   }
 
   const filteredLogs = useMemo(() => {
@@ -285,9 +303,11 @@ export default function PestsScreen() {
           <Text className="text-green-700 text-base">← Back</Text>
         </TouchableOpacity>
         <Text className="flex-1 text-lg font-bold text-gray-900">🐛 Pest & Disease Log</Text>
-        <TouchableOpacity onPress={openAdd} className="bg-green-600 rounded-xl px-3 py-1.5">
-          <Text className="text-white text-sm font-semibold">+ Log</Text>
-        </TouchableOpacity>
+        {plots.length > 0 && (
+          <TouchableOpacity onPress={openAdd} className="bg-green-600 rounded-xl px-3 py-1.5">
+            <Text className="text-white text-sm font-semibold">+ Log</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Filter tabs */}
@@ -304,7 +324,21 @@ export default function PestsScreen() {
         <Text className="text-xs text-gray-400 self-center ml-2">{filteredLogs.length} entr{filteredLogs.length === 1 ? "y" : "ies"}</Text>
       </View>
 
-      {isLoading ? (
+      {!isLoading && plots.length === 0 ? (
+        <View className="flex-1 items-center justify-center px-8">
+          <Text className="text-5xl mb-4">🌱</Text>
+          <Text className="text-base font-semibold text-gray-700 text-center">No garden plots yet</Text>
+          <Text className="text-sm text-gray-400 mt-2 text-center">
+            Create a garden plot first, then you can log pests and diseases here.
+          </Text>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            className="mt-5 bg-green-600 rounded-xl px-5 py-2.5"
+          >
+            <Text className="text-white font-semibold text-sm">Go to Garden</Text>
+          </TouchableOpacity>
+        </View>
+      ) : isLoading ? (
         <View className="flex-1 items-center justify-center">
           <ActivityIndicator color="#16a34a" />
         </View>
@@ -321,10 +355,17 @@ export default function PestsScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 10 }}>
           {filteredLogs.map(log => {
-            const typeInfo = PEST_LOG_TYPES.find(t => t.value === log.log_type)!;
+            const typeInfo =
+              PEST_LOG_TYPES.find(t => t.value === log.log_type) ?? ({
+                value: log.log_type as any,
+                label: "Unknown",
+                emoji: "🌿",
+                color: "#6b7280",
+                bg: "#f9fafb",
+              } as (typeof PEST_LOG_TYPES)[number]);
             const plot = plots.find(p => p.id === log.plot_id);
             const ai = log.ai_identification as AIResult | null;
-            const urgency = ai ? URGENCY_STYLES[ai.urgency] : null;
+            const urgency = ai ? URGENCY_STYLES[ai.urgency as keyof typeof URGENCY_STYLES] : null;
             return (
               <Card key={log.id} className="p-0 overflow-hidden">
                 <TouchableOpacity onPress={() => openEdit(log)} activeOpacity={0.8}>
@@ -520,7 +561,12 @@ export default function PestsScreen() {
 
                   {/* Urgency */}
                   {(() => {
-                    const u = URGENCY_STYLES[aiResult.urgency];
+                    const u =
+                      URGENCY_STYLES[aiResult.urgency as keyof typeof URGENCY_STYLES] ?? {
+                        bg: "#f3f4f6",
+                        color: "#6b7280",
+                        label: "Monitor",
+                      };
                     return (
                       <View className="flex-row items-center gap-2 mb-2">
                         <View className="px-2 py-1 rounded-lg" style={{ backgroundColor: u.bg }}>

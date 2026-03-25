@@ -11,14 +11,14 @@ import { useAuthStore } from "@/stores/authStore";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
-import { View } from "react-native";
+import { View, ActivityIndicator } from "react-native";
 import type { HouseholdMember } from "@/types/app.types";
 import { useFonts, Lobster_400Regular } from "@expo-google-fonts/lobster";
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const segments = useSegments();
-  const { session, setSession } = useAuthStore();
+  const { session, authReady, setSession, setAuthReady } = useAuthStore();
   const { household, householdChecked, clearHousehold, setHouseholdChecked } =
     useHouseholdStore();
 
@@ -53,12 +53,19 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       async (event, newSession) => {
         // If this is the initial session load, check whether the user chose
         // not to be remembered. If so, sign them out immediately.
-        if (event === "INITIAL_SESSION" && newSession) {
-          const remember = await AsyncStorage.getItem("@mattox_remember_device");
-          if (remember === "false") {
-            await AsyncStorage.removeItem("@mattox_remember_device");
-            await supabase.auth.signOut();
-            return;
+        if (event === "INITIAL_SESSION") {
+          if (newSession) {
+            const remember = await AsyncStorage.getItem("@mattox_remember_device");
+            if (remember === "false") {
+              await AsyncStorage.removeItem("@mattox_remember_device");
+              await supabase.auth.signOut();
+              setHouseholdChecked(false);
+              setAuthReady();
+              return;
+            }
+          } else {
+            // No stored session — mark auth as ready so routing can proceed to login.
+            setAuthReady();
           }
         }
 
@@ -66,43 +73,59 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 
         if (event === "SIGNED_OUT") {
           clearHousehold();
+          setHouseholdChecked(false);
           router.replace("/(auth)/login");
           return;
         }
 
         if (newSession?.user) {
-          await registerForPushNotificationsAsync(newSession.user.id);
-
-          const { data: member } = await supabase
-            .from("household_members")
-            .select("*")
-            .eq("user_id", newSession.user.id)
-            .is("invite_token", null)
-            .maybeSingle();
-
-          if (member) {
-            const m = member as HouseholdMember;
-            const { setHousehold, setMembers, setCurrentMember } =
-              useHouseholdStore.getState();
-            setCurrentMember(m);
-
-            const { data: householdData } = await supabase
-              .from("households")
-              .select("*")
-              .eq("id", m.household_id)
-              .maybeSingle();
-            if (householdData) setHousehold(householdData as any);
-
-            const { data: members } = await supabase
-              .from("household_members")
-              .select("*")
-              .eq("household_id", m.household_id)
-              .is("invite_token", null);
-            setMembers((members ?? []) as any);
+          try {
+            // Don't block auth navigation on push token registration.
+            await Promise.race([
+              registerForPushNotificationsAsync(newSession.user.id),
+              new Promise<void>((resolve) => setTimeout(resolve, 5000)),
+            ]);
+          } catch {
+            // Push registration is non-critical for core app navigation.
           }
 
-          // Always mark check complete, whether or not a household was found
-          useHouseholdStore.getState().setHouseholdChecked(true);
+          try {
+            const { data: member } = await supabase
+              .from("household_members")
+              .select("*")
+              .eq("user_id", newSession.user.id)
+              .is("invite_token", null)
+              .maybeSingle();
+
+            if (member) {
+              const m = member as HouseholdMember;
+              const { setHousehold, setMembers, setCurrentMember } =
+                useHouseholdStore.getState();
+              setCurrentMember(m);
+
+              const { data: householdData } = await supabase
+                .from("households")
+                .select("*")
+                .eq("id", m.household_id)
+                .maybeSingle();
+              if (householdData) setHousehold(householdData as any);
+
+              const { data: members } = await supabase
+                .from("household_members")
+                .select("*")
+                .eq("household_id", m.household_id)
+                .is("invite_token", null);
+              setMembers((members ?? []) as any);
+            }
+          } catch {
+            // If household lookup fails (transient RLS/network), we'll still
+            // allow navigation and let the UI guide onboarding.
+          } finally {
+            // Always mark check complete, whether or not a household was found.
+            useHouseholdStore.getState().setHouseholdChecked(true);
+            // Auth is fully resolved — allow routing decisions.
+            setAuthReady();
+          }
         } else {
           // No session - reset check state for next login
           setHouseholdChecked(false);
@@ -114,6 +137,11 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Wait until the initial auth state has been resolved before making
+    // any routing decisions — prevents a flash to the login screen when
+    // the app restarts with a valid stored session.
+    if (!authReady) return;
+
     // Not logged in → always go to login (but allow /join through)
     if (session === null) {
       const inAuth = segments[0] === "(auth)";
@@ -137,7 +165,7 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     // Logged in + has household → main app
     const inApp = segments[0] === "(app)";
     if (!inApp) router.replace("/(app)/(home)");
-  }, [session, segments, householdChecked, household]);
+  }, [authReady, session, segments, householdChecked, household]);
 
   return <>{children}</>;
 }
@@ -145,8 +173,14 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ Lobster_400Regular });
 
-  // Wait for font before rendering so the header never flashes unstyled text
-  if (!fontsLoaded) return null;
+  // Show a centered spinner instead of a blank white screen while fonts load.
+  if (!fontsLoaded) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFED" }}>
+        <ActivityIndicator size="large" color="#FC9853" />
+      </View>
+    );
+  }
 
   return (
     <QueryClientProvider client={queryClient}>

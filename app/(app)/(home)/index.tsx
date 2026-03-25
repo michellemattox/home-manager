@@ -209,8 +209,6 @@ export default function HomeScreen() {
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  useNotificationScheduler();
-
   const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useProjects(household?.id);
   const { data: tasks, isLoading: loadingTasks, refetch: refetchTasks } = useRecurringTasks(household?.id);
   const { data: oneOffTasks = [], refetch: refetchOneOff } = useTasks(household?.id);
