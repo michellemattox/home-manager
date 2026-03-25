@@ -11,9 +11,23 @@ import { useAuthStore } from "@/stores/authStore";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
-import { View, ActivityIndicator } from "react-native";
+import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { View, ActivityIndicator, Platform } from "react-native";
 import type { HouseholdMember } from "@/types/app.types";
 import { useFonts, Lobster_400Regular } from "@expo-google-fonts/lobster";
+
+// On desktop web, center the app in a mobile-width column so it doesn't
+// stretch across a wide viewport. On native, renders children as-is.
+function WebContainer({ children }: { children: React.ReactNode }) {
+  if (Platform.OS !== "web") return <>{children}</>;
+  return (
+    <View style={{ flex: 1, alignItems: "center", backgroundColor: "#d1d5db" }}>
+      <View style={{ flex: 1, width: "100%", maxWidth: 480, backgroundColor: "#FFFFED" }}>
+        {children}
+      </View>
+    </View>
+  );
+}
 
 function AuthGate({ children }: { children: React.ReactNode }) {
   const router = useRouter();
@@ -183,14 +197,18 @@ export default function RootLayout() {
   }
 
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthGate>
-        <View className="flex-1">
-          <StatusBar style="auto" />
-          <OfflineBanner />
-          <Stack screenOptions={{ headerShown: false }} />
-        </View>
-      </AuthGate>
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <WebContainer>
+          <AuthGate>
+            <View className="flex-1">
+              <StatusBar style="auto" />
+              <OfflineBanner />
+              <Stack screenOptions={{ headerShown: false }} />
+            </View>
+          </AuthGate>
+        </WebContainer>
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }

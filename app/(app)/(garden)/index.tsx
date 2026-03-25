@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -8,6 +8,7 @@ import {
   Alert,
   TextInput,
   ActivityIndicator,
+  RefreshControl,
   Image,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -15,6 +16,7 @@ import { useRouter } from "expo-router";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useHouseholdStore } from "@/stores/householdStore";
 import {
   useGardenPlots,
@@ -37,9 +39,16 @@ export default function GardenScreen() {
   const { household } = useHouseholdStore();
   const householdId = household?.id;
 
-  const { data: plots = [], isLoading } = useGardenPlots(householdId);
+  const { data: plots = [], isLoading, refetch } = useGardenPlots(householdId);
   const createPlot = useCreateGardenPlot();
   const deletePlot = useDeleteGardenPlot();
+
+  const [refreshing, setRefreshing] = useState(false);
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await refetch();
+    setRefreshing(false);
+  }, [refetch]);
 
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
@@ -255,11 +264,16 @@ export default function GardenScreen() {
       </View>
 
       {isLoading ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#16a34a" />
-        </View>
+        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+          <SkeletonCard />
+          <SkeletonCard />
+          <SkeletonCard />
+        </ScrollView>
       ) : plots.length === 0 ? (
-        <View className="flex-1 items-center justify-center px-8">
+        <ScrollView
+          contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16a34a" />}
+        >
           <Text className="text-5xl mb-4">🥬</Text>
           <Text className="text-lg font-semibold text-gray-700 text-center">
             No gardens yet
@@ -267,9 +281,12 @@ export default function GardenScreen() {
           <Text className="text-sm text-gray-400 mt-2 text-center">
             Tap "New Garden" to create your first bed or plot map.
           </Text>
-        </View>
+        </ScrollView>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
+        <ScrollView
+          contentContainerStyle={{ padding: 16, gap: 12 }}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16a34a" />}
+        >
           {plots.map((plot) => (
             <PlotCard
               key={plot.id}
