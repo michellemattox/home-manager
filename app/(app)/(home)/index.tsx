@@ -24,6 +24,13 @@ import { notificationSuccess } from "@/lib/haptics";
 import type { ProjectWithOwners, RecurringTask, Task } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { useWowUpdates, useGenerateWow, type WowUpdate } from "@/hooks/useWowUpdates";
+import {
+  useGardenAdvisorRecs,
+  useGenerateGardenAdvisor,
+  useDismissAdvisorRec,
+  useAcceptAdvisorRec,
+  type AdvisorRec,
+} from "@/hooks/useGardenAdvisor";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -160,6 +167,80 @@ function OneOffTaskRow({
   );
 }
 
+const ADVISOR_PRIORITY_COLORS: Record<string, { bg: string; border: string; badge: string; badgeText: string }> = {
+  urgent: { bg: "#FFF1F2", border: "#FCA5A5", badge: "#EF4444", badgeText: "white" },
+  normal:  { bg: "#F0FDF4", border: "#86EFAC", badge: "#22C55E", badgeText: "white" },
+  info:    { bg: "#EFF6FF", border: "#93C5FD", badge: "#3B82F6", badgeText: "white" },
+};
+
+const ACTION_TYPE_ICONS: Record<string, string> = {
+  watering: "💧",
+  pests: "🐛",
+  garden: "🌱",
+  tasks: "✅",
+  harvest: "🥬",
+};
+
+function AdvisorRecCard({
+  rec,
+  onAccept,
+  onDismiss,
+  accepting,
+  dismissing,
+}: {
+  rec: AdvisorRec;
+  onAccept: () => void;
+  onDismiss: () => void;
+  accepting: boolean;
+  dismissing: boolean;
+}) {
+  const colors = ADVISOR_PRIORITY_COLORS[rec.priority] ?? ADVISOR_PRIORITY_COLORS.normal;
+  const icon = ACTION_TYPE_ICONS[rec.action_type] ?? "🌿";
+  return (
+    <View
+      className="rounded-xl p-3 mb-2 border"
+      style={{ backgroundColor: colors.bg, borderColor: colors.border }}
+    >
+      <View className="flex-row items-start gap-2 mb-2">
+        <Text className="text-base mt-0.5">{icon}</Text>
+        <View className="flex-1">
+          <View className="flex-row items-center gap-2 mb-1">
+            <View className="rounded-full px-2 py-0.5" style={{ backgroundColor: colors.badge }}>
+              <Text className="text-xs font-bold" style={{ color: colors.badgeText }}>
+                {rec.priority.toUpperCase()}
+              </Text>
+            </View>
+            <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              {rec.action_label}
+            </Text>
+          </View>
+          <Text className="text-sm text-gray-800 leading-5">{rec.recommendation}</Text>
+        </View>
+      </View>
+      <View className="flex-row gap-2 mt-1">
+        <TouchableOpacity
+          onPress={onAccept}
+          disabled={accepting || dismissing}
+          className="flex-1 bg-green-600 rounded-lg py-2 items-center"
+        >
+          <Text className="text-white text-xs font-semibold">
+            {accepting ? "Adding…" : "Accept → Tasks"}
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          onPress={onDismiss}
+          disabled={accepting || dismissing}
+          className="flex-1 bg-white border border-gray-200 rounded-lg py-2 items-center"
+        >
+          <Text className="text-gray-500 text-xs font-semibold">
+            {dismissing ? "Dismissing…" : "Dismiss"}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  );
+}
+
 const WOW_COLORS: Record<string, string> = {
   idea: "#FBFCCF",
   project: "#EBFAFC",
@@ -218,6 +299,14 @@ export default function HomeScreen() {
   const { data: wowUpdates = [], refetch: refetchWow } = useWowUpdates(household?.id);
   const generateWow = useGenerateWow();
   const [generatingWow, setGeneratingWow] = useState(false);
+
+  // Garden Advisor
+  const { data: advisorRecs = [], refetch: refetchAdvisor } = useGardenAdvisorRecs(household?.id);
+  const generateAdvisor = useGenerateGardenAdvisor();
+  const dismissRec = useDismissAdvisorRec();
+  const acceptRec = useAcceptAdvisorRec();
+  const [generatingAdvisor, setGeneratingAdvisor] = useState(false);
+  const [advisorPending, setAdvisorPending] = useState<Record<string, "accepting" | "dismissing">>({});
   // Track which entries have been seen — dismissed on manual refresh if unchanged
   const [dismissedHashes, setDismissedHashes] = useState<Set<string>>(new Set());
 
@@ -243,6 +332,42 @@ export default function HomeScreen() {
       showAlert("Error", e.message);
     } finally {
       setGeneratingWow(false);
+    }
+  };
+
+  const handleGenerateAdvisor = async () => {
+    if (!household) return;
+    setGeneratingAdvisor(true);
+    try {
+      await generateAdvisor(household.id);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    } finally {
+      setGeneratingAdvisor(false);
+    }
+  };
+
+  const handleAcceptRec = async (rec: AdvisorRec) => {
+    setAdvisorPending((p) => ({ ...p, [rec.id]: "accepting" }));
+    try {
+      await acceptRec.mutateAsync(rec.id);
+      // Navigate to tasks after accepting — user can create the task there
+      router.push("/(app)/(tasks)/new");
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    } finally {
+      setAdvisorPending((p) => { const n = { ...p }; delete n[rec.id]; return n; });
+    }
+  };
+
+  const handleDismissRec = async (recId: string) => {
+    setAdvisorPending((p) => ({ ...p, [recId]: "dismissing" }));
+    try {
+      await dismissRec.mutateAsync(recId);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    } finally {
+      setAdvisorPending((p) => { const n = { ...p }; delete n[recId]; return n; });
     }
   };
 
@@ -280,6 +405,7 @@ export default function HomeScreen() {
     refetchOneOff();
     refetchServices();
     refetchWow();
+    refetchAdvisor();
   };
 
   // Projects
@@ -478,6 +604,37 @@ export default function HomeScreen() {
         ) : (
           visibleWow.map((entry) => (
             <WowCard key={entry.id} entry={entry} onPress={() => handleWowPress(entry)} />
+          ))
+        )}
+
+        {/* Garden Today — AI Advisor */}
+        <View className="flex-row items-center justify-between mt-4 mb-1">
+          <SectionHeader title="Garden Today" count={advisorRecs.length} raw />
+          <TouchableOpacity
+            onPress={handleGenerateAdvisor}
+            disabled={generatingAdvisor}
+            className="px-3 py-1 rounded-full bg-white/60 border border-gray-200"
+          >
+            <Text className="text-xs font-semibold text-gray-500">
+              {generatingAdvisor ? "Thinking…" : "↻ Refresh"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {advisorRecs.length === 0 ? (
+          <View className="rounded-xl p-4 mb-2 items-center bg-white/50 border border-gray-100">
+            <Text className="text-sm text-gray-400">No garden advice yet for today.</Text>
+            <Text className="text-xs text-gray-300 mt-1">Tap ↻ Refresh to generate.</Text>
+          </View>
+        ) : (
+          advisorRecs.map((rec) => (
+            <AdvisorRecCard
+              key={rec.id}
+              rec={rec}
+              onAccept={() => handleAcceptRec(rec)}
+              onDismiss={() => handleDismissRec(rec.id)}
+              accepting={advisorPending[rec.id] === "accepting"}
+              dismissing={advisorPending[rec.id] === "dismissing"}
+            />
           ))
         )}
 

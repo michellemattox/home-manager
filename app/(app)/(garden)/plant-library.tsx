@@ -12,9 +12,14 @@ import {
   TouchableOpacity,
   TextInput,
   Modal,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useHouseholdStore } from "@/stores/householdStore";
+import { useGardenPlots, useCreateGardenPlanting } from "@/hooks/useGarden";
+import { showAlert } from "@/lib/alert";
+import { toISODateString } from "@/utils/dateUtils";
 
 type Season = "cool" | "warm" | "year_round";
 type Difficulty = "easy" | "moderate" | "challenging";
@@ -278,9 +283,44 @@ const PLANTS: PlantEntry[] = [
 
 export default function PlantLibraryScreen() {
   const router = useRouter();
+  const { household } = useHouseholdStore();
   const [search, setSearch] = useState("");
   const [filterSeason, setFilterSeason] = useState<Season | null>(null);
   const [selected, setSelected] = useState<PlantEntry | null>(null);
+
+  // Add to Garden
+  const { data: plots = [] } = useGardenPlots(household?.id);
+  const createPlanting = useCreateGardenPlanting();
+  const [addingToPlot, setAddingToPlot] = useState(false);
+  const [plotPickerVisible, setPlotPickerVisible] = useState(false);
+
+  const handleAddToPlot = async (plotId: string) => {
+    if (!selected || !household) return;
+    setAddingToPlot(true);
+    setPlotPickerVisible(false);
+    try {
+      await createPlanting.mutateAsync({
+        household_id: household.id,
+        plot_id: plotId,
+        zone_id: null,
+        plant_name: selected.name,
+        plant_family: selected.family,
+        variety: null,
+        date_planted: toISODateString(new Date()),
+        date_removed: null,
+        season_year: new Date().getFullYear(),
+        notes: null,
+        source: null,
+        quantity: null,
+      } as any);
+      setSelected(null);
+      router.push(`/(app)/(garden)/${plotId}`);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    } finally {
+      setAddingToPlot(false);
+    }
+  };
 
   const filtered = useMemo(() => {
     let list = PLANTS;
@@ -508,10 +548,60 @@ export default function PlantLibraryScreen() {
                 </View>
               </View>
 
+              {/* Add to Garden CTA */}
+              {plots.length > 0 && (
+                <TouchableOpacity
+                  onPress={() => setPlotPickerVisible(true)}
+                  disabled={addingToPlot}
+                  className="bg-green-600 rounded-xl py-3.5 items-center flex-row justify-center gap-2"
+                >
+                  {addingToPlot && <ActivityIndicator size="small" color="white" />}
+                  <Text className="text-white font-bold text-base">
+                    {addingToPlot ? "Adding…" : `+ Add ${selected.name} to Garden`}
+                  </Text>
+                </TouchableOpacity>
+              )}
+
               <View className="h-4" />
             </ScrollView>
           </SafeAreaView>
         )}
+      </Modal>
+
+      {/* Plot Picker Modal */}
+      <Modal
+        visible={plotPickerVisible}
+        animationType="slide"
+        presentationStyle="formSheet"
+        onRequestClose={() => setPlotPickerVisible(false)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <Text className="flex-1 text-base font-semibold text-gray-900">
+              Add to which plot?
+            </Text>
+            <TouchableOpacity onPress={() => setPlotPickerVisible(false)}>
+              <Text className="text-blue-600 text-sm font-medium">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView>
+            {plots.map((plot) => (
+              <TouchableOpacity
+                key={plot.id}
+                onPress={() => handleAddToPlot(plot.id)}
+                className="flex-row items-center justify-between px-4 py-4 bg-white border-b border-gray-100"
+              >
+                <View>
+                  <Text className="text-sm font-semibold text-gray-900">{plot.name}</Text>
+                  {plot.description && (
+                    <Text className="text-xs text-gray-400 mt-0.5" numberOfLines={1}>{plot.description}</Text>
+                  )}
+                </View>
+                <Text className="text-gray-400 text-base">→</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );

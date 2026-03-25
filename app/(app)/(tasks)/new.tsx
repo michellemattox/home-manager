@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   Switch,
   Keyboard,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
@@ -25,6 +26,7 @@ import { type FrequencyType } from "@/types/app.types";
 import { toISODateString } from "@/utils/dateUtils";
 import { frequencyToDays } from "@/utils/scheduleUtils";
 import type { ProjectWithOwners } from "@/types/app.types";
+import { parseTaskFromText } from "@/hooks/useParseTask";
 
 type TaskMode = "low-lift" | "project-adjacent";
 
@@ -68,6 +70,10 @@ export default function NewTaskScreen() {
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
 
+  // AI assist state
+  const [aiText, setAiText] = useState("");
+  const [aiParsing, setAiParsing] = useState(false);
+
   // Personal task toggles
   const [llIsPersonal, setLlIsPersonal] = useState(false);
   const [paIsPersonal, setPaIsPersonal] = useState(false);
@@ -83,6 +89,7 @@ export default function NewTaskScreen() {
     control: llControl,
     handleSubmit: llHandleSubmit,
     watch: llWatch,
+    setValue: llSetValue,
     formState: { errors: llErrors },
   } = useForm<LowLiftFormData>({
     resolver: zodResolver(lowLiftSchema),
@@ -93,6 +100,25 @@ export default function NewTaskScreen() {
   });
 
   const frequencyType = llWatch("frequencyType");
+
+  const handleAiParse = async () => {
+    if (!aiText.trim()) return;
+    setAiParsing(true);
+    Keyboard.dismiss();
+    try {
+      const parsed = await parseTaskFromText(aiText.trim());
+      llSetValue("title", parsed.title);
+      if (parsed.description) llSetValue("notes", parsed.description);
+      llSetValue("frequencyType", parsed.frequency_type);
+      if (parsed.anchor_date) llSetValue("anchorDate", parsed.anchor_date);
+      if (parsed.time_of_day) llSetValue("timeOfDay", parsed.time_of_day);
+      setAiText("");
+    } catch (e: any) {
+      showAlert("AI Parse Error", e.message);
+    } finally {
+      setAiParsing(false);
+    }
+  };
 
   const onSubmitLowLift = async (data: LowLiftFormData) => {
     if (!household) return;
@@ -199,6 +225,32 @@ export default function NewTaskScreen() {
         {/* ── LOW-LIFT FORM ──────────────────────────────────────────────── */}
         {mode === "low-lift" && (
           <>
+            {/* AI Assist */}
+            <View className="bg-violet-50 border border-violet-200 rounded-xl p-3 mb-4">
+              <Text className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-2">
+                ✨ AI Assist — describe your task
+              </Text>
+              <Input
+                value={aiText}
+                onChangeText={setAiText}
+                placeholder='e.g. "Remind me to clean the gutters every fall"'
+                multiline
+                numberOfLines={2}
+              />
+              <TouchableOpacity
+                onPress={handleAiParse}
+                disabled={aiParsing || !aiText.trim()}
+                className={`mt-2 rounded-lg py-2.5 items-center flex-row justify-center gap-2 ${
+                  aiParsing || !aiText.trim() ? "bg-violet-200" : "bg-violet-600"
+                }`}
+              >
+                {aiParsing && <ActivityIndicator size="small" color="white" />}
+                <Text className="text-white text-sm font-semibold">
+                  {aiParsing ? "Parsing…" : "Fill Form with AI"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+
             <Controller
               control={llControl}
               name="title"

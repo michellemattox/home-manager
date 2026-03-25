@@ -21,6 +21,7 @@ import {
   useDeleteGardenWateringLog,
   useGardenZonesByHousehold,
   useGardenPlots,
+  useGardenWeatherLogs,
 } from "@/hooks/useGarden";
 import { WATERING_METHODS, type GardenWateringLog, type WateringMethod } from "@/types/app.types";
 
@@ -32,6 +33,7 @@ export default function WateringScreen() {
   const { data: logs = [], isLoading } = useGardenWatering(householdId);
   const { data: zones = [] } = useGardenZonesByHousehold(householdId);
   const { data: plots = [] } = useGardenPlots(householdId);
+  const { data: weatherLogs = [] } = useGardenWeatherLogs(householdId);
 
   const createLog = useCreateGardenWateringLog();
   const updateLog = useUpdateGardenWateringLog();
@@ -129,6 +131,36 @@ export default function WateringScreen() {
 
   const bedZones = zones.filter((z) => z.zone_type === "bed" || z.zone_type === "container");
 
+  // Rain-aware watering suggestions
+  // Rainfall >= 10mm in the last 3 days counts as 1 "effective watering day"
+  const rainfallLast7Days = useMemo(() => {
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 7);
+    return weatherLogs
+      .filter((w) => new Date(w.log_date + "T12:00:00") >= cutoff)
+      .reduce((sum, w) => sum + (w.rainfall_mm ?? 0), 0);
+  }, [weatherLogs]);
+
+  // Days since significant rain (>= 10mm)
+  const daysSinceSignificantRain = useMemo(() => {
+    const significant = weatherLogs.find((w) => (w.rainfall_mm ?? 0) >= 10);
+    if (!significant) return null;
+    return differenceInDays(new Date(), new Date(significant.log_date + "T12:00:00"));
+  }, [weatherLogs]);
+
+  // Zones that need watering: last watered > 5 days ago AND rain < 5mm in last 7 days
+  const wateringAlerts = useMemo(() => {
+    if (rainfallLast7Days >= 5) return []; // recent rain — no alerts
+    return bedZones
+      .map((zone) => {
+        const lastDate = lastWateredByZone.get(zone.id) ?? null;
+        const days = lastDate ? daysSince(lastDate) : null;
+        return { zone, days };
+      })
+      .filter(({ days }) => days === null || days >= 4)
+      .sort((a, b) => (b.days ?? 999) - (a.days ?? 999));
+  }, [bedZones, lastWateredByZone, rainfallLast7Days]);
+
   return (
     <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
       <View className="px-4 py-3 flex-row items-center gap-3 border-b border-green-100 bg-white">
@@ -147,6 +179,51 @@ export default function WateringScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
+
+          {/* ── Rain-aware watering alerts ────────────────────────────────── */}
+          {wateringAlerts.length > 0 && (
+            <View>
+              <Text className="text-sm font-semibold text-gray-700 mb-2">Watering Needed</Text>
+              <View className="gap-2">
+                {rainfallLast7Days > 0 && (
+                  <View className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
+                    <Text className="text-xs text-blue-700">
+                      {rainfallLast7Days.toFixed(1)}mm rain in last 7 days — not enough to skip watering.
+                      {daysSinceSignificantRain !== null && daysSinceSignificantRain > 3
+                        ? ` Last significant rain was ${daysSinceSignificantRain}d ago.`
+                        : ""}
+                    </Text>
+                  </View>
+                )}
+                {wateringAlerts.map(({ zone, days }) => (
+                  <View
+                    key={zone.id}
+                    className="rounded-xl px-4 py-3 border flex-row items-center gap-3"
+                    style={{
+                      backgroundColor: (days ?? 0) >= 7 ? "#FFF1F2" : "#FFFBEB",
+                      borderColor: (days ?? 0) >= 7 ? "#FCA5A5" : "#FCD34D",
+                    }}
+                  >
+                    <View style={{ backgroundColor: zone.color }} className="w-3 h-10 rounded-sm" />
+                    <View className="flex-1">
+                      <Text className="text-sm font-semibold text-gray-900">{zone.name}</Text>
+                      <Text className={`text-xs mt-0.5 ${(days ?? 0) >= 7 ? "text-red-600" : "text-amber-700"}`}>
+                        {days === null
+                          ? "Never watered — needs attention"
+                          : `Not watered in ${days} days`}
+                      </Text>
+                    </View>
+                    <TouchableOpacity
+                      onPress={() => openNew(zone.id)}
+                      className="bg-blue-600 rounded-xl px-3 py-2"
+                    >
+                      <Text className="text-white text-xs font-semibold">💧 Log</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
 
           {/* ── Zone status dashboard ─────────────────────────────────────── */}
           {bedZones.length > 0 && (
