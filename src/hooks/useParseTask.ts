@@ -11,10 +11,22 @@ export type ParsedTask = {
 };
 
 export async function parseTaskFromText(text: string): Promise<ParsedTask> {
-  const { data, error } = await supabase.functions.invoke("parse-task", {
-    body: { text },
-  });
-  if (error) throw error;
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error("Request timed out. Check your connection and try again.")), 30_000)
+  );
+
+  const invoke = supabase.functions.invoke("parse-task", { body: { text } });
+
+  const { data, error } = await Promise.race([invoke, timeout]);
+
+  if (error) {
+    // Extract the actual message from FunctionsHttpError when possible
+    const msg: string =
+      (error as any)?.context?.body
+        ? await (error as any).context.json().then((j: any) => j?.error ?? error.message).catch(() => error.message)
+        : error.message ?? "AI Assist failed";
+    throw new Error(msg);
+  }
   if (data?.error) throw new Error(data.error);
   return data as ParsedTask;
 }

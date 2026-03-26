@@ -1,5 +1,5 @@
-import React, { useRef } from "react";
-import { View, Text, TouchableOpacity, Platform, Linking, Alert } from "react-native";
+import React, { useRef, useEffect } from "react";
+import { View, Text, TouchableOpacity, ActivityIndicator, Linking, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -9,30 +9,20 @@ export default function ScanBarcodeScreen() {
   const router = useRouter();
   const [permission, requestPermission] = useCameraPermissions();
   const cooldown = useRef(false);
+  const requested = useRef(false);
+
+  // Auto-request permission as soon as the hook has loaded
+  useEffect(() => {
+    if (requested.current) return;
+    if (permission === null) return; // still loading — wait for next render
+    if (permission.granted) return;  // already granted — nothing to do
+    if (permission.canAskAgain === false) return; // permanently denied — show UI
+    requested.current = true;
+    requestPermission();
+  }, [permission]);
 
   function goBack() {
     router.back();
-  }
-
-  async function ensurePermission(): Promise<boolean> {
-    if (permission?.granted) return true;
-    if (permission?.canAskAgain === false) {
-      Alert.alert(
-        "Camera Permission Required",
-        "Camera access was denied. Enable it in Settings → Apps → Home Manager → Permissions → Camera.",
-        [
-          { text: "Cancel", style: "cancel" },
-          { text: "Open Settings", onPress: () => Linking.openSettings() },
-        ]
-      );
-      return false;
-    }
-    const result = await requestPermission();
-    if (!result.granted) {
-      Alert.alert("Camera Permission Required", "Camera access is needed to scan barcodes.", [{ text: "OK" }]);
-      return false;
-    }
-    return true;
   }
 
   function handleBarcode(data: string) {
@@ -42,30 +32,40 @@ export default function ScanBarcodeScreen() {
     router.back();
   }
 
-  // Show permission UI until granted
-  if (!permission?.granted) {
+  // Still determining permission status
+  if (permission === null) {
+    return (
+      <SafeAreaView className="flex-1 bg-black items-center justify-center" edges={["top"]}>
+        <ActivityIndicator color="#4ade80" />
+      </SafeAreaView>
+    );
+  }
+
+  // Permanently denied — must go to Settings
+  if (!permission.granted && permission.canAskAgain === false) {
     return (
       <SafeAreaView className="flex-1 bg-black items-center justify-center px-8" edges={["top"]}>
         <Text className="text-white text-lg font-semibold text-center mb-3">Camera Access Needed</Text>
         <Text className="text-gray-400 text-sm text-center mb-6">
-          To scan seed packet barcodes, this app needs access to your camera.
+          Camera permission was permanently denied. Enable it in your device settings.
         </Text>
-        {permission?.canAskAgain !== false ? (
-          <TouchableOpacity
-            onPress={ensurePermission}
-            className="bg-green-600 rounded-xl px-6 py-3 mb-3"
-          >
-            <Text className="text-white font-semibold">Grant Camera Access</Text>
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity
-            onPress={() => Linking.openSettings()}
-            className="bg-green-600 rounded-xl px-6 py-3 mb-3"
-          >
-            <Text className="text-white font-semibold">Open Settings</Text>
-          </TouchableOpacity>
-        )}
+        <TouchableOpacity onPress={() => Linking.openSettings()} className="bg-green-600 rounded-xl px-6 py-3 mb-3">
+          <Text className="text-white font-semibold">Open Settings</Text>
+        </TouchableOpacity>
         <TouchableOpacity onPress={goBack}>
+          <Text className="text-gray-400 text-sm">Cancel</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  // Not yet granted — show spinner while system dialog is open
+  if (!permission.granted) {
+    return (
+      <SafeAreaView className="flex-1 bg-black items-center justify-center px-8" edges={["top"]}>
+        <ActivityIndicator color="#4ade80" size="large" />
+        <Text className="text-gray-400 text-sm text-center mt-4">Waiting for camera permission…</Text>
+        <TouchableOpacity onPress={goBack} className="mt-6">
           <Text className="text-gray-400 text-sm">Cancel</Text>
         </TouchableOpacity>
       </SafeAreaView>
