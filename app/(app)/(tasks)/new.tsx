@@ -225,31 +225,7 @@ export default function NewTaskScreen() {
         {/* ── LOW-LIFT FORM ──────────────────────────────────────────────── */}
         {mode === "low-lift" && (
           <>
-            {/* AI Assist */}
-            <View className="bg-violet-50 border border-violet-200 rounded-xl p-3 mb-4">
-              <Text className="text-xs font-bold text-violet-600 uppercase tracking-wide mb-2">
-                ✨ AI Assist — describe your task
-              </Text>
-              <Input
-                value={aiText}
-                onChangeText={setAiText}
-                placeholder='e.g. "Remind me to clean the gutters every fall"'
-                multiline
-                numberOfLines={2}
-              />
-              <TouchableOpacity
-                onPress={handleAiParse}
-                disabled={aiParsing || !aiText.trim()}
-                className={`mt-2 rounded-lg py-2.5 items-center flex-row justify-center gap-2 ${
-                  aiParsing || !aiText.trim() ? "bg-violet-200" : "bg-violet-600"
-                }`}
-              >
-                {aiParsing && <ActivityIndicator size="small" color="white" />}
-                <Text className="text-white text-sm font-semibold">
-                  {aiParsing ? "Parsing…" : "Fill Form with AI"}
-                </Text>
-              </TouchableOpacity>
-            </View>
+            {/* AI Assist — hidden until provider is stable */}
 
             <Controller
               control={llControl}
