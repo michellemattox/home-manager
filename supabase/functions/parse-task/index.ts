@@ -16,6 +16,7 @@ const corsHeaders = {
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY");
 
 interface ParsedTask {
   title: string;
@@ -86,6 +87,27 @@ async function callAnthropic(prompt: string): Promise<string> {
   return data.content?.[0]?.text ?? "{}";
 }
 
+async function callGemini(prompt: string): Promise<string> {
+  const res = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: "application/json", maxOutputTokens: 512 },
+      }),
+    }
+  );
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message ?? `Gemini error ${res.status}`;
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}";
+}
+
 async function callOpenAI(prompt: string): Promise<string> {
   const res = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
@@ -123,9 +145,9 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
+    if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY && !GEMINI_API_KEY) {
       return new Response(
-        JSON.stringify({ error: "No AI provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in Supabase secrets." }),
+        JSON.stringify({ error: "No AI provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in Supabase secrets." }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
@@ -133,20 +155,20 @@ Deno.serve(async (req) => {
     const today = new Date().toISOString().split("T")[0];
     const prompt = buildPrompt(text, today);
 
-    let rawText: string;
+    // Try providers in order: Anthropic → Gemini → OpenAI
+    let rawText: string | undefined;
+    let lastError: Error | undefined;
 
-    // Try Anthropic first; fall back to OpenAI if Anthropic fails
     if (ANTHROPIC_API_KEY) {
-      try {
-        rawText = await callAnthropic(prompt);
-      } catch (anthropicErr: any) {
-        if (!OPENAI_API_KEY) throw anthropicErr;
-        // Anthropic failed (e.g. low credits) — try OpenAI
-        rawText = await callOpenAI(prompt);
-      }
-    } else {
-      rawText = await callOpenAI(prompt);
+      try { rawText = await callAnthropic(prompt); } catch (e: any) { lastError = e; }
     }
+    if (rawText === undefined && GEMINI_API_KEY) {
+      try { rawText = await callGemini(prompt); } catch (e: any) { lastError = e; }
+    }
+    if (rawText === undefined && OPENAI_API_KEY) {
+      try { rawText = await callOpenAI(prompt); } catch (e: any) { lastError = e; }
+    }
+    if (rawText === undefined) throw lastError ?? new Error("All AI providers failed");
 
     let parsed: ParsedTask;
     try {
