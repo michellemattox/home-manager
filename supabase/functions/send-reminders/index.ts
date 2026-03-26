@@ -9,6 +9,7 @@ const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
 const fromEmail = Deno.env.get("REMINDER_FROM_EMAIL") ?? "reminders@mattoxhome.com";
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -126,6 +127,71 @@ async function sendDigestEmail(
   const json = await res.json();
   if (!res.ok) throw new Error(`Resend error ${res.status}: ${JSON.stringify(json)}`);
   return json;
+}
+
+function getSeason(month: number): string {
+  if (month >= 3 && month <= 5) return "Spring";
+  if (month >= 6 && month <= 8) return "Summer";
+  if (month >= 9 && month <= 11) return "Fall";
+  return "Winter";
+}
+
+async function generateSmartPushMessage(
+  items: ReminderItem[],
+  season: string,
+  weatherSummary: string
+): Promise<{ title: string; body: string }> {
+  const fallback = {
+    title: items.length === 1
+      ? `Reminder: ${items[0].title}`
+      : `${items.length} reminders today`,
+    body: items.slice(0, 3).map((i) => i.title).join(", "),
+  };
+
+  if (!ANTHROPIC_API_KEY) return fallback;
+
+  const overdue = items.filter((i) => i.overdue);
+  const due = items.filter((i) => !i.overdue);
+
+  const prompt = `Generate a short, specific push notification for a household management app.
+
+Season: ${season}
+Weather today: ${weatherSummary}
+Overdue tasks (${overdue.length}): ${overdue.map((i) => `"${i.title}" (was due ${i.dueDate})`).join(", ") || "none"}
+Due today (${due.length}): ${due.map((i) => `"${i.title}"`).join(", ") || "none"}
+
+Rules:
+- Lead with the single most urgent item by name
+- If tasks are overdue mention how many
+- Plain language, no emojis in body
+- title: ≤50 chars, punchy
+- body: ≤110 chars, 1-2 sentences
+
+Respond ONLY with JSON (no markdown): {"title": "...", "body": "..."}`;
+
+  try {
+    const res = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": ANTHROPIC_API_KEY,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 200,
+        messages: [{ role: "user", content: prompt }],
+      }),
+    });
+    if (!res.ok) return fallback;
+    const data = await res.json();
+    const rawText = data.content?.[0]?.text ?? "{}";
+    const match = rawText.match(/\{[\s\S]*\}/);
+    const parsed = match ? JSON.parse(match[0]) : null;
+    if (parsed?.title && parsed?.body) return parsed;
+  } catch { /* fall through */ }
+
+  return fallback;
 }
 
 async function sendPushNotifications(messages: object[]) {
@@ -335,27 +401,70 @@ Deno.serve(async (req) => {
       emailsSent++;
     }
 
-    // ── 5. Also send push notifications if device tokens exist ────────────────
+    // ── 6. Build smart push notifications via Claude ──────────────────────────
     const { data: tokens } = await supabase
       .from("device_tokens")
       .select("user_id, expo_push_token")
       .in("user_id", userIds);
 
-    const pushMessages = (tokens ?? [])
-      .map((token) => {
-        const items = tasksByUserId[token.user_id] ?? [];
+    // Fetch recent weather for all households (last 7 days) to give Claude context
+    const { data: recentWeather } = await supabase
+      .from("garden_weather_logs")
+      .select("household_id, log_date, temp_high_f, rainfall_mm, condition_main")
+      .in("household_id", householdIds)
+      .gte("log_date", (() => {
+        const d = new Date(now);
+        d.setDate(d.getDate() - 7);
+        return d.toISOString().split("T")[0];
+      })())
+      .order("log_date", { ascending: false });
+
+    // Summarize weather per household
+    const weatherByHousehold: Record<string, string> = {};
+    for (const hhId of householdIds) {
+      const logs = (recentWeather ?? []).filter((w) => w.household_id === hhId).slice(0, 3);
+      if (logs.length) {
+        const latest = logs[0];
+        weatherByHousehold[hhId] =
+          `${latest.condition_main ?? "Unknown"}, ${latest.temp_high_f ?? "?"}°F, ` +
+          `${logs.reduce((s, w) => s + (w.rainfall_mm ?? 0), 0).toFixed(1)}mm rain last 7 days`;
+      } else {
+        weatherByHousehold[hhId] = "No recent weather data";
+      }
+    }
+
+    const season = getSeason(now.getMonth() + 1);
+
+    // Find which household each user belongs to
+    const householdByUserId: Record<string, string> = {};
+    for (const m of allMembers ?? []) {
+      if (m.user_id) householdByUserId[m.user_id] = m.household_id;
+    }
+
+    // Generate smart messages for all users with tokens in parallel
+    const tokensByUserId: Record<string, string[]> = {};
+    for (const t of tokens ?? []) {
+      if (!tokensByUserId[t.user_id]) tokensByUserId[t.user_id] = [];
+      tokensByUserId[t.user_id].push(t.expo_push_token);
+    }
+
+    const smartMessageResults = await Promise.all(
+      Object.entries(tokensByUserId).map(async ([userId, userTokens]) => {
+        const items = tasksByUserId[userId] ?? [];
         if (!items.length) return null;
-        return {
-          to: token.expo_push_token,
-          title:
-            items.length === 1
-              ? `Reminder: ${items[0].title}`
-              : `${items.length} reminders today`,
-          body: items.map((i) => i.title).join(", "),
+        const hhId = householdByUserId[userId] ?? householdIds[0];
+        const weatherSummary = weatherByHousehold[hhId] ?? "No weather data";
+        const msg = await generateSmartPushMessage(items, season, weatherSummary);
+        return userTokens.map((tok) => ({
+          to: tok,
+          title: msg.title,
+          body: msg.body,
           data: { screen: "tasks" },
-        };
+        }));
       })
-      .filter(Boolean);
+    );
+
+    const pushMessages = smartMessageResults.flat().filter(Boolean);
 
     const pushResult = await sendPushNotifications(pushMessages);
 
