@@ -218,10 +218,47 @@ export default function ProjectDetailScreen() {
 
   const handleAddUpdate = async () => {
     if (!updateText.trim() || !currentMember || !id) return;
+    const body = updateText.trim();
     try {
-      await addUpdate.mutateAsync({ project_id: id, author_id: currentMember.id, body: updateText.trim() });
+      await addUpdate.mutateAsync({ project_id: id, author_id: currentMember.id, body });
       setUpdateText("");
       setShowUpdateModal(false);
+
+      // @mention notifications — find mentioned members and push-notify them
+      const mentionedMembers = members.filter((m) => {
+        if (m.id === currentMember.id) return false;
+        if (!m.display_name) return false;
+        // Match @Name (case-insensitive) or bare name preceded by word boundary
+        const escaped = m.display_name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return new RegExp(`(?:^|[\\s@])${escaped}(?=[\\s,!?.]|$)`, "i").test(body);
+      });
+
+      if (mentionedMembers.length > 0) {
+        const userIds = mentionedMembers.map((m) => m.user_id).filter(Boolean);
+        const { data: tokens } = await supabase
+          .from("device_tokens")
+          .select("user_id, expo_push_token")
+          .in("user_id", userIds);
+
+        if (tokens && tokens.length > 0) {
+          const authorName = currentMember.display_name ?? "Someone";
+          const projectTitle = project?.title ?? "a project";
+          const messages = tokens.map((t) => ({
+            to: t.expo_push_token,
+            title: `${authorName} mentioned you`,
+            body: `In "${projectTitle}": ${body.length > 80 ? body.slice(0, 77) + "…" : body}`,
+            data: { screen: "project", projectId: id },
+          }));
+
+          await fetch("https://exp.host/--/api/v2/push/send", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Accept: "application/json" },
+            body: JSON.stringify(messages),
+          }).catch(() => {
+            // Best-effort — don't block the UI on push failure
+          });
+        }
+      }
     } catch (e: any) { showAlert("Error", e.message); }
   };
 
