@@ -7,6 +7,8 @@ import {
   Modal,
   ActivityIndicator,
   Platform,
+  Alert,
+  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -128,9 +130,32 @@ export default function SeedsScreen() {
   }
 
   async function openScanner() {
-    if (!cameraPermission?.granted) {
+    // Permission status still loading — do nothing yet
+    if (cameraPermission === null) return;
+
+    if (!cameraPermission.granted) {
+      // Android: permission was permanently denied — must go to Settings
+      if (!cameraPermission.canAskAgain) {
+        Alert.alert(
+          "Camera Permission Required",
+          "Camera access was denied. To scan barcodes, enable it in Settings → Apps → Home Manager → Permissions → Camera.",
+          [
+            { text: "Cancel", style: "cancel" },
+            { text: "Open Settings", onPress: () => Linking.openSettings() },
+          ]
+        );
+        return;
+      }
+      // Ask for permission
       const result = await requestCameraPermission();
-      if (!result.granted) return;
+      if (!result.granted) {
+        Alert.alert(
+          "Camera Permission Required",
+          "Camera access is needed to scan seed packet barcodes.",
+          [{ text: "OK" }]
+        );
+        return;
+      }
     }
     setScanError(null);
     setShowScanner(true);
