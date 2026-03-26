@@ -131,6 +131,53 @@ async function callOpenAI(prompt: string): Promise<string> {
   return data.choices?.[0]?.message?.content ?? "{}";
 }
 
+// Rule-based fallback — works with no API keys at all
+function ruleBasedParse(text: string, today: string): ParsedTask {
+  const lower = text.toLowerCase();
+  const year = today.slice(0, 4);
+
+  // Frequency
+  let frequency_type: ParsedTask["frequency_type"] = "monthly";
+  let frequency_days = 30;
+  const everyNDays = lower.match(/every\s+(\d+)\s+days?/);
+  const everyNWeeks = lower.match(/every\s+(\d+)\s+weeks?/);
+  const everyNMonths = lower.match(/every\s+(\d+)\s+months?/);
+  if (/every\s+day|daily/.test(lower))           { frequency_type = "daily";   frequency_days = 1; }
+  else if (/every\s+week|weekly/.test(lower))    { frequency_type = "weekly";  frequency_days = 7; }
+  else if (/every\s+month|monthly/.test(lower))  { frequency_type = "monthly"; frequency_days = 30; }
+  else if (/every\s+year|annual|yearly/.test(lower)) { frequency_type = "yearly"; frequency_days = 365; }
+  else if (everyNDays)  { frequency_type = "custom"; frequency_days = parseInt(everyNDays[1]); }
+  else if (everyNWeeks) { frequency_type = "custom"; frequency_days = parseInt(everyNWeeks[1]) * 7; }
+  else if (everyNMonths){ frequency_type = "custom"; frequency_days = parseInt(everyNMonths[1]) * 30; }
+
+  // Season → anchor date
+  let anchor_date: string | null = null;
+  if (/spring/.test(lower))        anchor_date = `${year}-03-20`;
+  else if (/summer/.test(lower))   anchor_date = `${year}-06-21`;
+  else if (/fall|autumn/.test(lower)) anchor_date = `${year}-09-22`;
+  else if (/winter/.test(lower))   anchor_date = `${year}-12-21`;
+
+  // Title — strip scheduling filler
+  let title = text
+    .replace(/remind me to\s*/i, "")
+    .replace(/\s*every\s+(day|week|month|year|\d+\s*(days?|weeks?|months?))\b.*/i, "")
+    .replace(/\s*(in the|each|this)\s+(spring|summer|fall|autumn|winter)\b.*/i, "")
+    .trim();
+  title = title ? title.charAt(0).toUpperCase() + title.slice(1) : text.trim();
+
+  // Category
+  let category: string | null = null;
+  if (/mow|lawn|weed|mulch|plant|prune|hedge|garden/.test(lower))    category = "yard_and_garden";
+  else if (/clean|dust|vacuum|mop|scrub|sweep/.test(lower))          category = "cleaning";
+  else if (/gutter|roof|furnace|filter|hvac|repair|paint/.test(lower)) category = "home_maintenance";
+  else if (/car|oil change|tire|vehicle/.test(lower))                 category = "vehicles";
+  else if (/dog|cat|pet|vet/.test(lower))                             category = "pets";
+  else if (/doctor|dentist|medication|exercise|gym/.test(lower))      category = "health";
+  else if (/bill|budget|tax|finance|insurance/.test(lower))           category = "finances";
+
+  return { title, description: null, frequency_type, frequency_days, anchor_date, time_of_day: null, category };
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
@@ -145,38 +192,35 @@ Deno.serve(async (req) => {
       });
     }
 
-    if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY && !GEMINI_API_KEY) {
-      return new Response(
-        JSON.stringify({ error: "No AI provider configured. Set ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY in Supabase secrets." }),
-        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
-      );
-    }
-
     const today = new Date().toISOString().split("T")[0];
     const prompt = buildPrompt(text, today);
 
-    // Try providers in order: Anthropic → Gemini → OpenAI
+    // Try AI providers in order: Anthropic → Gemini → Groq → OpenAI → rule-based
     let rawText: string | undefined;
-    let lastError: Error | undefined;
 
     if (ANTHROPIC_API_KEY) {
-      try { rawText = await callAnthropic(prompt); } catch (e: any) { lastError = e; }
+      try { rawText = await callAnthropic(prompt); } catch { /* fall through */ }
     }
     if (rawText === undefined && GEMINI_API_KEY) {
-      try { rawText = await callGemini(prompt); } catch (e: any) { lastError = e; }
+      try { rawText = await callGemini(prompt); } catch { /* fall through */ }
     }
     if (rawText === undefined && OPENAI_API_KEY) {
-      try { rawText = await callOpenAI(prompt); } catch (e: any) { lastError = e; }
+      try { rawText = await callOpenAI(prompt); } catch { /* fall through */ }
     }
-    if (rawText === undefined) throw lastError ?? new Error("All AI providers failed");
 
+    // Rule-based parser — always works, no API needed
     let parsed: ParsedTask;
-    try {
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
-      if (!parsed?.title) throw new Error("Missing title");
-    } catch {
-      throw new Error("Failed to parse AI response as JSON");
+    if (rawText === undefined) {
+      parsed = ruleBasedParse(text, today);
+    } else {
+      try {
+        const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+        parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+        if (!parsed?.title) throw new Error();
+      } catch {
+        // AI returned something unparseable — fall back to rules
+        parsed = ruleBasedParse(text, today);
+      }
     }
 
     const validFreqs = ["daily", "weekly", "monthly", "yearly", "custom"] as const;
