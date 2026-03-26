@@ -4,7 +4,7 @@
  * Based on WSU Extension guidelines, local frost dates, and PNW Master Gardener
  * recommendations. Last frost: ~March 15 · First fall frost: ~November 15
  */
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -13,6 +13,13 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { addWeeks, addDays } from "date-fns";
+import {
+  SUCCESSION_CROPS,
+  getFrostDates,
+  getDirectSowSpringWindow,
+  getDirectSowFallWindow,
+} from "@/utils/successionUtils";
 
 // Zone 8b frost dates
 const LAST_FROST = "~March 15";
@@ -279,6 +286,56 @@ export default function CalendarScreen() {
   const monthData = CALENDAR[selectedMonth - 1];
   const frostStyle = FROST_RISK_STYLES[monthData.frostRisk];
 
+  // Compute succession crops active in the selected month
+  const today = new Date();
+  const year = today.getFullYear();
+  const { lastSpringFrost, firstFallFrost } = getFrostDates(year);
+
+  const successionWindows = useMemo(() => {
+    const results: { name: string; type: "direct_sow" | "start_indoors"; window: string; interval: string | null }[] = [];
+    const monthStart = new Date(year, selectedMonth - 1, 1);
+    const monthEnd = new Date(year, selectedMonth, 0);
+
+    for (const crop of SUCCESSION_CROPS) {
+      // Start indoors window
+      if (crop.startIndoorsWeeks) {
+        const transplantRef = lastSpringFrost;
+        const startDate = addWeeks(transplantRef, -crop.startIndoorsWeeks);
+        if (startDate <= monthEnd && addWeeks(startDate, 2) >= monthStart) {
+          results.push({
+            name: crop.name,
+            type: "start_indoors",
+            window: `Start ~${startDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+            interval: crop.successionIntervalDays ? `every ${crop.successionIntervalDays}d` : null,
+          });
+          continue;
+        }
+      }
+      // Direct sow spring
+      const spring = getDirectSowSpringWindow(crop, today);
+      if (spring?.earliest && spring.earliest <= monthEnd && spring.earliest >= monthStart) {
+        results.push({
+          name: crop.name,
+          type: "direct_sow",
+          window: spring.label,
+          interval: crop.successionIntervalDays ? `every ${crop.successionIntervalDays}d` : null,
+        });
+        continue;
+      }
+      // Direct sow fall
+      const fall = getDirectSowFallWindow(crop, today);
+      if (fall?.earliest && fall.earliest <= monthEnd && fall.earliest >= monthStart) {
+        results.push({
+          name: crop.name,
+          type: "direct_sow",
+          window: fall.label,
+          interval: crop.successionIntervalDays ? `every ${crop.successionIntervalDays}d` : null,
+        });
+      }
+    }
+    return results;
+  }, [selectedMonth, year]);
+
   return (
     <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
       <View className="px-4 py-3 flex-row items-center gap-3 border-b border-green-100 bg-white">
@@ -355,6 +412,30 @@ export default function CalendarScreen() {
                   </View>
                 );
               })}
+            </View>
+          </View>
+        )}
+
+        {/* Succession Planting Windows */}
+        {successionWindows.length > 0 && (
+          <View>
+            <Text className="text-sm font-semibold text-gray-700 mb-2">🔁 Succession Windows</Text>
+            <View className="gap-2">
+              {successionWindows.map((w, i) => (
+                <View key={i} className="bg-white border border-blue-100 rounded-xl px-4 py-3 flex-row items-start gap-3">
+                  <View className={`px-2 py-1 rounded-lg mt-0.5 ${w.type === "start_indoors" ? "bg-blue-50" : "bg-green-50"}`}>
+                    <Text className={`text-xs font-semibold ${w.type === "start_indoors" ? "text-blue-700" : "text-green-700"}`}>
+                      {w.type === "start_indoors" ? "🏠 Indoors" : "🌱 Direct"}
+                    </Text>
+                  </View>
+                  <View className="flex-1">
+                    <Text className="text-sm font-semibold text-gray-900">{w.name}</Text>
+                    <Text className="text-xs text-gray-500 mt-0.5">
+                      {w.window}{w.interval ? ` · repeat ${w.interval}` : ""}
+                    </Text>
+                  </View>
+                </View>
+              ))}
             </View>
           </View>
         )}

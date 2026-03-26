@@ -31,6 +31,8 @@ import {
   useAcceptAdvisorRec,
   type AdvisorRec,
 } from "@/hooks/useGardenAdvisor";
+import { useHomeRealtime } from "@/hooks/useRealtimeInvalidate";
+import { useSeasonScore } from "@/hooks/useSeasonScore";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -284,6 +286,56 @@ function StatCard({ label, value, sub, color, bgColor, onPress }: {
   return onPress ? <TouchableOpacity className="flex-1" onPress={onPress}>{content}</TouchableOpacity> : content;
 }
 
+function SeasonScoreCard({ householdId }: { householdId: string | undefined }) {
+  const { data: score } = useSeasonScore(householdId);
+  if (!score) return null;
+  const total = score.tasksThisMonth + score.projectsThisMonth;
+  const lastTotal = score.tasksLastMonth + score.projectsLastMonth;
+  if (total === 0 && lastTotal === 0) return null;
+
+  const monthName = new Date().toLocaleDateString("en-US", { month: "long" });
+  const emoji = score.delta > 0 ? "🔥" : score.delta < 0 ? "📉" : "➡️";
+  const deltaText = score.delta > 0
+    ? `+${score.delta} more than last month`
+    : score.delta < 0
+    ? `${score.delta} vs last month`
+    : "Same as last month";
+
+  return (
+    <View className="rounded-xl p-4 mt-4 border border-amber-200" style={{ backgroundColor: "#FFFBEB" }}>
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-xs font-bold text-amber-700 uppercase tracking-wide">
+          {emoji} {monthName} Score
+        </Text>
+        <Text className="text-xs text-amber-600 font-medium">{deltaText}</Text>
+      </View>
+      <View className="flex-row gap-4">
+        <View className="flex-1 items-center bg-white rounded-xl py-3 border border-amber-100">
+          <Text className="text-2xl font-bold text-amber-700">{score.tasksThisMonth}</Text>
+          <Text className="text-xs text-gray-500 mt-0.5">Tasks done</Text>
+          {score.tasksLastMonth > 0 && (
+            <Text className="text-xs text-gray-400">{score.tasksLastMonth} last mo.</Text>
+          )}
+        </View>
+        <View className="flex-1 items-center bg-white rounded-xl py-3 border border-amber-100">
+          <Text className="text-2xl font-bold text-amber-700">{score.projectsThisMonth}</Text>
+          <Text className="text-xs text-gray-500 mt-0.5">Projects done</Text>
+          {score.projectsLastMonth > 0 && (
+            <Text className="text-xs text-gray-400">{score.projectsLastMonth} last mo.</Text>
+          )}
+        </View>
+        <View className="flex-1 items-center bg-white rounded-xl py-3 border border-amber-100">
+          <Text className="text-2xl font-bold text-amber-700">{total}</Text>
+          <Text className="text-xs text-gray-500 mt-0.5">Total wins</Text>
+          {lastTotal > 0 && (
+            <Text className="text-xs text-gray-400">{lastTotal} last mo.</Text>
+          )}
+        </View>
+      </View>
+    </View>
+  );
+}
+
 export default function HomeScreen() {
   const router = useRouter();
   const { household, members } = useHouseholdStore();
@@ -384,6 +436,9 @@ export default function HomeScreen() {
       router.push("/(app)/(goals)");
     }
   };
+
+  // Realtime subscriptions — all members see changes instantly
+  useHomeRealtime(household?.id);
 
   const [connectingReminderId, setConnectingReminderId] = useState<string | null>(null);
 
@@ -637,6 +692,9 @@ export default function HomeScreen() {
             />
           ))
         )}
+
+        {/* Season Score */}
+        <SeasonScoreCard householdId={household?.id} />
 
         {/* All clear banner */}
         {!hasAlerts && !hasUpcoming && (activeProjects.length > 0 || (tasks ?? []).length > 0) && (

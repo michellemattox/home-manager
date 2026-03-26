@@ -7,7 +7,9 @@ import {
   TextInput,
   Modal,
   RefreshControl,
+  Animated,
 } from "react-native";
+import { notificationSuccess } from "@/lib/haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -422,6 +424,19 @@ export default function GoalsScreen() {
   const completeGoalPeriod = useCompleteGoalPeriod();
   const deleteUpdate = useDeleteGoalUpdate();
 
+  // Celebration animation
+  const celebrateScale = useRef(new Animated.Value(1)).current;
+  const [celebratingGoalId, setCelebratingGoalId] = useState<string | null>(null);
+
+  function triggerCelebration(goalId: string) {
+    setCelebratingGoalId(goalId);
+    celebrateScale.setValue(1);
+    Animated.sequence([
+      Animated.spring(celebrateScale, { toValue: 1.08, useNativeDriver: true, speed: 20, bounciness: 12 }),
+      Animated.spring(celebrateScale, { toValue: 1, useNativeDriver: true, speed: 20, bounciness: 6 }),
+    ]).start(() => setTimeout(() => setCelebratingGoalId(null), 1200));
+  }
+
   // Filters
   const [userTypeFilter, setUserTypeFilter] = useState<UserTypeFilter>("all");
   const [memberFilter, setMemberFilter] = useState<string | null>(null);
@@ -629,6 +644,8 @@ export default function GoalsScreen() {
         householdId: household.id,
         authorId: currentMember.id,
       });
+      await notificationSuccess();
+      triggerCelebration(goal.id);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
@@ -725,7 +742,14 @@ export default function GoalsScreen() {
           </View>
         )}
 
-        {activeGoals.map((g) => <GoalCard key={g.id} {...goalCardProps(g)} />)}
+        {activeGoals.map((g) => (
+          <Animated.View
+            key={g.id}
+            style={celebratingGoalId === g.id ? { transform: [{ scale: celebrateScale }] } : undefined}
+          >
+            <GoalCard {...goalCardProps(g)} />
+          </Animated.View>
+        ))}
 
         {goals.filter((g) => g.status === "completed").length > 0 && (
           <TouchableOpacity
