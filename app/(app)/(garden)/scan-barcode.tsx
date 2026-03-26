@@ -1,5 +1,5 @@
-import React, { useRef, useEffect } from "react";
-import { View, Text, TouchableOpacity, ActivityIndicator, Linking, Alert } from "react-native";
+import React, { useRef, useEffect, useState } from "react";
+import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, Linking, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
@@ -11,15 +11,30 @@ export default function ScanBarcodeScreen() {
   const cooldown = useRef(false);
   const requested = useRef(false);
 
-  // Auto-request permission as soon as the hook has loaded
+  // If the OS silently ignores requestPermission (permission not in manifest
+  // of the installed build), the hook state never changes. We detect this
+  // by waiting 4 s after requesting — if still not granted, show fallback.
+  const [permissionTimedOut, setPermissionTimedOut] = useState(false);
+  const [manualBarcode, setManualBarcode] = useState("");
+
   useEffect(() => {
     if (requested.current) return;
-    if (permission === null) return; // still loading — wait for next render
-    if (permission.granted) return;  // already granted — nothing to do
-    if (permission.canAskAgain === false) return; // permanently denied — show UI
+    if (permission === null) return;       // still loading
+    if (permission.granted) return;
+    if (permission.canAskAgain === false) return;
+
     requested.current = true;
     requestPermission();
+
+    // Give the OS dialog 4 s to appear; if nothing changes, show manual fallback
+    const timer = setTimeout(() => setPermissionTimedOut(true), 4_000);
+    return () => clearTimeout(timer);
   }, [permission]);
+
+  // Reset timeout flag if permission comes through
+  useEffect(() => {
+    if (permission?.granted) setPermissionTimedOut(false);
+  }, [permission?.granted]);
 
   function goBack() {
     router.back();
@@ -32,7 +47,13 @@ export default function ScanBarcodeScreen() {
     router.back();
   }
 
-  // Still determining permission status
+  function submitManual() {
+    const upc = manualBarcode.trim().replace(/\D/g, "");
+    if (!upc) return;
+    handleBarcode(upc);
+  }
+
+  // ── Still determining permission ──────────────────────────────────────────
   if (permission === null) {
     return (
       <SafeAreaView className="flex-1 bg-black items-center justify-center" edges={["top"]}>
@@ -41,25 +62,17 @@ export default function ScanBarcodeScreen() {
     );
   }
 
-  // Permanently denied — must go to Settings
+  // ── Permanently denied ────────────────────────────────────────────────────
   if (!permission.granted && permission.canAskAgain === false) {
-    return (
-      <SafeAreaView className="flex-1 bg-black items-center justify-center px-8" edges={["top"]}>
-        <Text className="text-white text-lg font-semibold text-center mb-3">Camera Access Needed</Text>
-        <Text className="text-gray-400 text-sm text-center mb-6">
-          Camera permission was permanently denied. Enable it in your device settings.
-        </Text>
-        <TouchableOpacity onPress={() => Linking.openSettings()} className="bg-green-600 rounded-xl px-6 py-3 mb-3">
-          <Text className="text-white font-semibold">Open Settings</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={goBack}>
-          <Text className="text-gray-400 text-sm">Cancel</Text>
-        </TouchableOpacity>
-      </SafeAreaView>
-    );
+    return <ManualFallback reason="settings" manualBarcode={manualBarcode} setManualBarcode={setManualBarcode} onSubmit={submitManual} onBack={goBack} />;
   }
 
-  // Not yet granted — show spinner while system dialog is open
+  // ── Permission request sent but OS dialog never appeared (not in manifest) ─
+  if (!permission.granted && permissionTimedOut) {
+    return <ManualFallback reason="manifest" manualBarcode={manualBarcode} setManualBarcode={setManualBarcode} onSubmit={submitManual} onBack={goBack} />;
+  }
+
+  // ── Waiting for system dialog ─────────────────────────────────────────────
   if (!permission.granted) {
     return (
       <SafeAreaView className="flex-1 bg-black items-center justify-center px-8" edges={["top"]}>
@@ -72,6 +85,7 @@ export default function ScanBarcodeScreen() {
     );
   }
 
+  // ── Camera ready ──────────────────────────────────────────────────────────
   return (
     <SafeAreaView className="flex-1 bg-black" edges={["top"]}>
       <View className="flex-row items-center justify-between px-4 py-3">
@@ -91,12 +105,8 @@ export default function ScanBarcodeScreen() {
           }}
           onBarcodeScanned={(e) => handleBarcode(e.data)}
         />
-        {/* Scan guide overlay */}
         <View
-          style={{
-            position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-            alignItems: "center", justifyContent: "center",
-          }}
+          style={{ position: "absolute", top: 0, left: 0, right: 0, bottom: 0, alignItems: "center", justifyContent: "center" }}
           pointerEvents="none"
         >
           <View style={{ width: 260, height: 120, borderWidth: 2, borderColor: "#4ade80", borderRadius: 12 }} />
@@ -105,6 +115,64 @@ export default function ScanBarcodeScreen() {
           </Text>
         </View>
       </View>
+    </SafeAreaView>
+  );
+}
+
+function ManualFallback({
+  reason,
+  manualBarcode,
+  setManualBarcode,
+  onSubmit,
+  onBack,
+}: {
+  reason: "settings" | "manifest";
+  manualBarcode: string;
+  setManualBarcode: (v: string) => void;
+  onSubmit: () => void;
+  onBack: () => void;
+}) {
+  const msg =
+    reason === "manifest"
+      ? "Camera access couldn't be enabled on this build. Enter the barcode number from your seed packet instead."
+      : "Camera permission was denied. Enable it in Settings, or enter the barcode number manually.";
+
+  return (
+    <SafeAreaView className="flex-1 bg-black items-center justify-center px-8" edges={["top"]}>
+      <Text className="text-white text-lg font-semibold text-center mb-3">Camera Unavailable</Text>
+      <Text className="text-gray-400 text-sm text-center mb-6">{msg}</Text>
+
+      <View className="w-full bg-gray-900 rounded-xl px-4 py-3 mb-3 flex-row items-center gap-2">
+        <TextInput
+          className="flex-1 text-white text-base"
+          placeholder="Enter barcode / UPC number"
+          placeholderTextColor="#6b7280"
+          value={manualBarcode}
+          onChangeText={setManualBarcode}
+          keyboardType="number-pad"
+          autoFocus
+        />
+      </View>
+
+      <TouchableOpacity
+        onPress={onSubmit}
+        disabled={!manualBarcode.trim()}
+        className={`w-full rounded-xl py-3 mb-3 items-center ${manualBarcode.trim() ? "bg-green-600" : "bg-gray-700"}`}
+      >
+        <Text className={`font-semibold ${manualBarcode.trim() ? "text-white" : "text-gray-500"}`}>
+          Look Up Barcode
+        </Text>
+      </TouchableOpacity>
+
+      {reason === "settings" && (
+        <TouchableOpacity onPress={() => Linking.openSettings()} className="mb-3">
+          <Text className="text-green-400 text-sm">Open App Settings</Text>
+        </TouchableOpacity>
+      )}
+
+      <TouchableOpacity onPress={onBack}>
+        <Text className="text-gray-500 text-sm">Cancel</Text>
+      </TouchableOpacity>
     </SafeAreaView>
   );
 }
