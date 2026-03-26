@@ -131,31 +131,62 @@ export default function SeedsScreen() {
     setScanLookupLoading(true);
     setScanError(null);
 
-    try {
-      const res = await fetch(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
-      const data = await res.json();
-      const item = data?.items?.[0];
-
-      if (item) {
-        const title = item.title ?? "";
-        const { plantName: pn, variety: va } = parseSeedProductTitle(title);
-        if (pn) setPlantName(pn);
-        if (va) setVariety(va);
-        if (pn && !family) setFamily(guessFamilyFromName(pn));
-        if (item.brand) setSupplier(item.brand);
-        // Try to extract seed count from description
-        const desc = (item.description ?? "").toLowerCase();
-        const seedMatch = desc.match(/(\d+)\s*seeds?/);
-        if (seedMatch) setQuantity(seedMatch[1]);
-      } else {
-        setScanError(`No product found for barcode ${barcode}. Fill in manually.`);
+    // Helper: fetch with a 10 s timeout
+    async function fetchWithTimeout(url: string) {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 10_000);
+      try {
+        return await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
+      } finally {
+        clearTimeout(timer);
       }
-    } catch {
-      setScanError("Could not look up barcode. Check your connection and try again.");
-    } finally {
-      setScanLookupLoading(false);
-      setTimeout(() => { scanCooldown.current = false; }, 2000);
     }
+
+    interface LookupItem { title: string; brand?: string; description?: string }
+    let item: LookupItem | null = null;
+
+    // Source 1: UPC Item DB (free trial)
+    try {
+      const res = await fetchWithTimeout(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
+      if (res.ok) {
+        const data = await res.json();
+        item = data?.items?.[0] ?? null;
+      }
+    } catch { /* try next source */ }
+
+    // Source 2: Open Food Facts — free, no key, covers packaged seeds sold in stores
+    if (!item) {
+      try {
+        const res = await fetchWithTimeout(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.status === 1 && data?.product?.product_name) {
+            item = {
+              title: data.product.product_name,
+              brand: data.product.brands ?? "",
+              description: data.product.generic_name ?? "",
+            };
+          }
+        }
+      } catch { /* both sources failed */ }
+    }
+
+    if (item) {
+      const title = item.title ?? "";
+      const { plantName: pn, variety: va } = parseSeedProductTitle(title);
+      if (pn) setPlantName(pn);
+      if (va) setVariety(va);
+      if (pn && !family) setFamily(guessFamilyFromName(pn));
+      if (item.brand) setSupplier(item.brand);
+      const desc = (item.description ?? "").toLowerCase();
+      const seedMatch = desc.match(/(\d+)\s*seeds?/);
+      if (seedMatch) setQuantity(seedMatch[1]);
+    } else {
+      setScanError(`No product found for barcode ${barcode}. Fill in the fields manually.`);
+    }
+
+    setScanLookupLoading(false);
+    setTimeout(() => { scanCooldown.current = false; }, 2000);
   }
 
   async function handleSave() {
