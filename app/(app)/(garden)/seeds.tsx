@@ -158,6 +158,7 @@ export default function SeedsScreen() {
       }
     }
     setScanError(null);
+    setShowAdd(false);          // must close before opening scanner on Android
     setShowScanner(true);
   }
 
@@ -191,6 +192,7 @@ export default function SeedsScreen() {
       setScanError("Could not look up barcode. Check your connection and try again.");
     } finally {
       setScanLookupLoading(false);
+      setShowAdd(true);          // reopen add modal after scan (success or error)
       setTimeout(() => { scanCooldown.current = false; }, 2000);
     }
   }
@@ -404,7 +406,7 @@ export default function SeedsScreen() {
       <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
         <SafeAreaView className="flex-1 bg-black" edges={["top"]}>
           <View className="flex-row items-center justify-between px-4 py-3">
-            <TouchableOpacity onPress={() => setShowScanner(false)}>
+            <TouchableOpacity onPress={() => { setShowScanner(false); setShowAdd(true); }}>
               <Text className="text-white text-base">Cancel</Text>
             </TouchableOpacity>
             <Text className="text-white font-semibold">Scan Seed Packet Barcode</Text>
