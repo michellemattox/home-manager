@@ -130,15 +130,13 @@ export default function SeedsScreen() {
   }
 
   async function openScanner() {
-    // Permission status still loading — do nothing yet
-    if (cameraPermission === null) return;
-
-    if (!cameraPermission.granted) {
-      // Android: permission was permanently denied — must go to Settings
-      if (!cameraPermission.canAskAgain) {
+    // If permission status is still loading or not granted, request it now
+    if (!cameraPermission?.granted) {
+      // Permanently denied — send to Settings
+      if (cameraPermission?.canAskAgain === false) {
         Alert.alert(
           "Camera Permission Required",
-          "Camera access was denied. To scan barcodes, enable it in Settings → Apps → Home Manager → Permissions → Camera.",
+          "Camera access was denied. Enable it in Settings → Apps → Home Manager → Permissions → Camera.",
           [
             { text: "Cancel", style: "cancel" },
             { text: "Open Settings", onPress: () => Linking.openSettings() },
@@ -146,7 +144,7 @@ export default function SeedsScreen() {
         );
         return;
       }
-      // Ask for permission
+      // Ask for permission (covers null/not-yet-granted/can-ask-again)
       const result = await requestCameraPermission();
       if (!result.granted) {
         Alert.alert(
@@ -157,9 +155,12 @@ export default function SeedsScreen() {
         return;
       }
     }
+
     setScanError(null);
-    setShowAdd(false);          // must close before opening scanner on Android
-    setShowScanner(true);
+    // Close the add sheet first; on Android two modals can't overlap.
+    // Delay scanner open until the dismiss animation finishes (~300 ms).
+    setShowAdd(false);
+    setTimeout(() => setShowScanner(true), Platform.OS === "android" ? 350 : 50);
   }
 
   async function handleBarcodeScan(barcode: string) {
@@ -192,7 +193,8 @@ export default function SeedsScreen() {
       setScanError("Could not look up barcode. Check your connection and try again.");
     } finally {
       setScanLookupLoading(false);
-      setShowAdd(true);          // reopen add modal after scan (success or error)
+      // Reopen add modal after scanner has closed
+      setTimeout(() => setShowAdd(true), Platform.OS === "android" ? 350 : 50);
       setTimeout(() => { scanCooldown.current = false; }, 2000);
     }
   }
@@ -406,7 +408,7 @@ export default function SeedsScreen() {
       <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
         <SafeAreaView className="flex-1 bg-black" edges={["top"]}>
           <View className="flex-row items-center justify-between px-4 py-3">
-            <TouchableOpacity onPress={() => { setShowScanner(false); setShowAdd(true); }}>
+            <TouchableOpacity onPress={() => { setShowScanner(false); setTimeout(() => setShowAdd(true), Platform.OS === "android" ? 350 : 50); }}>
               <Text className="text-white text-base">Cancel</Text>
             </TouchableOpacity>
             <Text className="text-white font-semibold">Scan Seed Packet Barcode</Text>

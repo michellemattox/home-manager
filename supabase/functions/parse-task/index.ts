@@ -17,7 +17,7 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
 
 interface ParsedTask {
   title: string;
@@ -35,6 +35,12 @@ Deno.serve(async (req) => {
   try {
     let body: Record<string, unknown> = {};
     try { body = await req.json(); } catch { /* no body */ }
+
+    if (!ANTHROPIC_API_KEY) {
+      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY secret is not set in this Supabase project. Run: supabase secrets set ANTHROPIC_API_KEY=<your-key>" }), {
+        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     const text = (body.text as string)?.trim();
     if (!text) {
