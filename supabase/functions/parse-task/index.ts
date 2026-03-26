@@ -5,12 +5,9 @@
  * Returns:   { title, description, frequency_type, frequency_days,
  *              anchor_date, time_of_day, category }
  *
- * Calls Claude to parse free-form input like
- * "Remind me to clean the gutters every fall" into the fields
- * required by the recurring_tasks table.
+ * Uses Anthropic Claude if ANTHROPIC_API_KEY is set and has credits.
+ * Falls back to OpenAI gpt-4o-mini if OPENAI_API_KEY is set.
  */
-
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -18,6 +15,7 @@ const corsHeaders = {
 };
 
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY");
+const OPENAI_API_KEY = Deno.env.get("OPENAI_API_KEY");
 
 interface ParsedTask {
   title: string;
@@ -29,29 +27,8 @@ interface ParsedTask {
   category: string | null;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-
-  try {
-    let body: Record<string, unknown> = {};
-    try { body = await req.json(); } catch { /* no body */ }
-
-    if (!ANTHROPIC_API_KEY) {
-      return new Response(JSON.stringify({ error: "ANTHROPIC_API_KEY secret is not set in this Supabase project. Run: supabase secrets set ANTHROPIC_API_KEY=<your-key>" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const text = (body.text as string)?.trim();
-    if (!text) {
-      return new Response(JSON.stringify({ error: "text required" }), {
-        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const today = new Date().toISOString().split("T")[0];
-
-    const prompt = `You are a household task scheduling assistant. Parse the following natural-language task request into a structured recurring task.
+function buildPrompt(text: string, today: string): string {
+  return `You are a household task scheduling assistant. Parse the following natural-language task request into a structured recurring task.
 
 Today's date: ${today}
 
@@ -84,52 +61,108 @@ Respond ONLY with a JSON object (no markdown):
   "time_of_day": "e.g. '9:00 AM' or null",
   "category": "category_value or null"
 }`;
+}
 
-    const claudeRes = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 512,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
+async function callAnthropic(prompt: string): Promise<string> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-api-key": ANTHROPIC_API_KEY!,
+      "anthropic-version": "2023-06-01",
+    },
+    body: JSON.stringify({
+      model: "claude-haiku-4-5-20251001",
+      max_tokens: 512,
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message ?? `Anthropic error ${res.status}`;
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return data.content?.[0]?.text ?? "{}";
+}
 
-    if (!claudeRes.ok) {
-      const err = await claudeRes.text();
-      throw new Error(`Claude error: ${err}`);
+async function callOpenAI(prompt: string): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${OPENAI_API_KEY}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      max_tokens: 512,
+      response_format: { type: "json_object" },
+      messages: [{ role: "user", content: prompt }],
+    }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    const msg = err?.error?.message ?? `OpenAI error ${res.status}`;
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content ?? "{}";
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
+  try {
+    let body: Record<string, unknown> = {};
+    try { body = await req.json(); } catch { /* no body */ }
+
+    const text = (body.text as string)?.trim();
+    if (!text) {
+      return new Response(JSON.stringify({ error: "text required" }), {
+        status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    const claudeData = await claudeRes.json();
-    const rawText = claudeData.content?.[0]?.text ?? "{}";
+    if (!ANTHROPIC_API_KEY && !OPENAI_API_KEY) {
+      return new Response(
+        JSON.stringify({ error: "No AI provider configured. Set ANTHROPIC_API_KEY or OPENAI_API_KEY in Supabase secrets." }),
+        { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    const today = new Date().toISOString().split("T")[0];
+    const prompt = buildPrompt(text, today);
+
+    let rawText: string;
+
+    // Try Anthropic first; fall back to OpenAI if Anthropic fails
+    if (ANTHROPIC_API_KEY) {
+      try {
+        rawText = await callAnthropic(prompt);
+      } catch (anthropicErr: any) {
+        if (!OPENAI_API_KEY) throw anthropicErr;
+        // Anthropic failed (e.g. low credits) — try OpenAI
+        rawText = await callOpenAI(prompt);
+      }
+    } else {
+      rawText = await callOpenAI(prompt);
+    }
 
     let parsed: ParsedTask;
     try {
-      // Strip optional markdown code fences
       const jsonMatch = rawText.match(/\{[\s\S]*\}/);
       parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
       if (!parsed?.title) throw new Error("Missing title");
     } catch {
-      throw new Error("Failed to parse Claude response as JSON");
+      throw new Error("Failed to parse AI response as JSON");
     }
 
-    // Validate / coerce fields
     const validFreqs = ["daily", "weekly", "monthly", "yearly", "custom"] as const;
-    const freqType = validFreqs.includes(parsed.frequency_type as any)
-      ? parsed.frequency_type
-      : "monthly";
-
-    const freqDays = typeof parsed.frequency_days === "number" && parsed.frequency_days > 0
-      ? Math.round(parsed.frequency_days)
-      : freqType === "daily" ? 1
-      : freqType === "weekly" ? 7
-      : freqType === "monthly" ? 30
-      : freqType === "yearly" ? 365
-      : 30;
+    const freqType = validFreqs.includes(parsed.frequency_type as any) ? parsed.frequency_type : "monthly";
+    const freqDays =
+      typeof parsed.frequency_days === "number" && parsed.frequency_days > 0
+        ? Math.round(parsed.frequency_days)
+        : freqType === "daily" ? 1 : freqType === "weekly" ? 7 : freqType === "monthly" ? 30 : freqType === "yearly" ? 365 : 30;
 
     const result: ParsedTask = {
       title: parsed.title,

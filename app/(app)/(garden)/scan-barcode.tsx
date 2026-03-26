@@ -10,31 +10,30 @@ export default function ScanBarcodeScreen() {
   const [permission, requestPermission] = useCameraPermissions();
   const cooldown = useRef(false);
   const requested = useRef(false);
-
-  // If the OS silently ignores requestPermission (permission not in manifest
-  // of the installed build), the hook state never changes. We detect this
-  // by waiting 4 s after requesting — if still not granted, show fallback.
   const [permissionTimedOut, setPermissionTimedOut] = useState(false);
+  // Stable flag — set once, never reset — so the timer effect runs exactly once
+  const [requestFired, setRequestFired] = useState(false);
   const [manualBarcode, setManualBarcode] = useState("");
 
+  // Step 1: call requestPermission() as soon as the hook has resolved
   useEffect(() => {
     if (requested.current) return;
-    if (permission === null) return;       // still loading
+    if (permission === null) return;
     if (permission.granted) return;
     if (permission.canAskAgain === false) return;
-
     requested.current = true;
     requestPermission();
-
-    // Give the OS dialog 4 s to appear; if nothing changes, show manual fallback
-    const timer = setTimeout(() => setPermissionTimedOut(true), 4_000);
-    return () => clearTimeout(timer);
+    setRequestFired(true);  // triggers the timer effect below
   }, [permission]);
 
-  // Reset timeout flag if permission comes through
+  // Step 2: separate timer effect keyed on requestFired — NOT on permission.
+  // This way, permission changing (even to denied) does NOT cancel the timer.
   useEffect(() => {
-    if (permission?.granted) setPermissionTimedOut(false);
-  }, [permission?.granted]);
+    if (!requestFired) return;
+    if (permission?.granted) return;
+    const timer = setTimeout(() => setPermissionTimedOut(true), 4_000);
+    return () => clearTimeout(timer);
+  }, [requestFired]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function goBack() {
     router.back();
