@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -6,13 +6,11 @@ import {
   TouchableOpacity,
   Modal,
   ActivityIndicator,
-  Platform,
-  Alert,
-  Linking,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { CameraView, useCameraPermissions } from "expo-camera";
+import { useFocusEffect } from "@react-navigation/native";
+import { scanStore } from "@/utils/scanStore";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -85,11 +83,21 @@ export default function SeedsScreen() {
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
   // Barcode scanner state
-  const [showScanner, setShowScanner] = useState(false);
   const [scanLookupLoading, setScanLookupLoading] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const scanCooldown = useRef(false);
-  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
+
+  // Pick up barcode result when returning from the scan-barcode screen
+  useFocusEffect(
+    useCallback(() => {
+      if (scanStore.barcode) {
+        const barcode = scanStore.barcode;
+        scanStore.barcode = null;
+        setShowAdd(true);
+        handleBarcodeScan(barcode);
+      }
+    }, [])
+  );
 
   // Form state
   const [plantName, setPlantName] = useState("");
@@ -129,44 +137,15 @@ export default function SeedsScreen() {
     if (!family) setFamily(guessFamilyFromName(val));
   }
 
-  async function openScanner() {
-    // If permission status is still loading or not granted, request it now
-    if (!cameraPermission?.granted) {
-      // Permanently denied — send to Settings
-      if (cameraPermission?.canAskAgain === false) {
-        Alert.alert(
-          "Camera Permission Required",
-          "Camera access was denied. Enable it in Settings → Apps → Home Manager → Permissions → Camera.",
-          [
-            { text: "Cancel", style: "cancel" },
-            { text: "Open Settings", onPress: () => Linking.openSettings() },
-          ]
-        );
-        return;
-      }
-      // Ask for permission (covers null/not-yet-granted/can-ask-again)
-      const result = await requestCameraPermission();
-      if (!result.granted) {
-        Alert.alert(
-          "Camera Permission Required",
-          "Camera access is needed to scan seed packet barcodes.",
-          [{ text: "OK" }]
-        );
-        return;
-      }
-    }
-
+  function openScanner() {
     setScanError(null);
-    // Close the add sheet first; on Android two modals can't overlap.
-    // Delay scanner open until the dismiss animation finishes (~300 ms).
     setShowAdd(false);
-    setTimeout(() => setShowScanner(true), Platform.OS === "android" ? 350 : 50);
+    router.push("/(app)/(garden)/scan-barcode");
   }
 
   async function handleBarcodeScan(barcode: string) {
     if (scanCooldown.current) return;
     scanCooldown.current = true;
-    setShowScanner(false);
     setScanLookupLoading(true);
     setScanError(null);
 
@@ -193,8 +172,6 @@ export default function SeedsScreen() {
       setScanError("Could not look up barcode. Check your connection and try again.");
     } finally {
       setScanLookupLoading(false);
-      // Reopen add modal after scanner has closed
-      setTimeout(() => setShowAdd(true), Platform.OS === "android" ? 350 : 50);
       setTimeout(() => { scanCooldown.current = false; }, 2000);
     }
   }
@@ -403,41 +380,6 @@ export default function SeedsScreen() {
           })
         )}
       </ScrollView>
-
-      {/* ── Barcode Scanner Modal ──────────────────────────────────────────── */}
-      <Modal visible={showScanner} animationType="slide" presentationStyle="fullScreen">
-        <SafeAreaView className="flex-1 bg-black" edges={["top"]}>
-          <View className="flex-row items-center justify-between px-4 py-3">
-            <TouchableOpacity onPress={() => { setShowScanner(false); setTimeout(() => setShowAdd(true), Platform.OS === "android" ? 350 : 50); }}>
-              <Text className="text-white text-base">Cancel</Text>
-            </TouchableOpacity>
-            <Text className="text-white font-semibold">Scan Seed Packet Barcode</Text>
-            <View style={{ width: 60 }} />
-          </View>
-
-          <View className="flex-1">
-            <CameraView
-              style={{ flex: 1 }}
-              facing="back"
-              barcodeScannerSettings={{ barcodeTypes: ["ean13", "ean8", "upc_a", "upc_e", "code128", "code39"] }}
-              onBarcodeScanned={(e) => handleBarcodeScan(e.data)}
-            />
-            {/* Scan guide overlay */}
-            <View
-              style={{
-                position: "absolute", top: 0, left: 0, right: 0, bottom: 0,
-                alignItems: "center", justifyContent: "center",
-              }}
-              pointerEvents="none"
-            >
-              <View style={{ width: 260, height: 120, borderWidth: 2, borderColor: "#4ade80", borderRadius: 12 }} />
-              <Text style={{ color: "#4ade80", marginTop: 12, fontSize: 13, fontWeight: "600" }}>
-                Align barcode within the box
-              </Text>
-            </View>
-          </View>
-        </SafeAreaView>
-      </Modal>
 
       {/* ── Add / Edit Modal ───────────────────────────────────────────────── */}
       <Modal visible={showAdd} animationType="slide" presentationStyle="pageSheet">

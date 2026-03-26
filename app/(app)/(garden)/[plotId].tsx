@@ -48,6 +48,8 @@ import {
   type GardenAmendment,
   type AmendmentType,
 } from "@/types/app.types";
+import { findBadCompanions } from "@/utils/companionUtils";
+import { useGardenSeeds, useUpdateGardenSeed } from "@/hooks/useGarden";
 
 const SCREEN_W = Dimensions.get("window").width;
 const GRID_W = SCREEN_W - 32;
@@ -130,6 +132,10 @@ export default function PlotDetailScreen() {
   const updateAmendment = useUpdateGardenAmendment();
   const deleteAmendment = useDeleteGardenAmendment();
 
+  // Seed inventory (for planting link)
+  const { data: seeds = [] } = useGardenSeeds(householdId);
+  const updateSeed = useUpdateGardenSeed();
+
   // ── Grid state ───────────────────────────────────────────────────────────────
   const [editMode, setEditMode] = useState<EditMode>("none");
   const [selectedZoneId, setSelectedZoneId] = useState<string | null>(null);
@@ -201,6 +207,9 @@ export default function PlotDetailScreen() {
   const [pNotes, setPNotes] = useState("");
   const [pZoneId, setPZoneId] = useState<string | null>(null);
   const [plantingSaved, setPlantingSaved] = useState(false);
+  // Seed link state
+  const [pLinkedSeedId, setPLinkedSeedId] = useState<string | null>(null);
+  const [pDeductQty, setPDeductQty] = useState("");
 
   const doSavePlanting = useCallback(() => {
     if (!editingPlanting || !pPlantName.trim() || !plotId) return;
@@ -366,6 +375,7 @@ export default function PlotDetailScreen() {
     setPPlantName(""); setPVariety(""); setPFamily("Other");
     setPDatePlanted(new Date().toISOString().split("T")[0]);
     setPDateRemoved(""); setPNotes(""); setPZoneId(zoneId);
+    setPLinkedSeedId(null); setPDeductQty("");
     setShowPlantingModal(true);
   }
 
@@ -382,6 +392,28 @@ export default function PlotDetailScreen() {
     if (!pPlantName.trim() || !plotId) return;
     const detectedFamily = pFamily === "Other" ? guessFamilyFromName(pPlantName) : pFamily;
     const year = pDatePlanted ? parseInt(pDatePlanted.split("-")[0]) : new Date().getFullYear();
+
+    // ── Companion check (new plantings only) ────────────────────────────────
+    if (!editingPlanting && pZoneId) {
+      const zoneNeighbors = plantings
+        .filter((p) => p.zone_id === pZoneId && !p.date_removed)
+        .map((p) => p.plant_name);
+      const conflicts = findBadCompanions(pPlantName.trim(), zoneNeighbors);
+      if (conflicts.length > 0) {
+        const proceed = await new Promise<boolean>((resolve) => {
+          Alert.alert(
+            "⚠ Companion Conflict",
+            `${pPlantName} is a poor companion for: ${conflicts.join(", ")}.\n\nPlant anyway?`,
+            [
+              { text: "Cancel", style: "cancel", onPress: () => resolve(false) },
+              { text: "Plant Anyway", onPress: () => resolve(true) },
+            ]
+          );
+        });
+        if (!proceed) return;
+      }
+    }
+
     if (editingPlanting) {
       await updatePlanting.mutateAsync({
         id: editingPlanting.id, plotId,
@@ -393,11 +425,32 @@ export default function PlotDetailScreen() {
         plant_name: pPlantName.trim(), variety: pVariety.trim() || null, plant_family: detectedFamily,
         date_planted: pDatePlanted || null, date_removed: null, season_year: year, notes: pNotes.trim() || null,
       });
+
+      // ── Deduct from seed inventory if linked ──────────────────────────────
+      if (pLinkedSeedId) {
+        const seed = seeds.find((s) => s.id === pLinkedSeedId);
+        if (seed && seed.quantity_seeds != null) {
+          const deduct = parseInt(pDeductQty) || 1;
+          const newQty = Math.max(0, seed.quantity_seeds - deduct);
+          await updateSeed.mutateAsync({
+            id: pLinkedSeedId,
+            householdId,
+            updates: { quantity_seeds: newQty },
+          });
+        }
+      }
     }
     setShowPlantingModal(false);
   }
 
-  // Planting delete is confirmed inline within PlantingRow
+  // Planting/harvest deletes are confirmed inline within PlantingRow
+  function confirmDeletePlanting(p: GardenPlanting) {
+    deletePlanting.mutate({ id: p.id, plotId: p.plot_id });
+  }
+
+  function confirmDeleteHarvest(h: GardenHarvest) {
+    deleteHarvest.mutate({ id: h.id, plotId: plotId! });
+  }
 
   // ── Harvest CRUD ─────────────────────────────────────────────────────────────
   function openNewHarvest(plantingId: string) {
@@ -994,6 +1047,54 @@ export default function PlotDetailScreen() {
                 <Text className="text-xs text-gray-600">{ROTATION_TIPS[pFamily] ?? "Rotate this family to a different bed each season."}</Text>
               </View>
             )}
+
+            {/* ── Seed inventory link (new plantings only) ──────────────────── */}
+            {!editingPlanting && (() => {
+              const matchingSeeds = seeds.filter((s) =>
+                pPlantName.trim().length >= 2 &&
+                s.plant_name.toLowerCase().includes(pPlantName.trim().toLowerCase())
+              );
+              if (!matchingSeeds.length) return null;
+              return (
+                <View className="mt-4 bg-green-50 border border-green-200 rounded-xl p-3">
+                  <Text className="text-xs font-bold text-green-700 mb-2">
+                    🌱 Deduct from Seed Inventory
+                  </Text>
+                  {matchingSeeds.map((s) => (
+                    <TouchableOpacity
+                      key={s.id}
+                      onPress={() => setPLinkedSeedId(pLinkedSeedId === s.id ? null : s.id)}
+                      className={`flex-row items-center justify-between rounded-lg px-3 py-2 mb-1.5 border ${
+                        pLinkedSeedId === s.id
+                          ? "bg-green-100 border-green-400"
+                          : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <View>
+                        <Text className="text-xs font-semibold text-gray-800">
+                          {s.plant_name}{s.variety ? ` — ${s.variety}` : ""}
+                        </Text>
+                        <Text className="text-xs text-gray-400">
+                          {s.quantity_seeds != null ? `~${s.quantity_seeds} seeds remaining` : "Quantity unknown"}
+                        </Text>
+                      </View>
+                      {pLinkedSeedId === s.id && (
+                        <Text className="text-green-600 font-bold text-xs">✓ Selected</Text>
+                      )}
+                    </TouchableOpacity>
+                  ))}
+                  {pLinkedSeedId && (
+                    <Input
+                      label="Seeds used (to deduct)"
+                      placeholder="e.g. 5"
+                      value={pDeductQty}
+                      onChangeText={setPDeductQty}
+                      keyboardType="number-pad"
+                    />
+                  )}
+                </View>
+              );
+            })()}
 
             {editingPlanting && (
               <View className="bg-blue-50 border border-blue-100 rounded-xl p-3 mt-4">
