@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   View,
   Text,
@@ -9,8 +9,6 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import { useFocusEffect } from "@react-navigation/native";
-import { scanStore } from "@/utils/scanStore";
 import { Card } from "@/components/ui/Card";
 import { Input } from "@/components/ui/Input";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -82,22 +80,11 @@ export default function SeedsScreen() {
   const [filterFamily, setFilterFamily] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // Barcode scanner state
+  // SKU / barcode lookup state
+  const [skuInput, setSkuInput] = useState("");
   const [scanLookupLoading, setScanLookupLoading] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
   const scanCooldown = useRef(false);
-
-  // Pick up barcode result when returning from the scan-barcode screen
-  useFocusEffect(
-    useCallback(() => {
-      if (scanStore.barcode) {
-        const barcode = scanStore.barcode;
-        scanStore.barcode = null;
-        setShowAdd(true);
-        handleBarcodeScan(barcode);
-      }
-    }, [])
-  );
 
   // Form state
   const [plantName, setPlantName] = useState("");
@@ -128,8 +115,8 @@ export default function SeedsScreen() {
     }
   }
 
-  function openAdd() { setEditTarget(null); resetForm(); setScanError(null); setShowAdd(true); }
-  function openEdit(seed: GardenSeedInventory) { setEditTarget(seed); resetForm(seed); setScanError(null); setShowAdd(true); }
+  function openAdd() { setEditTarget(null); resetForm(); setScanError(null); setSkuInput(""); setShowAdd(true); }
+  function openEdit(seed: GardenSeedInventory) { setEditTarget(seed); resetForm(seed); setScanError(null); setSkuInput(""); setShowAdd(true); }
 
   // Auto-detect family when name changes
   function handleNameChange(val: string) {
@@ -137,14 +124,9 @@ export default function SeedsScreen() {
     if (!family) setFamily(guessFamilyFromName(val));
   }
 
-  function openScanner() {
-    setScanError(null);
-    setShowAdd(false);
-    router.push("/(app)/(garden)/scan-barcode");
-  }
-
-  async function handleBarcodeScan(barcode: string) {
-    if (scanCooldown.current) return;
+  async function handleSkuLookup() {
+    const barcode = skuInput.trim().replace(/\D/g, "");
+    if (!barcode || scanCooldown.current) return;
     scanCooldown.current = true;
     setScanLookupLoading(true);
     setScanError(null);
@@ -399,25 +381,31 @@ export default function SeedsScreen() {
           </View>
 
           <ScrollView className="flex-1 px-4 py-4" keyboardShouldPersistTaps="handled">
-            {/* Barcode scan button */}
+            {/* SKU / UPC lookup */}
             {!editTarget && (
-              <TouchableOpacity
-                onPress={openScanner}
-                disabled={scanLookupLoading}
-                className={`flex-row items-center justify-center gap-2 rounded-xl py-3 mb-4 border ${scanLookupLoading ? "border-gray-200 bg-gray-50" : "border-emerald-300 bg-emerald-50"}`}
-              >
-                {scanLookupLoading ? (
-                  <>
-                    <ActivityIndicator color="#16a34a" size="small" />
-                    <Text className="text-emerald-700 text-sm font-medium">Looking up barcode…</Text>
-                  </>
-                ) : (
-                  <>
-                    <Text className="text-base">📸</Text>
-                    <Text className="text-emerald-700 text-sm font-semibold">Scan Seed Packet Barcode</Text>
-                  </>
-                )}
-              </TouchableOpacity>
+              <View className="mb-4">
+                <Text className="text-xs text-gray-500 mb-1">Look up by barcode / UPC number</Text>
+                <View className="flex-row gap-2">
+                  <Input
+                    className="flex-1"
+                    placeholder="e.g. 650348101012"
+                    keyboardType="number-pad"
+                    value={skuInput}
+                    onChangeText={setSkuInput}
+                    onSubmitEditing={handleSkuLookup}
+                    returnKeyType="search"
+                  />
+                  <TouchableOpacity
+                    onPress={handleSkuLookup}
+                    disabled={scanLookupLoading || !skuInput.trim()}
+                    className={`rounded-xl px-4 items-center justify-center ${scanLookupLoading || !skuInput.trim() ? "bg-gray-200" : "bg-emerald-600"}`}
+                  >
+                    {scanLookupLoading
+                      ? <ActivityIndicator color="#16a34a" size="small" />
+                      : <Text className="text-white text-sm font-semibold">Look Up</Text>}
+                  </TouchableOpacity>
+                </View>
+              </View>
             )}
 
             {scanError && (
