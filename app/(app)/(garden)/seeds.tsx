@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -80,11 +80,9 @@ export default function SeedsScreen() {
   const [filterFamily, setFilterFamily] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
 
-  // SKU / barcode lookup state
+  // Name lookup state
   const [skuInput, setSkuInput] = useState("");
-  const [scanLookupLoading, setScanLookupLoading] = useState(false);
   const [scanError, setScanError] = useState<string | null>(null);
-  const scanCooldown = useRef(false);
 
   // Form state
   const [plantName, setPlantName] = useState("");
@@ -118,75 +116,38 @@ export default function SeedsScreen() {
   function openAdd() { setEditTarget(null); resetForm(); setScanError(null); setSkuInput(""); setShowAdd(true); }
   function openEdit(seed: GardenSeedInventory) { setEditTarget(seed); resetForm(seed); setScanError(null); setSkuInput(""); setShowAdd(true); }
 
-  // Auto-detect family when name changes
+
+  // Auto-detect family when name changes — update whenever family is blank or still "Other"
   function handleNameChange(val: string) {
     setPlantName(val);
-    if (!family) setFamily(guessFamilyFromName(val));
+    if (!family || family === "Other") {
+      const guessed = guessFamilyFromName(val);
+      setFamily(guessed);
+    }
   }
 
-  async function handleSkuLookup() {
-    const barcode = skuInput.trim().replace(/\D/g, "");
-    if (!barcode || scanCooldown.current) return;
-    scanCooldown.current = true;
-    setScanLookupLoading(true);
+  function handleNameLookup() {
+    const input = skuInput.trim();
+    if (!input) return;
     setScanError(null);
 
-    // Helper: fetch with a 10 s timeout
-    async function fetchWithTimeout(url: string) {
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), 10_000);
-      try {
-        return await fetch(url, { signal: controller.signal, headers: { Accept: "application/json" } });
-      } finally {
-        clearTimeout(timer);
-      }
-    }
+    // Parse "Plant Variety" — e.g. "Tomato Early Girl" or "Kale Lacinato"
+    const { plantName: pn, variety: va } = parseSeedProductTitle(input);
+    const name = pn || input;
+    const detectedFamily = guessFamilyFromName(name);
 
-    interface LookupItem { title: string; brand?: string; description?: string }
-    let item: LookupItem | null = null;
+    setPlantName(name);
+    if (va) setVariety(va);
+    setFamily(detectedFamily);
+    setSkuInput("");
 
-    // Source 1: UPC Item DB (free trial)
-    try {
-      const res = await fetchWithTimeout(`https://api.upcitemdb.com/prod/trial/lookup?upc=${barcode}`);
-      if (res.ok) {
-        const data = await res.json();
-        item = data?.items?.[0] ?? null;
-      }
-    } catch { /* try next source */ }
-
-    // Source 2: Open Food Facts — free, no key, covers packaged seeds sold in stores
-    if (!item) {
-      try {
-        const res = await fetchWithTimeout(`https://world.openfoodfacts.org/api/v0/product/${barcode}.json`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data?.status === 1 && data?.product?.product_name) {
-            item = {
-              title: data.product.product_name,
-              brand: data.product.brands ?? "",
-              description: data.product.generic_name ?? "",
-            };
-          }
-        }
-      } catch { /* both sources failed */ }
-    }
-
-    if (item) {
-      const title = item.title ?? "";
-      const { plantName: pn, variety: va } = parseSeedProductTitle(title);
-      if (pn) setPlantName(pn);
-      if (va) setVariety(va);
-      if (pn && !family) setFamily(guessFamilyFromName(pn));
-      if (item.brand) setSupplier(item.brand);
-      const desc = (item.description ?? "").toLowerCase();
-      const seedMatch = desc.match(/(\d+)\s*seeds?/);
-      if (seedMatch) setQuantity(seedMatch[1]);
-    } else {
-      setScanError(`No product found for barcode ${barcode}. Fill in the fields manually.`);
-    }
-
-    setScanLookupLoading(false);
-    setTimeout(() => { scanCooldown.current = false; }, 2000);
+    // Suggest a typical seed count for this family
+    const seedCountHints: Record<string, string> = {
+      Solanaceae: "30", Brassicaceae: "200", Leguminosae: "25",
+      Alliaceae: "100", Asteraceae: "50", Chenopodiaceae: "100",
+      Cucurbitaceae: "20", Apiaceae: "200", Other: "50",
+    };
+    if (!quantity) setQuantity(seedCountHints[detectedFamily] ?? "50");
   }
 
   async function handleSave() {
@@ -412,28 +373,25 @@ export default function SeedsScreen() {
           </View>
 
           <ScrollView className="flex-1 px-4 py-4" keyboardShouldPersistTaps="handled">
-            {/* SKU / UPC lookup */}
+            {/* Quick-fill by plant name */}
             {!editTarget && (
               <View className="mb-4">
-                <Text className="text-xs text-gray-500 mb-1">Look up by barcode / UPC number</Text>
+                <Text className="text-xs text-gray-500 mb-1">Quick-fill — type plant name + variety</Text>
                 <View className="flex-row gap-2">
                   <Input
                     className="flex-1"
-                    placeholder="e.g. 650348101012"
-                    keyboardType="number-pad"
+                    placeholder='e.g. "Tomato Early Girl" or "Kale Lacinato"'
                     value={skuInput}
                     onChangeText={setSkuInput}
-                    onSubmitEditing={handleSkuLookup}
-                    returnKeyType="search"
+                    onSubmitEditing={handleNameLookup}
+                    returnKeyType="done"
                   />
                   <TouchableOpacity
-                    onPress={handleSkuLookup}
-                    disabled={scanLookupLoading || !skuInput.trim()}
-                    className={`rounded-xl px-4 items-center justify-center ${scanLookupLoading || !skuInput.trim() ? "bg-gray-200" : "bg-emerald-600"}`}
+                    onPress={handleNameLookup}
+                    disabled={!skuInput.trim()}
+                    className={`rounded-xl px-4 items-center justify-center ${!skuInput.trim() ? "bg-gray-200" : "bg-emerald-600"}`}
                   >
-                    {scanLookupLoading
-                      ? <ActivityIndicator color="#16a34a" size="small" />
-                      : <Text className="text-white text-sm font-semibold">Look Up</Text>}
+                    <Text className={`text-sm font-semibold ${!skuInput.trim() ? "text-gray-400" : "text-white"}`}>Fill</Text>
                   </TouchableOpacity>
                 </View>
               </View>
