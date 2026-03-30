@@ -48,16 +48,14 @@ export default function WateringScreen() {
   const [method, setMethod] = useState<WateringMethod>("hand");
   const [duration, setDuration] = useState("");
   const [amount, setAmount] = useState("");
-  const [zoneId, setZoneId] = useState<string | null>(null);
   const [plotId, setPlotId] = useState<string | null>(null);
   const [notes, setNotes] = useState("");
 
-  function openNew(preZoneId?: string) {
+  function openNew(prePlotId?: string) {
     setEditing(null);
     setWaterDate(new Date().toISOString().split("T")[0]);
     setMethod("hand"); setDuration(""); setAmount("");
-    setZoneId(preZoneId ?? null);
-    setPlotId(preZoneId ? (zones.find((z) => z.id === preZoneId) as any)?.plot_id ?? null : null);
+    setPlotId(prePlotId ?? null);
     setNotes("");
     setShowModal(true);
   }
@@ -68,7 +66,7 @@ export default function WateringScreen() {
     setMethod(log.method);
     setDuration(log.duration_min?.toString() ?? "");
     setAmount(log.amount_gal?.toString() ?? "");
-    setZoneId(log.zone_id); setPlotId(log.plot_id);
+    setPlotId(log.plot_id);
     setNotes(log.notes ?? "");
     setShowModal(true);
   }
@@ -78,7 +76,7 @@ export default function WateringScreen() {
     const payload = {
       household_id: householdId,
       plot_id: plotId,
-      zone_id: zoneId,
+      zone_id: null,
       water_date: waterDate,
       method,
       duration_min: duration ? parseFloat(duration) : null,
@@ -93,21 +91,17 @@ export default function WateringScreen() {
     setShowModal(false);
   }
 
-  // Last watered per zone — whole-garden logs (zone_id=null, e.g. rain) count for all zones
-  const lastWateredByZone = useMemo(() => {
+  // Last watered per plot — whole-garden logs (both ids null, e.g. rain) count for all plots
+  const lastWateredByPlot = useMemo(() => {
     const map = new Map<string, string>();
-    // Most recent whole-garden event (rain auto-log or unzoned manual entry)
-    const lastWholeGarden = logs.find((l) => l.zone_id === null)?.water_date ?? null;
-    const bedZoneIds = zones
-      .filter((z) => z.zone_type === "bed" || z.zone_type === "container")
-      .map((z) => z.id);
-    bedZoneIds.forEach((zid) => {
-      const zoneLog = logs.find((l) => l.zone_id === zid);
-      const date = zoneLog?.water_date ?? lastWholeGarden;
-      if (date) map.set(zid, date);
+    const lastWholeGarden = logs.find((l) => l.plot_id === null && l.zone_id === null)?.water_date ?? null;
+    plots.forEach((plot) => {
+      const plotLog = logs.find((l) => l.plot_id === plot.id);
+      const date = plotLog?.water_date ?? lastWholeGarden;
+      if (date) map.set(plot.id, date);
     });
     return map;
-  }, [logs, zones]);
+  }, [logs, plots]);
 
   function daysSince(dateStr: string) {
     return differenceInDays(new Date(), new Date(dateStr + "T12:00:00"));
@@ -135,8 +129,6 @@ export default function WateringScreen() {
   function fmtDate(d: string) {
     try { return format(new Date(d + "T12:00:00"), "EEEE, MMM d"); } catch { return d; }
   }
-
-  const bedZones = zones.filter((z) => z.zone_type === "bed" || z.zone_type === "container");
 
   // Temperature-adjusted rain coverage:
   // Cool weather = rain soaks deeper and evaporates slower → lasts longer.
@@ -181,18 +173,18 @@ export default function WateringScreen() {
 
   const urgencyDays = Math.max(1, 4 - heatStressExtra);
 
-  // Zones that need watering
+  // Plots that need watering
   const wateringAlerts = useMemo(() => {
-    if (rainCoverageDays > 0) return []; // rain is still covering the garden
-    return bedZones
-      .map((zone) => {
-        const lastDate = lastWateredByZone.get(zone.id) ?? null;
+    if (rainCoverageDays > 0) return [];
+    return plots
+      .map((plot) => {
+        const lastDate = lastWateredByPlot.get(plot.id) ?? null;
         const days = lastDate ? daysSince(lastDate) : null;
-        return { zone, days };
+        return { plot, days };
       })
       .filter(({ days }) => days === null || days >= urgencyDays)
       .sort((a, b) => (b.days ?? 999) - (a.days ?? 999));
-  }, [bedZones, lastWateredByZone, rainCoverageDays, urgencyDays]);
+  }, [plots, lastWateredByPlot, rainCoverageDays, urgencyDays]);
 
 
   return (
@@ -245,26 +237,24 @@ export default function WateringScreen() {
             <View>
               <Text className="text-sm font-semibold text-gray-700 mb-2">Watering Needed</Text>
               <View className="gap-2">
-                {wateringAlerts.map(({ zone, days }) => (
+                {wateringAlerts.map(({ plot, days }) => (
                   <View
-                    key={zone.id}
+                    key={plot.id}
                     className="rounded-xl px-4 py-3 border flex-row items-center gap-3"
                     style={{
                       backgroundColor: (days ?? 0) >= 7 ? "#FFF1F2" : "#FFFBEB",
                       borderColor: (days ?? 0) >= 7 ? "#FCA5A5" : "#FCD34D",
                     }}
                   >
-                    <View style={{ backgroundColor: zone.color }} className="w-3 h-10 rounded-sm" />
+                    <Text className="text-xl">🌱</Text>
                     <View className="flex-1">
-                      <Text className="text-sm font-semibold text-gray-900">{zone.name}</Text>
+                      <Text className="text-sm font-semibold text-gray-900">{plot.name}</Text>
                       <Text className={`text-xs mt-0.5 ${(days ?? 0) >= 7 ? "text-red-600" : "text-amber-700"}`}>
-                        {days === null
-                          ? "Never watered — needs attention"
-                          : `Not watered in ${days} days`}
+                        {days === null ? "Never watered — needs attention" : `Not watered in ${days} days`}
                       </Text>
                     </View>
                     <TouchableOpacity
-                      onPress={() => openNew(zone.id)}
+                      onPress={() => openNew(plot.id)}
                       className="bg-blue-600 rounded-xl px-3 py-2"
                     >
                       <Text className="text-white text-xs font-semibold">💧 Log</Text>
@@ -275,26 +265,26 @@ export default function WateringScreen() {
             </View>
           )}
 
-          {/* ── Zone status dashboard ─────────────────────────────────────── */}
-          {bedZones.length > 0 && (
+          {/* ── Garden status dashboard ───────────────────────────────────── */}
+          {plots.length > 0 && (
             <View>
-              <Text className="text-sm font-semibold text-gray-700 mb-2">Zone Status</Text>
+              <Text className="text-sm font-semibold text-gray-700 mb-2">Garden Status</Text>
               <View className="gap-2">
-                {bedZones.map((zone) => {
-                  const lastDate = lastWateredByZone.get(zone.id) ?? null;
+                {plots.map((plot) => {
+                  const lastDate = lastWateredByPlot.get(plot.id) ?? null;
                   const days = lastDate ? daysSince(lastDate) : null;
                   const drought = droughtLevel(days);
                   return (
-                    <View key={zone.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex-row items-center gap-3">
-                      <View style={{ backgroundColor: zone.color }} className="w-3 h-10 rounded-sm" />
+                    <View key={plot.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex-row items-center gap-3">
+                      <Text className="text-xl">🌱</Text>
                       <View className="flex-1">
-                        <Text className="text-sm font-semibold text-gray-900">{zone.name}</Text>
+                        <Text className="text-sm font-semibold text-gray-900">{plot.name}</Text>
                         <View className={`self-start mt-1 px-2 py-0.5 rounded-md ${drought.bg}`}>
                           <Text className={`text-xs font-medium ${drought.color}`}>{drought.label}</Text>
                         </View>
                       </View>
                       <TouchableOpacity
-                        onPress={() => openNew(zone.id)}
+                        onPress={() => openNew(plot.id)}
                         className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2"
                       >
                         <Text className="text-blue-700 text-xs font-semibold">💧 Log</Text>
@@ -312,7 +302,7 @@ export default function WateringScreen() {
               <Text className="text-3xl mb-2">💧</Text>
               <Text className="text-gray-500 text-sm font-medium">No watering logged yet</Text>
               <Text className="text-gray-400 text-xs mt-1 text-center">
-                Tap "+ Log" or use the zone quick-log buttons above.
+                Tap "+ Log" or use the garden quick-log buttons above.
               </Text>
             </Card>
           ) : (
@@ -326,14 +316,14 @@ export default function WateringScreen() {
                     </Text>
                     <View className="gap-2">
                       {dayLogs.map((log) => {
-                        const zone = zones.find((z) => z.id === log.zone_id);
+                        const plot = plots.find((p) => p.id === log.plot_id);
                         const methodInfo = WATERING_METHODS.find((m) => m.value === log.method);
                         return (
                           <View key={log.id} className="bg-white border border-gray-100 rounded-xl px-4 py-3 flex-row items-center gap-3">
-                            {zone && <View style={{ backgroundColor: zone.color }} className="w-2.5 h-2.5 rounded-sm" />}
+                            <Text className="text-base">{log.method === "rain" ? "🌧" : "🌱"}</Text>
                             <View className="flex-1">
                               <Text className="text-sm font-medium text-gray-800">
-                                {zone?.name ?? "Whole garden"}
+                                {plot?.name ?? "All Gardens"}
                               </Text>
                               <Text className="text-xs text-gray-400">
                                 {methodInfo?.emoji} {methodInfo?.label ?? log.method}
@@ -420,28 +410,26 @@ export default function WateringScreen() {
               </View>
             </View>
 
-            <Text className="text-sm font-medium text-gray-700 mb-2">Zone (optional)</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-              <View className="flex-row gap-2">
+            <Text className="text-sm font-medium text-gray-700 mb-2">Garden (optional)</Text>
+            <View className="flex-row flex-wrap gap-2 mb-4">
+              <TouchableOpacity
+                onPress={() => setPlotId(null)}
+                className={`px-3 py-1.5 rounded-xl border ${plotId === null ? "border-gray-700 bg-gray-100" : "border-gray-200 bg-white"}`}
+              >
+                <Text className="text-xs text-gray-600">All Gardens</Text>
+              </TouchableOpacity>
+              {plots.map((p) => (
                 <TouchableOpacity
-                  onPress={() => setZoneId(null)}
-                  className={`px-3 py-1.5 rounded-xl border ${zoneId === null ? "border-gray-700 bg-gray-100" : "border-gray-200"}`}
+                  key={p.id}
+                  onPress={() => setPlotId(p.id)}
+                  className={`px-3 py-1.5 rounded-xl border ${plotId === p.id ? "bg-blue-50 border-blue-500" : "bg-white border-gray-200"}`}
                 >
-                  <Text className="text-xs text-gray-600">Whole Garden</Text>
+                  <Text className={`text-xs font-medium ${plotId === p.id ? "text-blue-700" : "text-gray-700"}`}>
+                    🌱 {p.name}
+                  </Text>
                 </TouchableOpacity>
-                {zones.map((z) => (
-                  <TouchableOpacity
-                    key={z.id}
-                    onPress={() => setZoneId(z.id)}
-                    className="flex-row items-center gap-1.5 px-3 py-1.5 rounded-xl border"
-                    style={{ backgroundColor: zoneId === z.id ? z.color + "33" : "#f9fafb", borderColor: zoneId === z.id ? z.color : "#e5e7eb" }}
-                  >
-                    <View style={{ backgroundColor: z.color }} className="w-2.5 h-2.5 rounded-sm" />
-                    <Text className="text-xs text-gray-700">{z.name}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </ScrollView>
+              ))}
+            </View>
 
             <Input label="Notes" placeholder="Soil dry, overhead after heat…" value={notes} onChangeText={setNotes} multiline numberOfLines={3} className="min-h-[80px]" />
           </ScrollView>

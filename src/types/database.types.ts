@@ -841,6 +841,7 @@ export interface Database {
           description: string | null;
           cols: number;
           rows: number;
+          sun_exposure: string | null;
           created_at: string;
         };
         Insert: {
@@ -850,6 +851,7 @@ export interface Database {
           description?: string | null;
           cols?: number;
           rows?: number;
+          sun_exposure?: string | null;
           created_at?: string;
         };
         Update: {
@@ -859,6 +861,7 @@ export interface Database {
           description?: string | null;
           cols?: number;
           rows?: number;
+          sun_exposure?: string | null;
           created_at?: string;
         };
         Relationships: Rel;

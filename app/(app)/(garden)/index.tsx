@@ -19,6 +19,7 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import {
   useGardenPlots,
   useCreateGardenPlot,
+  useUpdateGardenPlot,
   useDeleteGardenPlot,
   useGardenSeeds,
   useGardenJournal,
@@ -30,10 +31,17 @@ import { useGardenWeather } from "@/hooks/useGardenWeather";
 import type { GardenPlot } from "@/types/app.types";
 
 const PLOT_PRESETS = [
-  { label: "10×20 Veggie Bed", cols: 10, rows: 20 },
-  { label: "4×8 Raised Bed",   cols: 4,  rows: 8  },
-  { label: "8×8 Square",       cols: 8,  rows: 8  },
-  { label: "Custom",           cols: 0,  rows: 0  },
+  { label: "10×20 Veggie Bed",    cols: 10, rows: 20 },
+  { label: "4×8 Raised Bed",      cols: 4,  rows: 8  },
+  { label: "8×8 Square",          cols: 8,  rows: 8  },
+  { label: "Pots/Containers",     cols: 5,  rows: 5  },
+  { label: "Custom",              cols: 0,  rows: 0  },
+];
+
+const SUN_OPTIONS = [
+  { value: "full_sun",    label: "Full Sun",     emoji: "☀️",  hint: "6+ hrs direct" },
+  { value: "partial_sun", label: "Partial Sun",  emoji: "⛅",  hint: "3-6 hrs direct" },
+  { value: "shade",       label: "Shade",        emoji: "🌥",  hint: "< 3 hrs direct" },
 ];
 
 function SectionHeader({
@@ -108,6 +116,7 @@ export default function GardenScreen() {
 
   const { data: plots = [], isLoading, refetch } = useGardenPlots(householdId);
   const createPlot = useCreateGardenPlot();
+  const updatePlot = useUpdateGardenPlot();
   const deletePlot = useDeleteGardenPlot();
 
   // Dashboard data
@@ -132,10 +141,12 @@ export default function GardenScreen() {
   const [maintenanceOpen, setMaintenanceOpen] = useState(true);
   const [troubleshootingOpen, setTroubleshootingOpen] = useState(true);
 
-  // New garden modal state
+  // New / Edit garden modal state (shared form)
   const [showNew, setShowNew] = useState(false);
+  const [editingPlot, setEditingPlot] = useState<GardenPlot | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
+  const [sunExposure, setSunExposure] = useState<string | null>(null);
   const [preset, setPreset] = useState(PLOT_PRESETS[0]);
   const [customCols, setCustomCols] = useState("10");
   const [customRows, setCustomRows] = useState("20");
@@ -143,22 +154,45 @@ export default function GardenScreen() {
   function resetForm() {
     setName("");
     setDescription("");
+    setSunExposure(null);
     setPreset(PLOT_PRESETS[0]);
     setCustomCols("10");
     setCustomRows("20");
+  }
+
+  function openEdit(plot: GardenPlot) {
+    setEditingPlot(plot);
+    setName(plot.name);
+    setDescription(plot.description ?? "");
+    setSunExposure(plot.sun_exposure ?? null);
+    const match = PLOT_PRESETS.find((p) => p.cols === plot.cols && p.rows === plot.rows && p.label !== "Custom");
+    setPreset(match ?? PLOT_PRESETS[PLOT_PRESETS.length - 1]);
+    setCustomCols(plot.cols.toString());
+    setCustomRows(plot.rows.toString());
+    setShowNew(true);
   }
 
   async function handleCreate() {
     if (!householdId || !name.trim()) return;
     const cols = preset.cols > 0 ? preset.cols : parseInt(customCols) || 10;
     const rows = preset.rows > 0 ? preset.rows : parseInt(customRows) || 20;
-    await createPlot.mutateAsync({
-      household_id: householdId,
-      name: name.trim(),
-      description: description.trim() || null,
-      cols,
-      rows,
-    });
+    if (editingPlot) {
+      await updatePlot.mutateAsync({
+        id: editingPlot.id,
+        householdId,
+        updates: { name: name.trim(), description: description.trim() || null, sun_exposure: sunExposure },
+      });
+    } else {
+      await createPlot.mutateAsync({
+        household_id: householdId,
+        name: name.trim(),
+        description: description.trim() || null,
+        cols,
+        rows,
+        sun_exposure: sunExposure,
+      });
+    }
+    setEditingPlot(null);
     resetForm();
     setShowNew(false);
   }
@@ -493,6 +527,7 @@ export default function GardenScreen() {
                     params: { plotId: plot.id },
                   })
                 }
+                onEdit={() => openEdit(plot)}
                 onDelete={() => confirmDelete(plot)}
               />
             ))}
@@ -506,20 +541,22 @@ export default function GardenScreen() {
       <Modal visible={showNew} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
           <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
-            <TouchableOpacity onPress={() => { resetForm(); setShowNew(false); }}>
+            <TouchableOpacity onPress={() => { setEditingPlot(null); resetForm(); setShowNew(false); }}>
               <Text className="text-gray-500 text-base">Cancel</Text>
             </TouchableOpacity>
-            <Text className="text-base font-semibold text-gray-900">New Garden</Text>
+            <Text className="text-base font-semibold text-gray-900">
+              {editingPlot ? "Edit Garden" : "New Garden"}
+            </Text>
             <TouchableOpacity
               onPress={handleCreate}
-              disabled={!name.trim() || createPlot.isPending}
+              disabled={!name.trim() || createPlot.isPending || updatePlot.isPending}
             >
               <Text
                 className={`text-base font-semibold ${
                   name.trim() ? "text-green-600" : "text-gray-300"
                 }`}
               >
-                {createPlot.isPending ? "Saving…" : "Save"}
+                {createPlot.isPending || updatePlot.isPending ? "Saving…" : "Save"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -586,11 +623,35 @@ export default function GardenScreen() {
               </View>
             )}
 
-            {preset.label !== "Custom" && preset.cols > 0 && (
+            {preset.label === "Pots/Containers" && (
+              <Text className="text-gray-400 text-sm -mt-2 mb-4">
+                5×5 grid — each cell represents one pot or container
+              </Text>
+            )}
+            {preset.label !== "Custom" && preset.label !== "Pots/Containers" && preset.cols > 0 && (
               <Text className="text-gray-400 text-sm -mt-2 mb-4">
                 {preset.cols} columns × {preset.rows} rows
               </Text>
             )}
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">Sun Exposure</Text>
+            <View className="flex-row gap-2 mb-4">
+              {SUN_OPTIONS.map((opt) => (
+                <TouchableOpacity
+                  key={opt.value}
+                  onPress={() => setSunExposure(sunExposure === opt.value ? null : opt.value)}
+                  className={`flex-1 items-center py-2.5 rounded-xl border ${
+                    sunExposure === opt.value ? "bg-amber-50 border-amber-400" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className="text-xl mb-0.5">{opt.emoji}</Text>
+                  <Text className={`text-xs font-semibold ${sunExposure === opt.value ? "text-amber-700" : "text-gray-700"}`}>
+                    {opt.label}
+                  </Text>
+                  <Text className="text-xs text-gray-400">{opt.hint}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
 
             <View className="bg-green-50 border border-green-200 rounded-xl p-3 mt-2">
               <Text className="text-green-800 text-sm font-medium mb-1">Zone 8b tips</Text>
@@ -606,26 +667,39 @@ export default function GardenScreen() {
   );
 }
 
+const SUN_LABEL: Record<string, { emoji: string; label: string }> = {
+  full_sun:    { emoji: "☀️",  label: "Full Sun" },
+  partial_sun: { emoji: "⛅",  label: "Partial Sun" },
+  shade:       { emoji: "🌥",  label: "Shade" },
+};
+
 function PlotCard({
   plot,
   onOpen,
+  onEdit,
   onDelete,
 }: {
   plot: GardenPlot;
   onOpen: () => void;
+  onEdit: () => void;
   onDelete: () => void;
 }) {
+  const sun = plot.sun_exposure ? SUN_LABEL[plot.sun_exposure] : null;
   return (
     <Card className="p-0 overflow-hidden">
       <TouchableOpacity onPress={onOpen} activeOpacity={0.7}>
         <View className="bg-green-700 px-4 py-3 flex-row items-center justify-between">
+          <Text className="text-white text-base font-bold">{plot.name}</Text>
           <View className="flex-row items-center gap-2">
-            <Text className="text-white text-base font-bold">{plot.name}</Text>
-          </View>
-          <View className="bg-green-600 rounded-lg px-2 py-1">
-            <Text className="text-green-100 text-xs">
-              {plot.cols}×{plot.rows}
-            </Text>
+            {sun && (
+              <View className="bg-green-600 rounded-lg px-2 py-1 flex-row items-center gap-1">
+                <Text className="text-xs">{sun.emoji}</Text>
+                <Text className="text-green-100 text-xs">{sun.label}</Text>
+              </View>
+            )}
+            <View className="bg-green-600 rounded-lg px-2 py-1">
+              <Text className="text-green-100 text-xs">{plot.cols}×{plot.rows}</Text>
+            </View>
           </View>
         </View>
 
@@ -635,12 +709,14 @@ function PlotCard({
           ) : null}
           <View className="flex-row items-center justify-between">
             <Text className="text-green-700 text-sm font-medium">Open Map →</Text>
-            <TouchableOpacity
-              onPress={onDelete}
-              className="px-3 py-1 rounded-lg bg-red-50"
-            >
-              <Text className="text-red-500 text-xs">Delete</Text>
-            </TouchableOpacity>
+            <View className="flex-row gap-2">
+              <TouchableOpacity onPress={onEdit} className="px-3 py-1 rounded-lg bg-blue-50">
+                <Text className="text-blue-600 text-xs">Edit</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={onDelete} className="px-3 py-1 rounded-lg bg-red-50">
+                <Text className="text-red-500 text-xs">Delete</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </TouchableOpacity>
