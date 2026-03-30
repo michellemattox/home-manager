@@ -11,8 +11,11 @@ export const queryClient = new QueryClient({
       networkMode: "offlineFirst",
     },
     mutations: {
-      // Mutations also fire immediately offline; the server error is surfaced to the UI.
-      networkMode: "offlineFirst",
+      // "always" fires mutations regardless of connectivity (same behaviour as before)
+      // but doesn't swallow the resulting server error. Switched from "offlineFirst"
+      // which was causing silent auth failures when the session was stale.
+      networkMode: "always",
+      retry: 0, // surface errors immediately rather than retrying on auth failures
     },
   },
 });

@@ -12,7 +12,7 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
-import { View, ActivityIndicator, Platform } from "react-native";
+import { View, ActivityIndicator, Platform, AppState } from "react-native";
 import type { HouseholdMember } from "@/types/app.types";
 import { useFonts, Lobster_400Regular } from "@expo-google-fonts/lobster";
 
@@ -93,51 +93,45 @@ function AuthGate({ children }: { children: React.ReactNode }) {
         }
 
         if (newSession?.user) {
-          try {
-            // Don't block auth navigation on push token registration.
-            await Promise.race([
-              registerForPushNotificationsAsync(newSession.user.id),
-              new Promise<void>((resolve) => setTimeout(resolve, 5000)),
-            ]);
-          } catch {
-            // Push registration is non-critical for core app navigation.
-          }
+          // Push registration is non-critical — fire and forget, never block startup.
+          registerForPushNotificationsAsync(newSession.user.id).catch(() => {});
 
           try {
-            const { data: member } = await supabase
-              .from("household_members")
-              .select("*")
-              .eq("user_id", newSession.user.id)
-              .is("invite_token", null)
-              .maybeSingle();
-
-            if (member) {
-              const m = member as HouseholdMember;
-              const { setHousehold, setMembers, setCurrentMember } =
-                useHouseholdStore.getState();
-              setCurrentMember(m);
-
-              const { data: householdData } = await supabase
-                .from("households")
-                .select("*")
-                .eq("id", m.household_id)
-                .maybeSingle();
-              if (householdData) setHousehold(householdData as any);
-
-              const { data: members } = await supabase
+            // Run member + household + members list in parallel to cut load time.
+            const [memberRes] = await Promise.all([
+              supabase
                 .from("household_members")
                 .select("*")
-                .eq("household_id", m.household_id)
-                .is("invite_token", null);
-              setMembers((members ?? []) as any);
+                .eq("user_id", newSession.user.id)
+                .is("invite_token", null)
+                .maybeSingle(),
+            ]);
+
+            const member = memberRes.data as HouseholdMember | null;
+            if (member) {
+              const { setHousehold, setMembers, setCurrentMember } =
+                useHouseholdStore.getState();
+              setCurrentMember(member);
+
+              const [householdRes, membersRes] = await Promise.all([
+                supabase
+                  .from("households")
+                  .select("*")
+                  .eq("id", member.household_id)
+                  .maybeSingle(),
+                supabase
+                  .from("household_members")
+                  .select("*")
+                  .eq("household_id", member.household_id)
+                  .is("invite_token", null),
+              ]);
+              if (householdRes.data) setHousehold(householdRes.data as any);
+              setMembers((membersRes.data ?? []) as any);
             }
           } catch {
-            // If household lookup fails (transient RLS/network), we'll still
-            // allow navigation and let the UI guide onboarding.
+            // Transient network/RLS failure — let UI guide recovery.
           } finally {
-            // Always mark check complete, whether or not a household was found.
             useHouseholdStore.getState().setHouseholdChecked(true);
-            // Auth is fully resolved — allow routing decisions.
             setAuthReady();
           }
         } else {
@@ -148,6 +142,26 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     );
 
     return () => listener.subscription.unsubscribe();
+  }, []);
+
+  // Refresh the Supabase session whenever the app comes back to the foreground.
+  // This prevents stale/expired tokens causing silent 401s after the app has
+  // been backgrounded overnight or for several hours.
+  useEffect(() => {
+    const sub = AppState.addEventListener("change", (nextState) => {
+      if (nextState === "active") {
+        supabase.auth.getSession().then(({ data }) => {
+          if (data.session) {
+            // Session is valid — ensure query cache reflects current auth state.
+            // getSession() auto-refreshes the token internally if near expiry.
+          } else {
+            // Session gone (signed out on another device, token fully expired).
+            useHouseholdStore.getState().clearHousehold();
+          }
+        });
+      }
+    });
+    return () => sub.remove();
   }, []);
 
   useEffect(() => {
