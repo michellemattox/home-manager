@@ -217,7 +217,7 @@ export interface GardenJournalEntry {
   created_at: string;
 }
 
-export type WateringMethod = "hand" | "drip" | "overhead" | "soaker";
+export type WateringMethod = "hand" | "drip" | "overhead" | "soaker" | "rain";
 
 export interface GardenWateringLog {
   id: string;
@@ -237,6 +237,7 @@ export const WATERING_METHODS: { value: WateringMethod; label: string; emoji: st
   { value: "drip",     label: "Drip",     emoji: "💧" },
   { value: "overhead", label: "Overhead", emoji: "🚿" },
   { value: "soaker",   label: "Soaker",   emoji: "🌊" },
+  { value: "rain",     label: "Rain",     emoji: "🌧" },
 ];
 
 export const SEVERITY_LABELS = ["", "Minimal", "Low", "Moderate", "High", "Severe"];

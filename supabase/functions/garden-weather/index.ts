@@ -120,6 +120,60 @@ Deno.serve(async (req) => {
         icon:           currentData.icon,
       }, { onConflict: "household_id,log_date" });
 
+    // ── 5. Backfill past 7 days via Open-Meteo (free, no key required) ─────────
+    // OWM forecast only covers future data — Open-Meteo fills historical gaps so
+    // yesterday's rain is captured the next time the app is opened.
+    try {
+      const lat = current.coord?.lat;
+      const lon = current.coord?.lon;
+      if (lat != null && lon != null) {
+        const meteoRes = await fetch(
+          `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
+          `&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,weathercode` +
+          `&past_days=7&forecast_days=0&timezone=auto&temperature_unit=fahrenheit`
+        );
+        if (meteoRes.ok) {
+          const meteo = await meteoRes.json();
+          const { time, precipitation_sum, temperature_2m_max, temperature_2m_min, weathercode } = meteo.daily ?? {};
+          if (Array.isArray(time) && Array.isArray(precipitation_sum)) {
+            const pastRows = (time as string[])
+              .filter((d: string) => d !== today) // today already logged via OWM above
+              .map((d: string, i: number) => {
+                const wcode: number = (weathercode as number[])?.[i] ?? 0;
+                let conditionMain = "Clear";
+                if (wcode === 0)                               conditionMain = "Clear";
+                else if (wcode <= 3)                           conditionMain = "Clouds";
+                else if (wcode <= 48)                          conditionMain = "Fog";
+                else if (wcode <= 55)                          conditionMain = "Drizzle";
+                else if ((wcode >= 61 && wcode <= 67) || (wcode >= 80 && wcode <= 82)) conditionMain = "Rain";
+                else if (wcode >= 71 && wcode <= 77)           conditionMain = "Snow";
+                else if (wcode >= 95)                          conditionMain = "Thunderstorm";
+                return {
+                  household_id:   householdId,
+                  log_date:       d,
+                  zip_code:       zipCode,
+                  rainfall_mm:    Math.round(((precipitation_sum as number[])[i] ?? 0) * 10) / 10,
+                  temp_high_f:    (temperature_2m_max as number[])?.[i] != null ? Math.round((temperature_2m_max as number[])[i]) : null,
+                  temp_low_f:     (temperature_2m_min as number[])?.[i] != null ? Math.round((temperature_2m_min as number[])[i]) : null,
+                  condition_main: conditionMain,
+                  condition_desc: null as string | null,
+                  icon:           null as string | null,
+                };
+              });
+            if (pastRows.length > 0) {
+              // ignoreDuplicates: don't overwrite days already captured by OWM
+              await supabase.from("garden_weather_logs").upsert(pastRows, {
+                onConflict: "household_id,log_date",
+                ignoreDuplicates: true,
+              });
+            }
+          }
+        }
+      }
+    } catch {
+      // Open-Meteo backfill is best-effort — never block the main response
+    }
+
     return new Response(
       JSON.stringify({ current: currentData, forecast, loggedToday: !logErr }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
