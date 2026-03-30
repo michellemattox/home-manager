@@ -178,34 +178,6 @@ export default function WateringScreen() {
       .sort((a, b) => (b.days ?? 999) - (a.days ?? 999));
   }, [bedZones, lastWateredByZone, rainfallLast7Days, urgencyDays]);
 
-  // Rainfall events in the last 14 days that haven't been logged as a watering entry
-  const unloggedRainEvents = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 14);
-    const loggedRainDates = new Set(
-      logs.filter((l) => l.method === "rain").map((l) => l.water_date)
-    );
-    return weatherLogs
-      .filter((w) => {
-        const date = new Date(w.log_date + "T12:00:00");
-        return date >= cutoff && (w.rainfall_mm ?? 0) >= 5 && !loggedRainDates.has(w.log_date);
-      })
-      .sort((a, b) => b.log_date.localeCompare(a.log_date));
-  }, [weatherLogs, logs]);
-
-  async function logRainEvent(log_date: string, rainfall_mm: number) {
-    if (!householdId) return;
-    await createLog.mutateAsync({
-      household_id: householdId,
-      plot_id: null,
-      zone_id: null,
-      water_date: log_date,
-      method: "rain" as WateringMethod,
-      duration_min: null,
-      amount_gal: null,
-      notes: `Auto-logged: ${rainfall_mm.toFixed(1)}mm rainfall detected`,
-    });
-  }
 
   return (
     <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
@@ -225,38 +197,6 @@ export default function WateringScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
-
-          {/* ── Unlogged rain events ──────────────────────────────────────── */}
-          {unloggedRainEvents.length > 0 && (
-            <View>
-              <Text className="text-sm font-semibold text-gray-700 mb-2">🌧 Rainfall Detected</Text>
-              <View className="gap-2">
-                {unloggedRainEvents.map((w) => (
-                  <View
-                    key={w.log_date}
-                    className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3 flex-row items-center gap-3"
-                  >
-                    <View className="flex-1">
-                      <Text className="text-sm font-semibold text-sky-900">
-                        {fmtDate(w.log_date)}
-                      </Text>
-                      <Text className="text-xs text-sky-600 mt-0.5">
-                        {(w.rainfall_mm ?? 0).toFixed(1)}mm rain
-                        {w.temp_high_f ? ` · High ${Math.round(w.temp_high_f)}°F` : ""}
-                      </Text>
-                    </View>
-                    <TouchableOpacity
-                      onPress={() => logRainEvent(w.log_date, w.rainfall_mm ?? 0)}
-                      disabled={createLog.isPending}
-                      className="bg-sky-600 rounded-xl px-3 py-2"
-                    >
-                      <Text className="text-white text-xs font-semibold">Log Rain</Text>
-                    </TouchableOpacity>
-                  </View>
-                ))}
-              </View>
-            </View>
-          )}
 
           {/* ── Heat advisory ─────────────────────────────────────────────── */}
           {heatStressExtra > 0 && (

@@ -166,12 +166,71 @@ Deno.serve(async (req) => {
                 onConflict: "household_id,log_date",
                 ignoreDuplicates: true,
               });
+
+              // ── Auto-log rainfall as watering entries ───────────────────────
+              // Find rainy days (>=5mm) that don't already have a rain watering entry.
+              const rainyDates = pastRows
+                .filter((r) => (r.rainfall_mm ?? 0) >= 5)
+                .map((r) => r.log_date);
+
+              if (rainyDates.length > 0) {
+                // Fetch any rain watering entries that already exist for these dates
+                const { data: existingRain } = await supabase
+                  .from("garden_watering_logs")
+                  .select("water_date")
+                  .eq("household_id", householdId)
+                  .eq("method", "rain")
+                  .in("water_date", rainyDates);
+
+                const alreadyLogged = new Set((existingRain ?? []).map((r: { water_date: string }) => r.water_date));
+
+                const rainEntries = pastRows
+                  .filter((r) => (r.rainfall_mm ?? 0) >= 5 && !alreadyLogged.has(r.log_date))
+                  .map((r) => ({
+                    household_id: householdId,
+                    plot_id:      null,
+                    zone_id:      null,
+                    water_date:   r.log_date,
+                    method:       "rain",
+                    duration_min: null,
+                    amount_gal:   null,
+                    notes:        `Auto-logged: ${(r.rainfall_mm ?? 0).toFixed(1)}mm rainfall`,
+                  }));
+
+                if (rainEntries.length > 0) {
+                  await supabase.from("garden_watering_logs").insert(rainEntries);
+                }
+              }
             }
           }
         }
       }
     } catch {
       // Open-Meteo backfill is best-effort — never block the main response
+    }
+
+    // Also auto-log today's rain if significant and not yet logged
+    if (dailyRainfallMm >= 5) {
+      const { data: todayRainLog } = await supabase
+        .from("garden_watering_logs")
+        .select("id")
+        .eq("household_id", householdId)
+        .eq("method", "rain")
+        .eq("water_date", today)
+        .maybeSingle();
+
+      if (!todayRainLog) {
+        await supabase.from("garden_watering_logs").insert({
+          household_id: householdId,
+          plot_id:      null,
+          zone_id:      null,
+          water_date:   today,
+          method:       "rain",
+          duration_min: null,
+          amount_gal:   null,
+          notes:        `Auto-logged: ${dailyRainfallMm.toFixed(1)}mm rainfall`,
+        });
+      }
     }
 
     return new Response(
