@@ -36,7 +36,7 @@ const lowLiftSchema = z.object({
   notes: z.string().optional(),
   anchorDate: z.string().optional(),
   timeOfDay: z.string().optional(),
-  frequencyType: z.enum(["daily", "weekly", "monthly", "yearly", "custom"]),
+  frequencyType: z.enum(["no_repeat", "daily", "weekly", "monthly", "yearly", "custom"]),
   customDays: z.string().optional(),
   assignedMemberId: z.string().optional(),
 });
@@ -51,7 +51,8 @@ const paSchema = z.object({
 });
 type PAFormData = z.infer<typeof paSchema>;
 
-const FREQUENCIES: { label: string; value: FrequencyType }[] = [
+const FREQUENCIES: { label: string; value: FrequencyType | "no_repeat" }[] = [
+  { label: "Does Not Repeat", value: "no_repeat" },
   { label: "Daily", value: "daily" },
   { label: "Weekly", value: "weekly" },
   { label: "Monthly", value: "monthly" },
@@ -124,25 +125,40 @@ export default function NewTaskScreen() {
     if (!household) return;
     const today = toISODateString(new Date());
     const anchorDate = data.anchorDate || today;
-    const freqDays =
-      data.frequencyType === "custom"
-        ? parseInt(data.customDays ?? "30", 10)
-        : frequencyToDays(data.frequencyType);
     try {
-      await createRecurring.mutateAsync({
-        household_id: household.id,
-        title: data.title,
-        description: data.notes?.trim() || null,
-        category: null,
-        frequency_type: data.frequencyType,
-        frequency_days: freqDays,
-        anchor_date: anchorDate,
-        next_due_date: anchorDate,
-        assigned_member_id: data.assignedMemberId ?? null,
-        is_active: true,
-        time_of_day: data.timeOfDay?.trim() || null,
-        is_personal: llIsPersonal,
-      });
+      if (data.frequencyType === "no_repeat") {
+        // One-off task — no recurrence
+        await createTask.mutateAsync({
+          household_id: household.id,
+          title: data.title,
+          notes: data.notes?.trim() || null,
+          due_date: anchorDate,
+          due_time: data.timeOfDay?.trim() || null,
+          assigned_member_id: data.assignedMemberId ?? null,
+          linked_event_type: null,
+          linked_event_id: null,
+          is_personal: llIsPersonal,
+        });
+      } else {
+        const freqDays =
+          data.frequencyType === "custom"
+            ? parseInt(data.customDays ?? "30", 10)
+            : frequencyToDays(data.frequencyType);
+        await createRecurring.mutateAsync({
+          household_id: household.id,
+          title: data.title,
+          description: data.notes?.trim() || null,
+          category: null,
+          frequency_type: data.frequencyType,
+          frequency_days: freqDays,
+          anchor_date: anchorDate,
+          next_due_date: anchorDate,
+          assigned_member_id: data.assignedMemberId ?? null,
+          is_active: true,
+          time_of_day: data.timeOfDay?.trim() || null,
+          is_personal: llIsPersonal,
+        });
+      }
       Keyboard.dismiss();
       router.back();
     } catch (e: any) {
@@ -363,9 +379,9 @@ export default function NewTaskScreen() {
             />
 
             <Button
-              title="Create Low-Lift Task"
+              title="Create Task"
               onPress={llHandleSubmit(onSubmitLowLift)}
-              loading={createRecurring.isPending}
+              loading={createRecurring.isPending || createTask.isPending}
             />
           </>
         )}

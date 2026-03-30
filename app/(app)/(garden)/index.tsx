@@ -6,8 +6,6 @@ import {
   TouchableOpacity,
   Modal,
   Alert,
-  TextInput,
-  ActivityIndicator,
   RefreshControl,
   Image,
 } from "react-native";
@@ -22,17 +20,86 @@ import {
   useGardenPlots,
   useCreateGardenPlot,
   useDeleteGardenPlot,
+  useGardenSeeds,
+  useGardenJournal,
+  useGardenWatering,
+  useGardenPestLogs,
+  useGardenAllHarvests,
 } from "@/hooks/useGarden";
 import { useGardenWeather } from "@/hooks/useGardenWeather";
 import type { GardenPlot } from "@/types/app.types";
 
-// Zone type presets for quick-start
 const PLOT_PRESETS = [
   { label: "10×20 Veggie Bed", cols: 10, rows: 20 },
   { label: "4×8 Raised Bed",   cols: 4,  rows: 8  },
   { label: "8×8 Square",       cols: 8,  rows: 8  },
   { label: "Custom",           cols: 0,  rows: 0  },
 ];
+
+function SectionHeader({
+  title,
+  emoji,
+  isOpen,
+  onToggle,
+  badge,
+}: {
+  title: string;
+  emoji: string;
+  isOpen: boolean;
+  onToggle: () => void;
+  badge?: string;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onToggle}
+      className="flex-row items-center justify-between px-4 py-3 bg-white border-b border-gray-100"
+    >
+      <View className="flex-row items-center gap-2">
+        <Text className="text-base">{emoji}</Text>
+        <Text className="text-sm font-bold text-gray-800 uppercase tracking-wide">{title}</Text>
+        {badge ? (
+          <View className="bg-gray-100 rounded-full px-2 py-0.5">
+            <Text className="text-xs text-gray-500">{badge}</Text>
+          </View>
+        ) : null}
+      </View>
+      <Text className="text-gray-400 text-xs">{isOpen ? "▲" : "▼"}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function NavButton({
+  emoji,
+  label,
+  sublabel,
+  colorClass,
+  borderClass,
+  textClass,
+  subTextClass,
+  onPress,
+}: {
+  emoji: string;
+  label: string;
+  sublabel: string;
+  colorClass: string;
+  borderClass: string;
+  textClass: string;
+  subTextClass: string;
+  onPress: () => void;
+}) {
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      className={`flex-1 flex-row items-center gap-2 border ${borderClass} ${colorClass} rounded-xl px-3 py-2`}
+    >
+      <Text className="text-lg">{emoji}</Text>
+      <View className="flex-1">
+        <Text className={`text-xs font-semibold ${textClass}`}>{label}</Text>
+        <Text className={`text-xs ${subTextClass}`} numberOfLines={1}>{sublabel}</Text>
+      </View>
+    </TouchableOpacity>
+  );
+}
 
 export default function GardenScreen() {
   const router = useRouter();
@@ -43,6 +110,16 @@ export default function GardenScreen() {
   const createPlot = useCreateGardenPlot();
   const deletePlot = useDeleteGardenPlot();
 
+  // Dashboard data
+  const { data: seeds = [] } = useGardenSeeds(householdId);
+  const { data: journal = [] } = useGardenJournal(householdId);
+  const { data: watering = [] } = useGardenWatering(householdId);
+  const { data: pestLogs = [] } = useGardenPestLogs(householdId);
+  const { data: allHarvests = [] } = useGardenAllHarvests(householdId);
+
+  const zipCode = household?.zip_code ?? null;
+  const { data: weather } = useGardenWeather(zipCode, householdId);
+
   const [refreshing, setRefreshing] = useState(false);
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -50,6 +127,12 @@ export default function GardenScreen() {
     setRefreshing(false);
   }, [refetch]);
 
+  // Section open/close state (all open by default)
+  const [planningOpen, setPlanningOpen] = useState(true);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(true);
+  const [troubleshootingOpen, setTroubleshootingOpen] = useState(true);
+
+  // New garden modal state
   const [showNew, setShowNew] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -96,8 +179,24 @@ export default function GardenScreen() {
     );
   }
 
-  const zipCode = household?.zip_code ?? null;
-  const { data: weather } = useGardenWeather(zipCode, householdId);
+  // Dashboard summaries
+  const lastJournal = journal[0];
+  const lastJournalDays = lastJournal
+    ? Math.floor((Date.now() - new Date(lastJournal.created_at).getTime()) / 86400000)
+    : null;
+
+  const lastWatering = watering[0];
+  const lastWateringDays = lastWatering
+    ? Math.floor((Date.now() - new Date(lastWatering.water_date ?? lastWatering.created_at).getTime()) / 86400000)
+    : null;
+
+  const activePests = pestLogs.filter((p: any) => p.status === "active" || p.status === "monitoring").length;
+
+  const recentHarvestsThisMonth = allHarvests.filter((h: any) => {
+    const d = new Date(h.date ?? h.created_at);
+    const now = new Date();
+    return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear();
+  }).length;
 
   return (
     <SafeAreaView className="flex-1 bg-[#F2FCEB]" edges={["top"]}>
@@ -114,194 +213,294 @@ export default function GardenScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Quick-access row — weather + succession */}
-      <View className="px-4 pb-2 flex-row gap-3">
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/weather")}
-          className="flex-1 flex-row items-center gap-2 border border-blue-200 bg-blue-50 rounded-xl px-3 py-2.5"
-        >
-          {weather?.current.icon ? (
-            <Image source={{ uri: `https://openweathermap.org/img/wn/${weather.current.icon}.png` }} style={{ width: 28, height: 28 }} />
-          ) : (
-            <Text className="text-xl">🌦</Text>
-          )}
-          <View className="flex-1">
-            {weather?.current ? (
-              <>
-                <Text className="text-blue-800 text-sm font-semibold">{weather.current.temp}°F — {weather.current.description}</Text>
-                <Text className="text-blue-500 text-xs">{zipCode} · tap for forecast</Text>
-              </>
-            ) : (
-              <>
-                <Text className="text-blue-700 text-sm font-semibold">Weather</Text>
-                <Text className="text-blue-400 text-xs">{zipCode ? "Tap to load" : "Set zip in settings"}</Text>
-              </>
-            )}
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/succession")}
-          className="flex-1 flex-row items-center gap-2 border border-green-200 bg-green-50 rounded-xl px-3 py-2.5"
-        >
-          <Text className="text-xl">📅</Text>
-          <View>
-            <Text className="text-green-800 text-sm font-semibold">Planting</Text>
-            <Text className="text-green-600 text-xs">Succession planner</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+      <ScrollView
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16a34a" />}
+      >
+        {/* ── PLANNING ───────────────────────────────────────────────────── */}
+        <SectionHeader
+          emoji="📋"
+          title="Planning"
+          isOpen={planningOpen}
+          onToggle={() => setPlanningOpen((v) => !v)}
+          badge={seeds.length > 0 ? `${seeds.length} seeds` : undefined}
+        />
 
-      {/* Quick-access row 2 — rotation, pests, seeds, companion */}
-      <View className="px-4 pb-2 flex-row gap-2">
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/rotation")}
-          className="flex-1 flex-row items-center gap-2 border border-purple-200 bg-purple-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">🔄</Text>
-          <View>
-            <Text className="text-purple-800 text-xs font-semibold">Rotation</Text>
-            <Text className="text-purple-500 text-xs">By zone</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/pests")}
-          className="flex-1 flex-row items-center gap-2 border border-red-200 bg-red-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">🐛</Text>
-          <View>
-            <Text className="text-red-800 text-xs font-semibold">Pests</Text>
-            <Text className="text-red-500 text-xs">& Diseases</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/seeds")}
-          className="flex-1 flex-row items-center gap-2 border border-emerald-200 bg-emerald-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">🌱</Text>
-          <View>
-            <Text className="text-emerald-800 text-xs font-semibold">Seeds</Text>
-            <Text className="text-emerald-500 text-xs">Inventory</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/companion")}
-          className="flex-1 flex-row items-center gap-2 border border-teal-200 bg-teal-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">🌿</Text>
-          <View>
-            <Text className="text-teal-800 text-xs font-semibold">Companions</Text>
-            <Text className="text-teal-500 text-xs">Planting</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+        {planningOpen && (
+          <View className="bg-[#F2FCEB] px-4 pt-3 pb-2">
+            {/* Mini-dashboard */}
+            <View className="flex-row gap-3 mb-3">
+              <View className="flex-1 bg-white rounded-xl p-3 border border-green-100">
+                <Text className="text-xs text-gray-500 mb-0.5">Seed inventory</Text>
+                <Text className="text-lg font-bold text-green-700">{seeds.length}</Text>
+                <Text className="text-xs text-gray-400">varieties tracked</Text>
+              </View>
+              <View className="flex-1 bg-white rounded-xl p-3 border border-green-100">
+                <Text className="text-xs text-gray-500 mb-0.5">Active plots</Text>
+                <Text className="text-lg font-bold text-green-700">{plots.length}</Text>
+                <Text className="text-xs text-gray-400">garden zones</Text>
+              </View>
+            </View>
 
-      {/* Quick-access row 3 — harvest analytics, journal, watering */}
-      <View className="px-4 pb-2 flex-row gap-2">
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/harvest-analytics")}
-          className="flex-1 flex-row items-center gap-2 border border-amber-200 bg-amber-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">🌾</Text>
-          <View>
-            <Text className="text-amber-800 text-xs font-semibold">Harvests</Text>
-            <Text className="text-amber-500 text-xs">Analytics</Text>
+            {/* Nav buttons */}
+            <View className="flex-row gap-2 mb-2">
+              <NavButton
+                emoji="📅"
+                label="Succession"
+                sublabel="Planner"
+                colorClass="bg-green-50"
+                borderClass="border-green-200"
+                textClass="text-green-800"
+                subTextClass="text-green-500"
+                onPress={() => router.push("/(app)/(garden)/succession")}
+              />
+              <NavButton
+                emoji="🔄"
+                label="Rotation"
+                sublabel="By zone"
+                colorClass="bg-purple-50"
+                borderClass="border-purple-200"
+                textClass="text-purple-800"
+                subTextClass="text-purple-500"
+                onPress={() => router.push("/(app)/(garden)/rotation")}
+              />
+              <NavButton
+                emoji="🌱"
+                label="Seeds"
+                sublabel="Inventory"
+                colorClass="bg-emerald-50"
+                borderClass="border-emerald-200"
+                textClass="text-emerald-800"
+                subTextClass="text-emerald-500"
+                onPress={() => router.push("/(app)/(garden)/seeds")}
+              />
+            </View>
+            <View className="flex-row gap-2 mb-3">
+              <NavButton
+                emoji="🌿"
+                label="Companions"
+                sublabel="Planting"
+                colorClass="bg-teal-50"
+                borderClass="border-teal-200"
+                textClass="text-teal-800"
+                subTextClass="text-teal-500"
+                onPress={() => router.push("/(app)/(garden)/companion")}
+              />
+              <NavButton
+                emoji="🗓"
+                label="Calendar"
+                sublabel="Planting guide"
+                colorClass="bg-orange-50"
+                borderClass="border-orange-200"
+                textClass="text-orange-800"
+                subTextClass="text-orange-500"
+                onPress={() => router.push("/(app)/(garden)/calendar")}
+              />
+              <View className="flex-1" />
+            </View>
           </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/journal")}
-          className="flex-1 flex-row items-center gap-2 border border-indigo-200 bg-indigo-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">📓</Text>
-          <View>
-            <Text className="text-indigo-800 text-xs font-semibold">Journal</Text>
-            <Text className="text-indigo-500 text-xs">Notes & obs.</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/watering")}
-          className="flex-1 flex-row items-center gap-2 border border-blue-200 bg-blue-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">💧</Text>
-          <View>
-            <Text className="text-blue-800 text-xs font-semibold">Watering</Text>
-            <Text className="text-blue-500 text-xs">Tracker</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+        )}
 
-      {/* Quick-access row 4 — calendar, shopping, plant library */}
-      <View className="px-4 pb-3 flex-row gap-2">
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/calendar")}
-          className="flex-1 flex-row items-center gap-2 border border-orange-200 bg-orange-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">🗓</Text>
-          <View>
-            <Text className="text-orange-800 text-xs font-semibold">Calendar</Text>
-            <Text className="text-orange-500 text-xs">Planting guide</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/shopping")}
-          className="flex-1 flex-row items-center gap-2 border border-lime-200 bg-lime-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">🛒</Text>
-          <View>
-            <Text className="text-lime-800 text-xs font-semibold">Shopping</Text>
-            <Text className="text-lime-500 text-xs">Garden list</Text>
-          </View>
-        </TouchableOpacity>
-        <TouchableOpacity
-          onPress={() => router.push("/(app)/(garden)/plant-library")}
-          className="flex-1 flex-row items-center gap-2 border border-cyan-200 bg-cyan-50 rounded-xl px-3 py-2"
-        >
-          <Text className="text-lg">📚</Text>
-          <View>
-            <Text className="text-cyan-800 text-xs font-semibold">Library</Text>
-            <Text className="text-cyan-500 text-xs">Crop reference</Text>
-          </View>
-        </TouchableOpacity>
-      </View>
+        {/* ── MAINTENANCE ────────────────────────────────────────────────── */}
+        <SectionHeader
+          emoji="🛠"
+          title="Maintenance"
+          isOpen={maintenanceOpen}
+          onToggle={() => setMaintenanceOpen((v) => !v)}
+          badge={recentHarvestsThisMonth > 0 ? `${recentHarvestsThisMonth} harvests this month` : undefined}
+        />
 
-      {isLoading ? (
-        <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
-        </ScrollView>
-      ) : plots.length === 0 ? (
-        <ScrollView
-          contentContainerStyle={{ flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 32 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16a34a" />}
-        >
-          <Text className="text-5xl mb-4">🥬</Text>
-          <Text className="text-lg font-semibold text-gray-700 text-center">
-            No gardens yet
-          </Text>
-          <Text className="text-sm text-gray-400 mt-2 text-center">
-            Tap "New Garden" to create your first bed or plot map.
-          </Text>
-        </ScrollView>
-      ) : (
-        <ScrollView
-          contentContainerStyle={{ padding: 16, gap: 12 }}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#16a34a" />}
-        >
-          {plots.map((plot) => (
-            <PlotCard
-              key={plot.id}
-              plot={plot}
-              onOpen={() =>
-                router.push({
-                  pathname: "/(app)/(garden)/[plotId]",
-                  params: { plotId: plot.id },
-                })
-              }
-              onDelete={() => confirmDelete(plot)}
-            />
-          ))}
-        </ScrollView>
-      )}
+        {maintenanceOpen && (
+          <View className="bg-[#F2FCEB] px-4 pt-3 pb-2">
+            {/* Mini-dashboard */}
+            <View className="flex-row gap-3 mb-3">
+              <View className="flex-1 bg-white rounded-xl p-3 border border-blue-100">
+                <Text className="text-xs text-gray-500 mb-0.5">Last watered</Text>
+                <Text className="text-lg font-bold text-blue-600">
+                  {lastWateringDays === null ? "—" : lastWateringDays === 0 ? "Today" : `${lastWateringDays}d ago`}
+                </Text>
+                <Text className="text-xs text-gray-400">{watering.length} logs total</Text>
+              </View>
+              <View className="flex-1 bg-white rounded-xl p-3 border border-indigo-100">
+                <Text className="text-xs text-gray-500 mb-0.5">Journal</Text>
+                <Text className="text-lg font-bold text-indigo-600">
+                  {lastJournalDays === null ? "—" : lastJournalDays === 0 ? "Today" : `${lastJournalDays}d ago`}
+                </Text>
+                <Text className="text-xs text-gray-400">last entry</Text>
+              </View>
+              <View className="flex-1 bg-white rounded-xl p-3 border border-amber-100">
+                <Text className="text-xs text-gray-500 mb-0.5">Harvests</Text>
+                <Text className="text-lg font-bold text-amber-600">{recentHarvestsThisMonth}</Text>
+                <Text className="text-xs text-gray-400">this month</Text>
+              </View>
+            </View>
+
+            {/* Weather bar */}
+            <TouchableOpacity
+              onPress={() => router.push("/(app)/(garden)/weather")}
+              className="flex-row items-center gap-2 border border-blue-200 bg-blue-50 rounded-xl px-3 py-2.5 mb-2"
+            >
+              {weather?.current.icon ? (
+                <Image source={{ uri: `https://openweathermap.org/img/wn/${weather.current.icon}.png` }} style={{ width: 28, height: 28 }} />
+              ) : (
+                <Text className="text-xl">🌦</Text>
+              )}
+              <View className="flex-1">
+                {weather?.current ? (
+                  <>
+                    <Text className="text-blue-800 text-sm font-semibold">{weather.current.temp}°F — {weather.current.description}</Text>
+                    <Text className="text-blue-500 text-xs">{zipCode} · tap for forecast</Text>
+                  </>
+                ) : (
+                  <>
+                    <Text className="text-blue-700 text-sm font-semibold">Weather</Text>
+                    <Text className="text-blue-400 text-xs">{zipCode ? "Tap to load" : "Set zip in settings"}</Text>
+                  </>
+                )}
+              </View>
+            </TouchableOpacity>
+
+            {/* Nav buttons */}
+            <View className="flex-row gap-2 mb-2">
+              <NavButton
+                emoji="📓"
+                label="Journal"
+                sublabel="Notes & obs."
+                colorClass="bg-indigo-50"
+                borderClass="border-indigo-200"
+                textClass="text-indigo-800"
+                subTextClass="text-indigo-500"
+                onPress={() => router.push("/(app)/(garden)/journal")}
+              />
+              <NavButton
+                emoji="💧"
+                label="Watering"
+                sublabel="Tracker"
+                colorClass="bg-blue-50"
+                borderClass="border-blue-200"
+                textClass="text-blue-800"
+                subTextClass="text-blue-500"
+                onPress={() => router.push("/(app)/(garden)/watering")}
+              />
+              <NavButton
+                emoji="🌾"
+                label="Harvests"
+                sublabel="Analytics"
+                colorClass="bg-amber-50"
+                borderClass="border-amber-200"
+                textClass="text-amber-800"
+                subTextClass="text-amber-500"
+                onPress={() => router.push("/(app)/(garden)/harvest-analytics")}
+              />
+            </View>
+            <View className="flex-row gap-2 mb-3">
+              <NavButton
+                emoji="🛒"
+                label="Shopping"
+                sublabel="Garden list"
+                colorClass="bg-lime-50"
+                borderClass="border-lime-200"
+                textClass="text-lime-800"
+                subTextClass="text-lime-500"
+                onPress={() => router.push("/(app)/(garden)/shopping")}
+              />
+              <View className="flex-1" />
+              <View className="flex-1" />
+            </View>
+          </View>
+        )}
+
+        {/* ── TROUBLESHOOTING ────────────────────────────────────────────── */}
+        <SectionHeader
+          emoji="🔍"
+          title="Troubleshooting"
+          isOpen={troubleshootingOpen}
+          onToggle={() => setTroubleshootingOpen((v) => !v)}
+          badge={activePests > 0 ? `${activePests} active issue${activePests !== 1 ? "s" : ""}` : undefined}
+        />
+
+        {troubleshootingOpen && (
+          <View className="bg-[#F2FCEB] px-4 pt-3 pb-2">
+            {/* Mini-dashboard */}
+            <View className="flex-row gap-3 mb-3">
+              <View className="flex-1 bg-white rounded-xl p-3 border border-red-100">
+                <Text className="text-xs text-gray-500 mb-0.5">Pest / disease logs</Text>
+                <Text className="text-lg font-bold text-red-600">{pestLogs.length}</Text>
+                <Text className="text-xs text-gray-400">
+                  {activePests > 0 ? `${activePests} active` : "none active"}
+                </Text>
+              </View>
+              <View className="flex-1 bg-white rounded-xl p-3 border border-cyan-100">
+                <Text className="text-xs text-gray-500 mb-0.5">Plant library</Text>
+                <Text className="text-lg font-bold text-cyan-600">📚</Text>
+                <Text className="text-xs text-gray-400">Crop reference</Text>
+              </View>
+            </View>
+
+            {/* Nav buttons */}
+            <View className="flex-row gap-2 mb-3">
+              <NavButton
+                emoji="🐛"
+                label="Pests"
+                sublabel="& Diseases"
+                colorClass="bg-red-50"
+                borderClass="border-red-200"
+                textClass="text-red-800"
+                subTextClass="text-red-500"
+                onPress={() => router.push("/(app)/(garden)/pests")}
+              />
+              <NavButton
+                emoji="📚"
+                label="Library"
+                sublabel="Crop reference"
+                colorClass="bg-cyan-50"
+                borderClass="border-cyan-200"
+                textClass="text-cyan-800"
+                subTextClass="text-cyan-500"
+                onPress={() => router.push("/(app)/(garden)/plant-library")}
+              />
+              <View className="flex-1" />
+            </View>
+          </View>
+        )}
+
+        {/* ── GARDEN PLOTS ───────────────────────────────────────────────── */}
+        <View className="px-4 pt-4 pb-2 flex-row items-center justify-between">
+          <Text className="text-sm font-bold text-gray-700 uppercase tracking-wide">Your Gardens</Text>
+        </View>
+
+        {isLoading ? (
+          <View style={{ padding: 16, gap: 12 }}>
+            <SkeletonCard />
+            <SkeletonCard />
+          </View>
+        ) : plots.length === 0 ? (
+          <View style={{ alignItems: "center", justifyContent: "center", padding: 32 }}>
+            <Text className="text-5xl mb-4">🥬</Text>
+            <Text className="text-lg font-semibold text-gray-700 text-center">No gardens yet</Text>
+            <Text className="text-sm text-gray-400 mt-2 text-center">
+              Tap "New Garden" to create your first bed or plot map.
+            </Text>
+          </View>
+        ) : (
+          <View style={{ padding: 16, gap: 12 }}>
+            {plots.map((plot) => (
+              <PlotCard
+                key={plot.id}
+                plot={plot}
+                onOpen={() =>
+                  router.push({
+                    pathname: "/(app)/(garden)/[plotId]",
+                    params: { plotId: plot.id },
+                  })
+                }
+                onDelete={() => confirmDelete(plot)}
+              />
+            ))}
+          </View>
+        )}
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
 
       {/* New Garden Modal */}
       <Modal visible={showNew} animationType="slide" presentationStyle="pageSheet">
@@ -343,9 +542,7 @@ export default function GardenScreen() {
               className="min-h-[80px]"
             />
 
-            <Text className="text-sm font-medium text-gray-700 mb-2">
-              Grid Size
-            </Text>
+            <Text className="text-sm font-medium text-gray-700 mb-2">Grid Size</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">
               {PLOT_PRESETS.map((p) => (
                 <TouchableOpacity
@@ -396,13 +593,10 @@ export default function GardenScreen() {
             )}
 
             <View className="bg-green-50 border border-green-200 rounded-xl p-3 mt-2">
-              <Text className="text-green-800 text-sm font-medium mb-1">
-                Zone 8b tips
-              </Text>
+              <Text className="text-green-800 text-sm font-medium mb-1">Zone 8b tips</Text>
               <Text className="text-green-700 text-xs">
-                Your 10×20 veggie plot can be divided into zones for crop
-                rotation tracking. Mark walkways as unusable areas to keep your
-                layout accurate.
+                Your 10×20 veggie plot can be divided into zones for crop rotation tracking.
+                Mark walkways as unusable areas to keep your layout accurate.
               </Text>
             </View>
           </ScrollView>
@@ -424,7 +618,6 @@ function PlotCard({
   return (
     <Card className="p-0 overflow-hidden">
       <TouchableOpacity onPress={onOpen} activeOpacity={0.7}>
-        {/* Header strip */}
         <View className="bg-green-700 px-4 py-3 flex-row items-center justify-between">
           <View className="flex-row items-center gap-2">
             <Text className="text-white text-base font-bold">{plot.name}</Text>
@@ -436,15 +629,12 @@ function PlotCard({
           </View>
         </View>
 
-        {/* Body */}
         <View className="px-4 py-3">
           {plot.description ? (
             <Text className="text-gray-600 text-sm mb-2">{plot.description}</Text>
           ) : null}
           <View className="flex-row items-center justify-between">
-            <Text className="text-green-700 text-sm font-medium">
-              Open Map →
-            </Text>
+            <Text className="text-green-700 text-sm font-medium">Open Map →</Text>
             <TouchableOpacity
               onPress={onDelete}
               className="px-3 py-1 rounded-lg bg-red-50"
