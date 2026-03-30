@@ -93,14 +93,21 @@ export default function WateringScreen() {
     setShowModal(false);
   }
 
-  // Last watered per zone
+  // Last watered per zone — whole-garden logs (zone_id=null, e.g. rain) count for all zones
   const lastWateredByZone = useMemo(() => {
     const map = new Map<string, string>();
-    logs.forEach((l) => {
-      if (l.zone_id && !map.has(l.zone_id)) map.set(l.zone_id, l.water_date);
+    // Most recent whole-garden event (rain auto-log or unzoned manual entry)
+    const lastWholeGarden = logs.find((l) => l.zone_id === null)?.water_date ?? null;
+    const bedZoneIds = zones
+      .filter((z) => z.zone_type === "bed" || z.zone_type === "container")
+      .map((z) => z.id);
+    bedZoneIds.forEach((zid) => {
+      const zoneLog = logs.find((l) => l.zone_id === zid);
+      const date = zoneLog?.water_date ?? lastWholeGarden;
+      if (date) map.set(zid, date);
     });
     return map;
-  }, [logs]);
+  }, [logs, zones]);
 
   function daysSince(dateStr: string) {
     return differenceInDays(new Date(), new Date(dateStr + "T12:00:00"));
@@ -131,26 +138,37 @@ export default function WateringScreen() {
 
   const bedZones = zones.filter((z) => z.zone_type === "bed" || z.zone_type === "container");
 
-  // Rain-aware watering suggestions
-  const rainfallLast7Days = useMemo(() => {
-    const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 7);
-    return weatherLogs
-      .filter((w) => new Date(w.log_date + "T12:00:00") >= cutoff)
-      .reduce((sum, w) => sum + (w.rainfall_mm ?? 0), 0);
+  // Temperature-adjusted rain coverage:
+  // Cool weather = rain soaks deeper and evaporates slower → lasts longer.
+  // Returns the number of remaining coverage days from the most recent rain event.
+  const { rainCoverageDays, lastRainLog } = useMemo(() => {
+    const recent = weatherLogs.slice(0, 4);
+    const avgHigh = recent.length > 0
+      ? recent.reduce((s, w) => s + (w.temp_high_f ?? 70), 0) / recent.length
+      : 70;
+
+    let tempMultiplier = 1.0;
+    if (avgHigh < 55)      tempMultiplier = 2.2; // 50°F: rain lasts ~2x longer
+    else if (avgHigh < 65) tempMultiplier = 1.6;
+    else if (avgHigh < 75) tempMultiplier = 1.1;
+    else if (avgHigh > 85) tempMultiplier = 0.7;
+    else if (avgHigh > 75) tempMultiplier = 0.85;
+
+    const lastRain = weatherLogs.find((w) => (w.rainfall_mm ?? 0) >= 5) ?? null;
+    if (!lastRain) return { rainCoverageDays: 0, lastRainLog: null };
+
+    const daysSinceRain = differenceInDays(new Date(), new Date(lastRain.log_date + "T12:00:00"));
+    // 5mm = 1 coverage day at 70°F; multiplier scales with temp
+    const totalCoverage = ((lastRain.rainfall_mm ?? 0) / 5) * tempMultiplier;
+    return {
+      rainCoverageDays: Math.max(0, Math.round(totalCoverage - daysSinceRain)),
+      lastRainLog: lastRain,
+    };
   }, [weatherLogs]);
 
-  // Days since significant rain (>= 10mm)
-  const daysSinceSignificantRain = useMemo(() => {
-    const significant = weatherLogs.find((w) => (w.rainfall_mm ?? 0) >= 10);
-    if (!significant) return null;
-    return differenceInDays(new Date(), new Date(significant.log_date + "T12:00:00"));
-  }, [weatherLogs]);
-
-  // Heat stress score: high temps + clear sunny days = plants dry out faster
-  // Returns 0-3 bonus "urgency" days added to the watering threshold calculation
+  // Heat stress: hot/sunny days tighten the manual-watering threshold
   const heatStressExtra = useMemo(() => {
-    const recent = weatherLogs.slice(0, 4); // last 4 logged days
+    const recent = weatherLogs.slice(0, 4);
     if (!recent.length) return 0;
     const avgHigh = recent.reduce((s, w) => s + (w.temp_high_f ?? 70), 0) / recent.length;
     const clearDays = recent.filter((w) => w.condition_main === "Clear").length;
@@ -161,13 +179,11 @@ export default function WateringScreen() {
     return extra;
   }, [weatherLogs]);
 
-  // Urgency threshold: normally 4 days, reduced by heat stress
   const urgencyDays = Math.max(1, 4 - heatStressExtra);
 
   // Zones that need watering
   const wateringAlerts = useMemo(() => {
-    // Recent meaningful rain counts as a watering day
-    if (rainfallLast7Days >= 15) return [];
+    if (rainCoverageDays > 0) return []; // rain is still covering the garden
     return bedZones
       .map((zone) => {
         const lastDate = lastWateredByZone.get(zone.id) ?? null;
@@ -176,7 +192,7 @@ export default function WateringScreen() {
       })
       .filter(({ days }) => days === null || days >= urgencyDays)
       .sort((a, b) => (b.days ?? 999) - (a.days ?? 999));
-  }, [bedZones, lastWateredByZone, rainfallLast7Days, urgencyDays]);
+  }, [bedZones, lastWateredByZone, rainCoverageDays, urgencyDays]);
 
 
   return (
@@ -198,14 +214,28 @@ export default function WateringScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
 
+          {/* ── Rain coverage status ──────────────────────────────────────── */}
+          {rainCoverageDays > 0 && lastRainLog && (
+            <View className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+              <Text className="text-sm font-semibold text-sky-900">
+                🌧 Rain covering your garden
+              </Text>
+              <Text className="text-xs text-sky-700 mt-1">
+                {(lastRainLog.rainfall_mm ?? 0).toFixed(1)}mm on {fmtDate(lastRainLog.log_date)}
+                {lastRainLog.temp_high_f ? ` · High ${Math.round(lastRainLog.temp_high_f)}°F` : ""}
+                {" — "}~{rainCoverageDays} more day{rainCoverageDays !== 1 ? "s" : ""} of coverage remaining.
+              </Text>
+            </View>
+          )}
+
           {/* ── Heat advisory ─────────────────────────────────────────────── */}
-          {heatStressExtra > 0 && (
+          {heatStressExtra > 0 && rainCoverageDays === 0 && (
             <View className="bg-orange-50 border border-orange-200 rounded-xl px-3 py-2.5">
               <Text className="text-xs font-semibold text-orange-800">
                 🌡 Heat advisory — watering threshold reduced to {urgencyDays} days
               </Text>
               <Text className="text-xs text-orange-600 mt-0.5">
-                Recent high temps or multiple clear/sunny days are drying out soil faster than normal.
+                Recent high temps or sunny days are drying out soil faster than normal.
               </Text>
             </View>
           )}
@@ -215,16 +245,6 @@ export default function WateringScreen() {
             <View>
               <Text className="text-sm font-semibold text-gray-700 mb-2">Watering Needed</Text>
               <View className="gap-2">
-                {rainfallLast7Days > 0 && rainfallLast7Days < 15 && (
-                  <View className="bg-blue-50 border border-blue-200 rounded-xl px-3 py-2">
-                    <Text className="text-xs text-blue-700">
-                      {rainfallLast7Days.toFixed(1)}mm rain in last 7 days — not enough to skip watering.
-                      {daysSinceSignificantRain !== null && daysSinceSignificantRain > 3
-                        ? ` Last significant rain was ${daysSinceSignificantRain}d ago.`
-                        : ""}
-                    </Text>
-                  </View>
-                )}
                 {wateringAlerts.map(({ zone, days }) => (
                   <View
                     key={zone.id}

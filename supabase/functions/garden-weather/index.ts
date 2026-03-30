@@ -130,7 +130,7 @@ Deno.serve(async (req) => {
         const meteoRes = await fetch(
           `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}` +
           `&daily=precipitation_sum,temperature_2m_max,temperature_2m_min,weathercode` +
-          `&past_days=7&forecast_days=0&timezone=auto&temperature_unit=fahrenheit`
+          `&past_days=7&forecast_days=1&timezone=auto&temperature_unit=fahrenheit`
         );
         if (meteoRes.ok) {
           const meteo = await meteoRes.json();
