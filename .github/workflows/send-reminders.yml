@@ -3,14 +3,24 @@ on:
   schedule:
     - cron: "0 * * * *"
   workflow_dispatch:
+    inputs:
+      testEmail:
+        description: "Send test digest to this email (bypasses hour/day filter)"
+        required: false
+        default: ""
 jobs:
   send:
     runs-on: ubuntu-latest
     steps:
       - name: Call edge function
         run: |
+          if [ -n "${{ github.event.inputs.testEmail }}" ]; then
+            BODY="{\"testEmail\":\"${{ github.event.inputs.testEmail }}\"}"
+          else
+            BODY="{}"
+          fi
           curl -X POST \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
             https://sjtlmvcxcffftsdleftf.supabase.co/functions/v1/send-reminders \
-            -d '{}'
+            -d "$BODY"
