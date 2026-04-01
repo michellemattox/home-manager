@@ -1,30 +1,19 @@
-name: Send Reminders
-                                                                      
-  "on":                                                     
+name: Send Reminders                                                
+  on:                                                                 
     schedule:
-      - cron: "0 * * * *"
-    workflow_dispatch:                                                
-  
-  jobs:                                                               
-    send:                                                   
+      - cron: "0 * * * *"                                             
+    workflow_dispatch:                                      
+  jobs:
+    send:
       runs-on: ubuntu-latest
       steps:
-        - name: Invoke send-reminders edge function
-          run: |
-            curl -s -o response.json -w "%{http_code}" \              
-              -X POST \
+        - name: Call edge function
+          run: |                                                      
+            curl -X POST \
               -H "Content-Type: application/json" \                   
               -H "Authorization: Bearer ${{                 
   secrets.SUPABASE_SERVICE_ROLE_KEY }}" \                             
               
   https://sjtlmvcxcffftsdleftf.supabase.co/functions/v1/send-reminders
    \                                                        
-              -d '{}' \
-            | tee status_code.txt
-            echo ""                                                   
-            cat response.json
-            STATUS=$(cat status_code.txt)                             
-            if [ "$STATUS" != "200" ]; then                 
-              echo "Edge function returned HTTP $STATUS"
-              exit 1
-            fi 
+              -d '{}'
