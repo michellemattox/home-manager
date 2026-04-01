@@ -221,7 +221,7 @@ Deno.serve(async (req) => {
       const testEmail = body.testEmail as string;
       // Look up the user by email
       const { data: { users }, error: listErr } = await supabase.auth.admin.listUsers();
-      const testUser = users?.find((u) => u.email === testEmail);
+      const testUser = users?.find((u) => u.email?.toLowerCase() === testEmail.toLowerCase());
       if (!testUser) {
         return new Response(
           JSON.stringify({ error: `No user found with email ${testEmail}` }),
