@@ -11,7 +11,6 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
-import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
 import { useTasks, useCompleteTask } from "@/hooks/useTasks";

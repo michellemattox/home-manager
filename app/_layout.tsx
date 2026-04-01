@@ -63,6 +63,15 @@ function AuthGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    // Safety net: if INITIAL_SESSION never fires (Supabase auth lock stuck after
+    // background kill), unblock routing after 10 seconds so the user isn't frozen
+    // on a blank loading screen. With no session set, routing redirects to login.
+    const authTimeout = setTimeout(() => {
+      if (!useAuthStore.getState().authReady) {
+        setAuthReady();
+      }
+    }, 10000);
+
     const { data: listener } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         // If this is the initial session load, check whether the user chose
@@ -135,13 +144,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
             setAuthReady();
           }
         } else {
-          // No session - reset check state for next login
+          // No session (or session without user) — reset household state and
+          // ensure auth is unblocked so routing can redirect appropriately.
           setHouseholdChecked(false);
+          setAuthReady();
         }
       }
     );
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      clearTimeout(authTimeout);
+      listener.subscription.unsubscribe();
+    };
   }, []);
 
   // Refresh the Supabase session whenever the app comes back to the foreground.
@@ -151,12 +165,13 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const sub = AppState.addEventListener("change", (nextState) => {
       if (nextState === "active") {
         supabase.auth.getSession().then(({ data }) => {
-          if (data.session) {
-            // Session is valid — ensure query cache reflects current auth state.
-            // getSession() auto-refreshes the token internally if near expiry.
-          } else {
+          if (!data.session) {
             // Session gone (signed out on another device, token fully expired).
-            useHouseholdStore.getState().clearHousehold();
+            // Use signOut({ scope: "local" }) so the SIGNED_OUT event fires through
+            // onAuthStateChange, which properly clears state and redirects to login.
+            // Previously calling clearHousehold() directly left householdChecked=false
+            // while session was still set, causing the routing effect to wait forever.
+            supabase.auth.signOut({ scope: "local" }).catch(() => {});
           }
         });
       }
@@ -194,6 +209,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
     const inApp = segments[0] === "(app)";
     if (!inApp) router.replace("/(app)/(home)");
   }, [authReady, session, segments, householdChecked, household]);
+
+  // Prevent blank screen on cold start: render a spinner until auth is ready
+  // rather than mounting the Stack with no route to show (there is no app/index.tsx).
+  // Without this, the user sees a completely empty screen while INITIAL_SESSION
+  // fires + the household lookup completes, which can take several seconds.
+  if (!authReady) {
+    return (
+      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFED" }}>
+        <ActivityIndicator size="large" color="#FC9853" />
+      </View>
+    );
+  }
 
   return <>{children}</>;
 }
