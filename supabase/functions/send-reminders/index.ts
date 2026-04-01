@@ -1,5 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { SmtpClient } from "https://deno.land/x/smtp@v0.7.0/mod.ts";
+import nodemailer from "npm:nodemailer@6";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -112,21 +112,16 @@ async function sendDigestEmail(
 </body>
 </html>`;
 
-  const client = new SmtpClient();
-  await client.connectTLS({
-    hostname: "smtp.gmail.com",
-    port: 465,
-    username: gmailUser,
-    password: gmailAppPassword,
+  const transporter = nodemailer.createTransport({
+    service: "gmail",
+    auth: { user: gmailUser, pass: gmailAppPassword },
   });
-  await client.send({
+  await transporter.sendMail({
     from: `Mattox Family Home Management <${gmailUser}>`,
     to,
     subject: `Daily Reminders — ${items.length} item${items.length === 1 ? "" : "s"} · ${today}`,
-    content: html,
     html,
   });
-  await client.close();
 }
 
 function getSeason(month: number): string {
