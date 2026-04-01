@@ -1,19 +1,16 @@
 name: Send Reminders
- on: 
-   schedule:
-      - cron: "0 * * * *"                                             
-    workflow_dispatch:                                      
-  jobs:
-    send:
-      runs-on: ubuntu-latest
-      steps:
-        - name: Call edge function
-          run: |                                                      
-            curl -X POST \
-              -H "Content-Type: application/json" \                   
-              -H "Authorization: Bearer ${{                 
-  secrets.SUPABASE_SERVICE_ROLE_KEY }}" \                             
-              
-  https://sjtlmvcxcffftsdleftf.supabase.co/functions/v1/send-reminders
-   \                                                        
-              -d '{}'
+on:
+  schedule:
+    - cron: "0 * * * *"
+  workflow_dispatch:
+jobs:
+  send:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call edge function
+        run: |
+          curl -X POST \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            https://sjtlmvcxcffftsdleftf.supabase.co/functions/v1/send-reminders \
+            -d '{}'
