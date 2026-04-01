@@ -265,6 +265,18 @@ Deno.serve(async (req) => {
       );
     }
 
+    // Current hour in Pacific Time — used to match each member's reminder_hour preference.
+    // The cron should fire hourly; we only email members whose reminder_hour matches now.
+    const currentHourPT = (() => {
+      const formatted = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles",
+        hour: "2-digit",
+        hour12: false,
+      }).format(now);
+      const h = parseInt(formatted, 10);
+      return isNaN(h) ? now.getUTCHours() : h;
+    })();
+
     // ── 1. Load notification preferences for all members ─────────────────────
     const { data: allPrefs } = await supabase
       .from("notification_preferences")
@@ -388,6 +400,10 @@ Deno.serve(async (req) => {
 
       // Only send on the right day based on their chosen frequency
       if (!shouldSendToday(prefs.reminder_frequency)) { skipped++; continue; }
+
+      // Only send during the member's preferred hour (PT). The cron fires hourly
+      // and this check gates each member to their chosen time slot.
+      if (prefs.reminder_hour !== currentHourPT) { skipped++; continue; }
 
       const { data: userData } = await supabase.auth.admin.getUserById(userId);
       const email = userData?.user?.email;
