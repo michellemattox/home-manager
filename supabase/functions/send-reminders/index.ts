@@ -1,4 +1,5 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { SmtpClient } from "https://deno.land/x/smtp@v0.7.0/mod.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -7,8 +8,8 @@ const corsHeaders = {
 
 const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
 const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const resendApiKey = Deno.env.get("RESEND_API_KEY") ?? "";
-const fromEmail = Deno.env.get("REMINDER_FROM_EMAIL") ?? "reminders@mattoxhome.com";
+const gmailUser = Deno.env.get("GMAIL_USER") ?? "";
+const gmailAppPassword = Deno.env.get("GMAIL_APP_PASSWORD") ?? "";
 const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY") ?? "";
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -25,9 +26,9 @@ async function sendDigestEmail(
   firstName: string,
   items: ReminderItem[]
 ) {
-  if (!resendApiKey) {
+  if (!gmailUser || !gmailAppPassword) {
     throw new Error(
-      "RESEND_API_KEY is not set. Go to Supabase Dashboard → Edge Functions → send-reminders → Secrets and add RESEND_API_KEY."
+      "GMAIL_USER or GMAIL_APP_PASSWORD is not set. Go to Supabase Dashboard → Edge Functions → send-reminders → Secrets."
     );
   }
 
@@ -111,22 +112,21 @@ async function sendDigestEmail(
 </body>
 </html>`;
 
-  const res = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${resendApiKey}`,
-    },
-    body: JSON.stringify({
-      from: `Mattox Family Home Management <${fromEmail}>`,
-      to,
-      subject: `Daily Reminders — ${items.length} item${items.length === 1 ? "" : "s"} · ${today}`,
-      html,
-    }),
+  const client = new SmtpClient();
+  await client.connectTLS({
+    hostname: "smtp.gmail.com",
+    port: 465,
+    username: gmailUser,
+    password: gmailAppPassword,
   });
-  const json = await res.json();
-  if (!res.ok) throw new Error(`Resend error ${res.status}: ${JSON.stringify(json)}`);
-  return json;
+  await client.send({
+    from: `Mattox Family Home Management <${gmailUser}>`,
+    to,
+    subject: `Daily Reminders — ${items.length} item${items.length === 1 ? "" : "s"} · ${today}`,
+    content: html,
+    html,
+  });
+  await client.close();
 }
 
 function getSeason(month: number): string {
