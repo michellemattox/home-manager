@@ -3,47 +3,101 @@ import { useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 
 /**
- * Subscribes to Supabase Realtime changes on key home-dashboard tables
- * and invalidates the relevant TanStack Query caches so all household
- * members see updates instantly without polling.
+ * Single global realtime subscription for the entire authenticated app.
+ * Called once from app/(app)/_layout.tsx so every tab gets live updates
+ * without each screen having to set up its own channel.
+ *
+ * When any row changes, we invalidate the relevant TanStack Query key so
+ * all household members see updates instantly without manual pull-to-refresh.
  */
-export function useHomeRealtime(householdId: string | undefined) {
+export function useGlobalRealtime(householdId: string | undefined) {
   const qc = useQueryClient();
 
   useEffect(() => {
     if (!householdId) return;
 
+    const hf = `household_id=eq.${householdId}`;
+
     const channel = supabase
-      .channel(`home-realtime-${householdId}`)
-      // Recurring tasks due / completed
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "recurring_tasks", filter: `household_id=eq.${householdId}` },
-        () => qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] })
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "recurring_task_completions" },
-        () => qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] })
-      )
-      // One-off tasks
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "tasks", filter: `household_id=eq.${householdId}` },
-        () => qc.invalidateQueries({ queryKey: ["tasks", householdId] })
-      )
-      // Projects
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "projects", filter: `household_id=eq.${householdId}` },
-        () => qc.invalidateQueries({ queryKey: ["projects", householdId] })
-      )
-      // Wow updates
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "wow_updates", filter: `household_id=eq.${householdId}` },
-        () => qc.invalidateQueries({ queryKey: ["wow_updates", householdId] })
-      )
+      .channel(`global-realtime-${householdId}`)
+
+      // ── Home dashboard ───────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "recurring_tasks", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] }))
+      .on("postgres_changes", { event: "INSERT", schema: "public", table: "recurring_task_completions" },
+        () => qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "wow_updates", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["wow_updates", householdId] }))
+
+      // ── Tasks ────────────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "tasks", filter: hf },
+        () => {
+          qc.invalidateQueries({ queryKey: ["tasks", householdId] });
+          qc.invalidateQueries({ queryKey: ["tasks_completed", householdId] });
+        })
+
+      // ── Projects ─────────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "projects", filter: hf },
+        () => {
+          qc.invalidateQueries({ queryKey: ["projects", householdId] });
+          qc.invalidateQueries({ queryKey: ["project"] }); // invalidates all ["project", id] keys
+        })
+      .on("postgres_changes", { event: "*", schema: "public", table: "project_updates" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["project"] });
+          qc.invalidateQueries({ queryKey: ["projects", householdId] });
+        })
+
+      // ── Ideas ────────────────────────────────────────────────────────────────
+      // ideas uses topic_id as the household_id column (legacy naming)
+      .on("postgres_changes", { event: "*", schema: "public", table: "ideas", filter: `topic_id=eq.${householdId}` },
+        () => qc.invalidateQueries({ queryKey: ["ideas", householdId] }))
+
+      // ── Service records ──────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "service_records", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["service_records", householdId] }))
+
+      // ── Travel ───────────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "trips", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["trips", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_tasks" },
+        () => qc.invalidateQueries({ queryKey: ["trip"] }))
+
+      // ── Goals ────────────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "goals", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["goals", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "goal_updates", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["goals", householdId] }))
+
+      // ── Garden ───────────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_plots", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_plots", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_zones", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_zones"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_plantings", filter: hf },
+        () => {
+          qc.invalidateQueries({ queryKey: ["garden_plantings"] });
+          qc.invalidateQueries({ queryKey: ["garden_plantings_household", householdId] });
+          qc.invalidateQueries({ queryKey: ["garden_plantings_all", householdId] });
+        })
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_harvests", filter: hf },
+        () => {
+          qc.invalidateQueries({ queryKey: ["garden_harvests"] });
+          qc.invalidateQueries({ queryKey: ["garden_all_harvests", householdId] });
+        })
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_amendments", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_amendments"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_journal_entries", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_journal", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_pest_logs", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_pest_logs", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_seed_inventory", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_seeds", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_watering_logs", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_watering", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "garden_weather_logs", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["garden_weather_logs", householdId] }))
+
       .subscribe();
 
     return () => {
@@ -51,3 +105,6 @@ export function useHomeRealtime(householdId: string | undefined) {
     };
   }, [householdId]);
 }
+
+/** @deprecated Use useGlobalRealtime from app/(app)/_layout.tsx instead. */
+export const useHomeRealtime = useGlobalRealtime;

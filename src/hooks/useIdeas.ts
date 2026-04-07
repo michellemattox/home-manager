@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useUndoStore } from "@/stores/undoStore";
 import type { Idea } from "@/types/app.types";
 
 // Fetch active (new) and waitlisted ideas for the household.
@@ -131,12 +132,33 @@ export function useConvertIdea() {
 export function useDeleteIdea() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
-      const { error } = await supabase.from("ideas").delete().eq("id", id);
-      if (error) throw error;
-      return householdId;
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) =>
+      ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["ideas", householdId] as const;
+      const items = qc.getQueryData<Idea[]>(queryKey);
+      const item = items?.find((i) => i.id === id);
+      const index = items?.findIndex((i) => i.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: Idea[] | undefined) =>
+        old ? old.filter((i) => i.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Idea",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: Idea[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("ideas").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) =>
-      qc.invalidateQueries({ queryKey: ["ideas", householdId] }),
   });
 }

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useUndoStore } from "@/stores/undoStore";
 import type { GardenPlot, GardenZone, GardenCell, GardenPlanting, GardenHarvest, GardenAmendment, GardenWeatherLog, GardenPestLog, GardenSeedInventory, GardenJournalEntry, GardenWateringLog } from "@/types/app.types";
 
 // ── Plots ──────────────────────────────────────────────────────────────────────
@@ -230,14 +231,33 @@ export function useUpdateGardenPlanting() {
 export function useDeleteGardenPlanting() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => {
-      const { error } = await supabase.from("garden_plantings").delete().eq("id", id);
-      if (error) throw error;
-      return plotId;
-    },
-    onSuccess: (plotId) => {
-      qc.invalidateQueries({ queryKey: ["garden_plantings", plotId] });
-      qc.invalidateQueries({ queryKey: ["garden_harvests", plotId] });
+    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => ({ id, plotId }),
+    onSuccess: ({ id, plotId }) => {
+      const queryKey = ["garden_plantings", plotId] as const;
+      const items = qc.getQueryData<GardenPlanting[]>(queryKey);
+      const item = items?.find((p) => p.id === id);
+      const index = items?.findIndex((p) => p.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: GardenPlanting[] | undefined) =>
+        old ? old.filter((p) => p.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Planting",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GardenPlanting[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("garden_plantings").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+          qc.invalidateQueries({ queryKey: ["garden_harvests", plotId] });
+        },
+      });
     },
   });
 }
@@ -292,12 +312,33 @@ export function useUpdateGardenHarvest() {
 export function useDeleteGardenHarvest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => {
-      const { error } = await supabase.from("garden_harvests").delete().eq("id", id);
-      if (error) throw error;
-      return plotId;
+    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => ({ id, plotId }),
+    onSuccess: ({ id, plotId }) => {
+      const queryKey = ["garden_harvests", plotId] as const;
+      const items = qc.getQueryData<GardenHarvest[]>(queryKey);
+      const item = items?.find((h) => h.id === id);
+      const index = items?.findIndex((h) => h.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: GardenHarvest[] | undefined) =>
+        old ? old.filter((h) => h.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Harvest",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GardenHarvest[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("garden_harvests").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_harvests", plotId] }),
   });
 }
 
@@ -351,12 +392,33 @@ export function useUpdateGardenAmendment() {
 export function useDeleteGardenAmendment() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => {
-      const { error } = await supabase.from("garden_amendments").delete().eq("id", id);
-      if (error) throw error;
-      return plotId;
+    mutationFn: async ({ id, plotId }: { id: string; plotId: string }) => ({ id, plotId }),
+    onSuccess: ({ id, plotId }) => {
+      const queryKey = ["garden_amendments", plotId] as const;
+      const items = qc.getQueryData<GardenAmendment[]>(queryKey);
+      const item = items?.find((a) => a.id === id);
+      const index = items?.findIndex((a) => a.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: GardenAmendment[] | undefined) =>
+        old ? old.filter((a) => a.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Amendment",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GardenAmendment[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("garden_amendments").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (plotId) => qc.invalidateQueries({ queryKey: ["garden_amendments", plotId] }),
   });
 }
 
@@ -489,12 +551,33 @@ export function useUpdateGardenPestLog() {
 export function useDeleteGardenPestLog() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
-      const { error } = await supabase.from("garden_pest_logs").delete().eq("id", id);
-      if (error) throw error;
-      return householdId;
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["garden_pest_logs", householdId] as const;
+      const items = qc.getQueryData<GardenPestLog[]>(queryKey);
+      const item = items?.find((p) => p.id === id);
+      const index = items?.findIndex((p) => p.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: GardenPestLog[] | undefined) =>
+        old ? old.filter((p) => p.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Pest log",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GardenPestLog[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("garden_pest_logs").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_pest_logs", householdId] }),
   });
 }
 
@@ -548,12 +631,33 @@ export function useUpdateGardenSeed() {
 export function useDeleteGardenSeed() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
-      const { error } = await supabase.from("garden_seed_inventory").delete().eq("id", id);
-      if (error) throw error;
-      return householdId;
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["garden_seeds", householdId] as const;
+      const items = qc.getQueryData<GardenSeedInventory[]>(queryKey);
+      const item = items?.find((s) => s.id === id);
+      const index = items?.findIndex((s) => s.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: GardenSeedInventory[] | undefined) =>
+        old ? old.filter((s) => s.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Seed",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GardenSeedInventory[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("garden_seed_inventory").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_seeds", householdId] }),
   });
 }
 
@@ -608,12 +712,33 @@ export function useUpdateGardenJournalEntry() {
 export function useDeleteGardenJournalEntry() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
-      const { error } = await supabase.from("garden_journal_entries").delete().eq("id", id);
-      if (error) throw error;
-      return householdId;
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["garden_journal", householdId] as const;
+      const items = qc.getQueryData<GardenJournalEntry[]>(queryKey);
+      const item = items?.find((e) => e.id === id);
+      const index = items?.findIndex((e) => e.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: GardenJournalEntry[] | undefined) =>
+        old ? old.filter((e) => e.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Journal entry",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GardenJournalEntry[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("garden_journal_entries").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_journal", householdId] }),
   });
 }
 
@@ -668,12 +793,33 @@ export function useUpdateGardenWateringLog() {
 export function useDeleteGardenWateringLog() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
-      const { error } = await supabase.from("garden_watering_logs").delete().eq("id", id);
-      if (error) throw error;
-      return householdId;
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["garden_watering", householdId] as const;
+      const items = qc.getQueryData<GardenWateringLog[]>(queryKey);
+      const item = items?.find((w) => w.id === id);
+      const index = items?.findIndex((w) => w.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: GardenWateringLog[] | undefined) =>
+        old ? old.filter((w) => w.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Watering log",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GardenWateringLog[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("garden_watering_logs").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_watering", householdId] }),
   });
 }
 

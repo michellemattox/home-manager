@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useUndoStore } from "@/stores/undoStore";
 import type { Trip, TripTask, TripWithTasks } from "@/types/app.types";
 
 export function useTrips(householdId: string | undefined) {
@@ -165,16 +166,35 @@ export function useUpdateTripTask() {
 export function useDeleteTripTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ taskId, tripId }: { taskId: string; tripId: string }) => {
-      const { error } = await supabase
-        .from("trip_tasks")
-        .delete()
-        .eq("id", taskId);
-      if (error) throw error;
-      return tripId;
+    mutationFn: async ({ taskId, tripId }: { taskId: string; tripId: string }) =>
+      ({ taskId, tripId }),
+    onSuccess: ({ taskId, tripId }) => {
+      const queryKey = ["trip", tripId] as const;
+      const trip = qc.getQueryData<TripWithTasks>(queryKey);
+      const item = trip?.tasks?.find((t) => t.id === taskId);
+      const index = trip?.tasks?.findIndex((t) => t.id === taskId) ?? -1;
+
+      qc.setQueryData(queryKey, (old: TripWithTasks | undefined) => {
+        if (!old) return old;
+        return { ...old, tasks: old.tasks?.filter((t) => t.id !== taskId) ?? [] };
+      });
+
+      useUndoStore.getState().schedule({
+        label: "Checklist item",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: TripWithTasks | undefined) => {
+            if (!old || !item) return old;
+            const tasks = [...(old.tasks ?? [])];
+            tasks.splice(Math.min(index < 0 ? tasks.length : index, tasks.length), 0, item);
+            return { ...old, tasks };
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("trip_tasks").delete().eq("id", taskId);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (tripId) =>
-      qc.invalidateQueries({ queryKey: ["trip", tripId] }),
   });
 }
 

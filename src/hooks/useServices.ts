@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useUndoStore } from "@/stores/undoStore";
 import type { ServiceRecord } from "@/types/app.types";
 
 export function useServiceRecords(householdId: string | undefined) {
@@ -86,21 +87,33 @@ export function useUpdateServiceRecord() {
 export function useDeleteServiceRecord() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      householdId,
-    }: {
-      id: string;
-      householdId: string;
-    }) => {
-      const { error } = await supabase
-        .from("service_records")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
-      return householdId;
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) =>
+      ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["service_records", householdId] as const;
+      const items = qc.getQueryData<ServiceRecord[]>(queryKey);
+      const item = items?.find((r) => r.id === id);
+      const index = items?.findIndex((r) => r.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: ServiceRecord[] | undefined) =>
+        old ? old.filter((r) => r.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Service record",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: ServiceRecord[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("service_records").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) =>
-      qc.invalidateQueries({ queryKey: ["service_records", householdId] }),
   });
 }

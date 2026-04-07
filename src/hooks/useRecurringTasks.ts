@@ -3,6 +3,7 @@ import { supabase } from "@/lib/supabase";
 import { calculateNextDueDate } from "@/utils/scheduleUtils";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { isOverdue } from "@/utils/dateUtils";
+import { useUndoStore } from "@/stores/undoStore";
 import type { RecurringTask, RecurringTaskCompletion } from "@/types/app.types";
 
 export function useRecurringTasks(householdId: string | undefined) {
@@ -120,17 +121,36 @@ export function useUpdateRecurringTask() {
 export function useDeleteRecurringTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) => {
-      const { error } = await supabase.from("recurring_tasks").update({ is_active: false }).eq("id", id);
-      if (error) throw error;
-      return { id, householdId };
-    },
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) =>
+      ({ id, householdId }),
     onSuccess: ({ id, householdId }) => {
-      // Optimistically remove from cache so the list updates instantly
-      qc.setQueryData(["recurring_tasks", householdId], (old: RecurringTask[] | undefined) =>
+      const queryKey = ["recurring_tasks", householdId] as const;
+      const items = qc.getQueryData<RecurringTask[]>(queryKey);
+      const item = items?.find((t) => t.id === id);
+      const index = items?.findIndex((t) => t.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: RecurringTask[] | undefined) =>
         old ? old.filter((t) => t.id !== id) : old
       );
-      qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] });
+
+      useUndoStore.getState().schedule({
+        label: "Maintenance task",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: RecurringTask[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase
+            .from("recurring_tasks")
+            .update({ is_active: false })
+            .eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
   });
 }

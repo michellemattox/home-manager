@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useUndoStore } from "@/stores/undoStore";
 import type { Task } from "@/types/app.types";
 
 export function useTasks(householdId: string | undefined) {
@@ -109,23 +110,33 @@ export function useCompleteTask() {
 export function useDeleteTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      householdId,
-    }: {
-      id: string;
-      householdId: string;
-    }) => {
-      const { error } = await supabase.from("tasks").delete().eq("id", id);
-      if (error) throw error;
-      return { id, householdId };
-    },
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) =>
+      ({ id, householdId }),
     onSuccess: ({ id, householdId }) => {
-      // Optimistically remove from cache so the list updates instantly
-      qc.setQueryData(["tasks", householdId], (old: Task[] | undefined) =>
+      const queryKey = ["tasks", householdId] as const;
+      const items = qc.getQueryData<Task[]>(queryKey);
+      const item = items?.find((t) => t.id === id);
+      const index = items?.findIndex((t) => t.id === id) ?? -1;
+
+      qc.setQueryData(queryKey, (old: Task[] | undefined) =>
         old ? old.filter((t) => t.id !== id) : old
       );
-      qc.invalidateQueries({ queryKey: ["tasks", householdId] });
+
+      useUndoStore.getState().schedule({
+        label: "Task",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: Task[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase.from("tasks").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
   });
 }

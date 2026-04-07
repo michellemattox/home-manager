@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { format, addDays } from "date-fns";
 import { calculateNextDueDate } from "@/utils/scheduleUtils";
+import { useUndoStore } from "@/stores/undoStore";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
 
 function buildPeriodMessage(frequencyType: string, frequencyDays: number, dueDate: string): string {
@@ -166,18 +167,55 @@ export function useEditGoalUpdate() {
 export function useDeleteGoalUpdate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async ({
-      id,
-      householdId,
-    }: {
-      id: string;
-      householdId: string;
-    }) => {
-      const { error } = await supabase.from("goal_updates").delete().eq("id", id);
-      if (error) throw error;
-      return householdId;
+    mutationFn: async ({ id, householdId }: { id: string; householdId: string }) =>
+      ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["goals", householdId] as const;
+      // goal_updates are nested inside GoalWithUpdates; capture from the goals cache
+      const goals = qc.getQueryData<GoalWithUpdates[]>(queryKey);
+      let item: GoalUpdate | undefined;
+      let goalId: string | undefined;
+      let index = -1;
+      for (const g of goals ?? []) {
+        const idx = g.goal_updates?.findIndex((u) => u.id === id) ?? -1;
+        if (idx >= 0) {
+          item = g.goal_updates?.[idx];
+          goalId = g.id;
+          index = idx;
+          break;
+        }
+      }
+
+      // Optimistically remove the update from the nested cache
+      qc.setQueryData(queryKey, (old: GoalWithUpdates[] | undefined) =>
+        old
+          ? old.map((g) =>
+              g.id === goalId
+                ? { ...g, goal_updates: g.goal_updates?.filter((u) => u.id !== id) ?? [] }
+                : g
+            )
+          : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Goal update",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: GoalWithUpdates[] | undefined) =>
+            old
+              ? old.map((g) => {
+                  if (g.id !== goalId || !item) return g;
+                  const updates = [...(g.goal_updates ?? [])];
+                  updates.splice(Math.min(index < 0 ? updates.length : index, updates.length), 0, item);
+                  return { ...g, goal_updates: updates };
+                })
+              : old
+          ),
+        execute: async () => {
+          const { error } = await supabase.from("goal_updates").delete().eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) =>
-      qc.invalidateQueries({ queryKey: ["goals", householdId] }),
   });
 }

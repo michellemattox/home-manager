@@ -3,6 +3,8 @@ import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
 import { useNotificationStore } from "@/stores/notificationStore";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
+import { useHouseholdStore } from "@/stores/householdStore";
+import { useGlobalRealtime } from "@/hooks/useRealtimeInvalidate";
 
 function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
   return (
@@ -39,9 +41,14 @@ function TasksTabIcon({ focused }: { focused: boolean }) {
 }
 
 export default function AppLayout() {
+  const householdId = useHouseholdStore((s) => s.household?.id);
+
   // Schedule local notifications for the authenticated user.
-  // Must be called here (not in a child component) so Tabs remains the root element.
   useNotificationScheduler();
+
+  // Single global realtime subscription — covers all tabs so any screen
+  // reflects inserts/updates/deletes from other household members instantly.
+  useGlobalRealtime(householdId);
 
   return (
     <Tabs

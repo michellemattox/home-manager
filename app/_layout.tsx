@@ -1,20 +1,31 @@
 import "../global.css";
 import React, { useEffect } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { StatusBar } from "expo-status-bar";
 import * as Linking from "expo-linking";
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, asyncStoragePersister } from "@/lib/queryClient";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/authStore";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
+import { UndoToast } from "@/components/ui/UndoToast";
 import { View, ActivityIndicator, Platform, AppState } from "react-native";
 import type { HouseholdMember } from "@/types/app.types";
 import { useFonts, Lobster_400Regular } from "@expo-google-fonts/lobster";
+
+/** Rejects if the given promise doesn't resolve within `ms` milliseconds. */
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) =>
+      setTimeout(() => reject(new Error(`Timed out after ${ms}ms`)), ms)
+    ),
+  ]);
+}
 
 // On desktop web, center the app in a mobile-width column so it doesn't
 // stretch across a wide viewport. On native, renders children as-is.
@@ -106,15 +117,19 @@ function AuthGate({ children }: { children: React.ReactNode }) {
           registerForPushNotificationsAsync(newSession.user.id).catch(() => {});
 
           try {
-            // Run member + household + members list in parallel to cut load time.
-            const [memberRes] = await Promise.all([
-              supabase
-                .from("household_members")
-                .select("*")
-                .eq("user_id", newSession.user.id)
-                .is("invite_token", null)
-                .maybeSingle(),
-            ]);
+            // Run member lookup with an 8s timeout — without this, a slow RLS
+            // check or cold Supabase connection could hang the spinner forever.
+            const [memberRes] = await withTimeout(
+              Promise.all([
+                supabase
+                  .from("household_members")
+                  .select("*")
+                  .eq("user_id", newSession.user.id)
+                  .is("invite_token", null)
+                  .maybeSingle(),
+              ]),
+              8000
+            );
 
             const member = memberRes.data as HouseholdMember | null;
             if (member) {
@@ -122,23 +137,28 @@ function AuthGate({ children }: { children: React.ReactNode }) {
                 useHouseholdStore.getState();
               setCurrentMember(member);
 
-              const [householdRes, membersRes] = await Promise.all([
-                supabase
-                  .from("households")
-                  .select("*")
-                  .eq("id", member.household_id)
-                  .maybeSingle(),
-                supabase
-                  .from("household_members")
-                  .select("*")
-                  .eq("household_id", member.household_id)
-                  .is("invite_token", null),
-              ]);
+              const [householdRes, membersRes] = await withTimeout(
+                Promise.all([
+                  supabase
+                    .from("households")
+                    .select("*")
+                    .eq("id", member.household_id)
+                    .maybeSingle(),
+                  supabase
+                    .from("household_members")
+                    .select("*")
+                    .eq("household_id", member.household_id)
+                    .is("invite_token", null),
+                ]),
+                8000
+              );
               if (householdRes.data) setHousehold(householdRes.data as any);
               setMembers((membersRes.data ?? []) as any);
             }
-          } catch {
-            // Transient network/RLS failure — let UI guide recovery.
+          } catch (err) {
+            // Transient network/RLS failure or timeout — routing proceeds to the
+            // appropriate screen; the user can pull-to-refresh once connected.
+            console.warn("[AuthGate] Household lookup failed:", err);
           } finally {
             useHouseholdStore.getState().setHouseholdChecked(true);
             setAuthReady();
@@ -239,17 +259,26 @@ export default function RootLayout() {
 
   return (
     <ErrorBoundary>
-      <QueryClientProvider client={queryClient}>
+      <PersistQueryClientProvider
+        client={queryClient}
+        persistOptions={{
+          persister: asyncStoragePersister,
+          // Keep persisted cache for 24h — matches gcTime so cold starts always
+          // have data to show while background refetches run.
+          maxAge: 24 * 60 * 60 * 1000,
+        }}
+      >
         <WebContainer>
           <AuthGate>
             <View className="flex-1">
               <StatusBar style="auto" />
               <OfflineBanner />
               <Stack screenOptions={{ headerShown: false }} />
+              <UndoToast />
             </View>
           </AuthGate>
         </WebContainer>
-      </QueryClientProvider>
+      </PersistQueryClientProvider>
     </ErrorBoundary>
   );
 }
