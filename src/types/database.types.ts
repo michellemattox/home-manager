@@ -975,6 +975,10 @@ export interface Database {
           date_removed: string | null;
           season_year: number;
           notes: string | null;
+          germination_date: string | null;
+          start_type: string | null;
+          seedlings_emerged: number | null;
+          germination_notes: string | null;
           created_at: string;
         };
         Insert: {
@@ -989,6 +993,10 @@ export interface Database {
           date_removed?: string | null;
           season_year?: number;
           notes?: string | null;
+          germination_date?: string | null;
+          start_type?: string | null;
+          seedlings_emerged?: number | null;
+          germination_notes?: string | null;
           created_at?: string;
         };
         Update: {
@@ -1003,6 +1011,10 @@ export interface Database {
           date_removed?: string | null;
           season_year?: number;
           notes?: string | null;
+          germination_date?: string | null;
+          start_type?: string | null;
+          seedlings_emerged?: number | null;
+          germination_notes?: string | null;
           created_at?: string;
         };
         Relationships: Rel;

@@ -302,6 +302,14 @@ export default function PlotDetailScreen() {
 
   useAutoSave(!!editingAmendment && showAmendmentModal, [aType, aProduct, aDate, aAmount, aUnit, aNotes, aZoneId], doSaveAmendment);
 
+  // ── Germination form ─────────────────────────────────────────────────────────
+  const [showGerminationModal, setShowGerminationModal] = useState(false);
+  const [germinationPlanting, setGerminationPlanting] = useState<GardenPlanting | null>(null);
+  const [gDate, setGDate] = useState("");
+  const [gStartType, setGStartType] = useState<"direct_sow" | "transplant">("direct_sow");
+  const [gSeedlings, setGSeedlings] = useState("");
+  const [gNotes, setGNotes] = useState("");
+
   // ── Expanded harvest rows + inline confirm states ────────────────────────────
   const [expandedPlantingId, setExpandedPlantingId] = useState<string | null>(null);
   const [confirmingAmendmentId, setConfirmingAmendmentId] = useState<string | null>(null);
@@ -487,6 +495,31 @@ export default function PlotDetailScreen() {
   }
 
   // Harvest delete is confirmed inline within PlantingRow
+
+  // ── Germination CRUD ─────────────────────────────────────────────────────────
+  function openLogGermination(p: GardenPlanting) {
+    setGerminationPlanting(p);
+    setGDate(p.germination_date ?? new Date().toISOString().split("T")[0]);
+    setGStartType((p.start_type as "direct_sow" | "transplant") ?? "direct_sow");
+    setGSeedlings(p.seedlings_emerged?.toString() ?? "");
+    setGNotes(p.germination_notes ?? "");
+    setShowGerminationModal(true);
+  }
+
+  async function handleSaveGermination() {
+    if (!gDate || !germinationPlanting || !plotId) return;
+    await updatePlanting.mutateAsync({
+      id: germinationPlanting.id,
+      plotId,
+      updates: {
+        germination_date: gDate,
+        start_type: gStartType,
+        seedlings_emerged: gSeedlings ? parseInt(gSeedlings, 10) : null,
+        germination_notes: gNotes.trim() || null,
+      },
+    });
+    setShowGerminationModal(false);
+  }
 
   // ── Amendment CRUD ───────────────────────────────────────────────────────────
   function openNewAmendment(zoneId: string | null) {
@@ -723,6 +756,7 @@ export default function PlotDetailScreen() {
                         onToggleExpand={() => setExpandedPlantingId(expandedPlantingId === p.id ? null : p.id)}
                         onEdit={() => openEditPlanting(p)}
                         onDelete={() => deletePlanting.mutate({ id: p.id, plotId: plotId! })}
+                        onLogGermination={() => openLogGermination(p)}
                         onLogHarvest={() => openNewHarvest(p.id)}
                         onEditHarvest={openEditHarvest}
                         onDeleteHarvest={(h) => deleteHarvest.mutate({ id: h.id, plotId: plotId! })}
@@ -898,6 +932,7 @@ export default function PlotDetailScreen() {
                       onToggleExpand={() => setExpandedPlantingId(expandedPlantingId === p.id ? null : p.id)}
                       onEdit={() => openEditPlanting(p)}
                       onDelete={() => confirmDeletePlanting(p)}
+                      onLogGermination={() => openLogGermination(p)}
                       onLogHarvest={() => openNewHarvest(p.id)}
                       onEditHarvest={openEditHarvest}
                       onDeleteHarvest={confirmDeleteHarvest}
@@ -1160,6 +1195,103 @@ export default function PlotDetailScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+      {/* ── Germination Modal ────────────────────────────────────────────────── */}
+      <Modal visible={showGerminationModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
+          <View className="flex-row items-center justify-between px-4 py-4 border-b border-gray-100">
+            <TouchableOpacity onPress={() => setShowGerminationModal(false)}>
+              <Text className="text-gray-500">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="font-semibold text-gray-900">
+              {germinationPlanting?.germination_date ? "Edit Germination" : "Log Germination"}
+            </Text>
+            <TouchableOpacity
+              onPress={handleSaveGermination}
+              disabled={!gDate || updatePlanting.isPending}
+            >
+              <Text className={`font-semibold ${gDate ? "text-green-600" : "text-gray-300"}`}>
+                {updatePlanting.isPending ? "Saving…" : "Save"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView className="flex-1 px-4 py-4">
+            {/* Plant name context */}
+            {germinationPlanting && (
+              <View className="bg-green-50 border border-green-100 rounded-xl p-3 mb-4">
+                <Text className="text-green-800 text-sm font-semibold">
+                  {germinationPlanting.plant_name}
+                  {germinationPlanting.variety ? ` · ${germinationPlanting.variety}` : ""}
+                </Text>
+                {germinationPlanting.date_planted && (
+                  <Text className="text-green-600 text-xs mt-0.5">
+                    Planted {germinationPlanting.date_planted}
+                  </Text>
+                )}
+              </View>
+            )}
+
+            <DateInput label="First Growth Observed *" value={gDate} onChange={setGDate} />
+
+            {/* Auto-calculated days */}
+            {gDate && germinationPlanting?.date_planted && (() => {
+              const planted = new Date(germinationPlanting.date_planted + "T12:00:00");
+              const observed = new Date(gDate + "T12:00:00");
+              const days = Math.round((observed.getTime() - planted.getTime()) / (1000 * 60 * 60 * 24));
+              if (days < 0) return null;
+              return (
+                <View className="bg-green-50 border border-green-100 rounded-xl p-3 mb-4 -mt-2">
+                  <Text className="text-green-700 text-sm font-semibold">
+                    🌱 {days} day{days !== 1 ? "s" : ""} from planting to germination
+                  </Text>
+                </View>
+              );
+            })()}
+
+            <Text className="text-sm font-medium text-gray-700 mb-2">How was it started?</Text>
+            <View className="flex-row gap-3 mb-4">
+              {(["direct_sow", "transplant"] as const).map((type) => (
+                <TouchableOpacity
+                  key={type}
+                  onPress={() => setGStartType(type)}
+                  className={`flex-1 py-3 rounded-xl border items-center ${
+                    gStartType === type
+                      ? "bg-green-600 border-green-600"
+                      : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className="text-lg mb-0.5">{type === "direct_sow" ? "🌾" : "🪴"}</Text>
+                  <Text
+                    className={`text-xs font-semibold ${
+                      gStartType === type ? "text-white" : "text-gray-700"
+                    }`}
+                  >
+                    {type === "direct_sow" ? "Direct Sow" : "Transplant"}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <Input
+              label="Seedlings Emerged (optional)"
+              placeholder="e.g. 4"
+              value={gSeedlings}
+              onChangeText={setGSeedlings}
+              keyboardType="number-pad"
+            />
+
+            <Input
+              label="Notes"
+              placeholder="e.g. 4 of 6 seeds sprouted, leggy, needs thinning…"
+              value={gNotes}
+              onChangeText={setGNotes}
+              multiline
+              numberOfLines={3}
+              className="min-h-[80px]"
+            />
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
+
       {/* ── Amendment Modal ───────────────────────────────────────────────────── */}
       <Modal visible={showAmendmentModal} animationType="slide" presentationStyle="pageSheet">
         <SafeAreaView className="flex-1 bg-white" edges={["top"]}>
@@ -1254,6 +1386,7 @@ function PlantingRow({
   onToggleExpand,
   onEdit,
   onDelete,
+  onLogGermination,
   onLogHarvest,
   onEditHarvest,
   onDeleteHarvest,
@@ -1264,6 +1397,7 @@ function PlantingRow({
   onToggleExpand: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onLogGermination: () => void;
   onLogHarvest: () => void;
   onEditHarvest: (h: GardenHarvest) => void;
   onDeleteHarvest: (h: GardenHarvest) => void;
@@ -1274,6 +1408,14 @@ function PlantingRow({
   const fam = planting.plant_family ? PLANT_FAMILIES[planting.plant_family] : PLANT_FAMILIES.Other;
   const isDone = !!planting.date_removed;
   const totalHarvests = harvests.length;
+
+  // Days from planting to first germination observation
+  const germinationDays = (() => {
+    if (!planting.germination_date || !planting.date_planted) return null;
+    const planted = new Date(planting.date_planted + "T12:00:00");
+    const germinated = new Date(planting.germination_date + "T12:00:00");
+    return Math.round((germinated.getTime() - planted.getTime()) / (1000 * 60 * 60 * 24));
+  })();
 
   return (
     <View>
@@ -1290,6 +1432,13 @@ function PlantingRow({
             {planting.date_planted ? `Planted ${planting.date_planted}` : `Season ${planting.season_year}`}
             {planting.plant_family ? ` · ${planting.plant_family}` : ""}
           </Text>
+          {planting.germination_date && (
+            <Text className="text-xs text-green-600">
+              🌱{germinationDays !== null ? ` Day ${germinationDays}` : " Germinated"}
+              {planting.start_type ? ` · ${planting.start_type === "direct_sow" ? "Direct sow" : "Transplant"}` : ""}
+              {planting.seedlings_emerged ? ` · ${planting.seedlings_emerged} seedlings` : ""}
+            </Text>
+          )}
         </View>
 
         {confirmingDelete ? (
@@ -1309,6 +1458,16 @@ function PlantingRow({
           </View>
         ) : (
           <View className="flex-row items-center gap-1">
+            <TouchableOpacity
+              onPress={onLogGermination}
+              className="px-2 py-1.5 bg-green-50 rounded-lg"
+            >
+              <Text className="text-green-700 text-xs">
+                {planting.germination_date
+                  ? `🌱 ${germinationDays !== null ? `${germinationDays}d` : "✓"}`
+                  : "🌱"}
+              </Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={onToggleExpand} className="px-2 py-1.5 bg-amber-50 rounded-lg">
               <Text className="text-amber-700 text-xs">🌾 {totalHarvests > 0 ? totalHarvests : "+"}</Text>
             </TouchableOpacity>
