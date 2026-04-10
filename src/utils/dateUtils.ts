@@ -41,3 +41,42 @@ export function daysUntilDue(dateStr: string): number {
 export function toISODateString(date: Date): string {
   return format(date, "yyyy-MM-dd");
 }
+
+/**
+ * Parse a free-form time string (e.g. "9am", "10pm", "2:30pm") into
+ * minutes since midnight for sorting. Returns Infinity if no time
+ * so items without a time sort to the top of their date group.
+ */
+export function parseTimeToMinutes(time?: string | null): number {
+  if (!time) return -1; // no time → sort before timed items
+  const m = time.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  if (!m) return -1;
+  let hours = parseInt(m[1], 10);
+  const mins = m[2] ? parseInt(m[2], 10) : 0;
+  const ampm = (m[3] || "").toLowerCase();
+  if (ampm === "pm" && hours < 12) hours += 12;
+  if (ampm === "am" && hours === 12) hours = 0;
+  return hours * 60 + mins;
+}
+
+/**
+ * Format a compact date + optional time for task badges.
+ * Examples: "4/9 @ 9am", "4/11 @ 10am", "4/15"
+ */
+export function formatDateCompact(dateStr: string, timeOfDay?: string | null): string {
+  const d = parseISO(dateStr);
+  const datePart = format(d, "M/d");
+  if (timeOfDay) return `${datePart} @ ${timeOfDay}`;
+  return datePart;
+}
+
+/**
+ * Build the full badge label for a task, including status prefix + date + time.
+ * Examples: "Overdue · 4/9 @ 9am", "Due Soon · 4/11", "4/15 @ 2pm"
+ */
+export function taskBadgeLabel(dateStr: string, timeOfDay?: string | null): string {
+  const compact = formatDateCompact(dateStr, timeOfDay);
+  if (isOverdue(dateStr)) return `Overdue · ${compact}`;
+  if (isDueSoon(dateStr)) return `Due Soon · ${compact}`;
+  return compact;
+}

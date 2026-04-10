@@ -33,7 +33,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
-import { isOverdue, isDueSoon, formatDate, formatDateShort, toISODateString } from "@/utils/dateUtils";
+import { isOverdue, isDueSoon, formatDate, formatDateShort, toISODateString, taskBadgeLabel, parseTimeToMinutes } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
 import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
@@ -67,16 +67,13 @@ function LowLiftCard({ task, onPress }: { task: RecurringTask; onPress: () => vo
             ) : null}
             <View className="flex-row items-center mt-1.5 gap-2 flex-wrap">
               <Badge
-                label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDate(task.next_due_date)}
+                label={taskBadgeLabel(task.next_due_date, (task as any).time_of_day)}
                 variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
                 size="sm"
               />
               <Text className="text-xs text-gray-400">
                 {getFreqLabel(task.frequency_type, task.frequency_days)}
               </Text>
-              {(task as any).time_of_day && (
-                <Text className="text-xs text-gray-400">⏰ {(task as any).time_of_day}</Text>
-              )}
             </View>
           </View>
           {assignee && <MemberAvatar member={assignee} size="sm" />}
@@ -122,7 +119,7 @@ function ProjectAdjacentCard({
             {task.due_date && (
               <View className="mt-1.5">
                 <Badge
-                  label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDateShort(task.due_date)}
+                  label={taskBadgeLabel(task.due_date)}
                   variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
                   size="sm"
                 />
@@ -157,7 +154,7 @@ function StandaloneTaskCard({ task, onPress }: { task: Task; onPress: () => void
             {task.due_date && (
               <View className="mt-1.5">
                 <Badge
-                  label={overdue ? "Overdue" : dueSoon ? "Due soon" : formatDateShort(task.due_date)}
+                  label={taskBadgeLabel(task.due_date)}
                   variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
                   size="sm"
                 />
@@ -541,25 +538,29 @@ export default function TasksScreen() {
     return true;
   });
 
-  const overdueRecurring = visibleRecurring
-    .filter((t) => isOverdue(t.next_due_date))
-    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
-  const upcomingRecurring = visibleRecurring
-    .filter((t) => !isOverdue(t.next_due_date))
-    .sort((a, b) => new Date(a.next_due_date).getTime() - new Date(b.next_due_date).getTime());
+  // Sort by date ascending, then no-time items before timed items, then by time
+  const sortByDateTime = (dateA: string, timeA: string | null | undefined, dateB: string, timeB: string | null | undefined) => {
+    const dateDiff = new Date(dateA).getTime() - new Date(dateB).getTime();
+    if (dateDiff !== 0) return dateDiff;
+    return parseTimeToMinutes(timeA) - parseTimeToMinutes(timeB);
+  };
+
+  const sortedRecurring = [...visibleRecurring].sort((a, b) =>
+    sortByDateTime(a.next_due_date, (a as any).time_of_day, b.next_due_date, (b as any).time_of_day)
+  );
 
   const sortedProjectTasks = [...visibleProjectTasks].sort((a, b) => {
     if (!a.due_date && !b.due_date) return 0;
     if (!a.due_date) return 1;
     if (!b.due_date) return -1;
-    return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    return sortByDateTime(a.due_date, null, b.due_date, null);
   });
 
   const sortedStandalone = [...visibleStandalone].sort((a, b) => {
     if (!a.due_date && !b.due_date) return 0;
     if (!a.due_date) return 1;
     if (!b.due_date) return -1;
-    return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+    return sortByDateTime(a.due_date, null, b.due_date, null);
   });
 
   return (
@@ -647,12 +648,7 @@ export default function TasksScreen() {
         {/* ── LOW-LIFT TAB ─────────────────────────────────────────────── */}
         {mode === "low-lift" && (
           <>
-            {overdueRecurring.length > 0 && (
-              <Text className="text-sm font-semibold text-red-500 mb-2">
-                {overdueRecurring.length} OVERDUE
-              </Text>
-            )}
-            {[...overdueRecurring, ...upcomingRecurring].map((task) => (
+            {sortedRecurring.map((task) => (
               <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} />
             ))}
 
