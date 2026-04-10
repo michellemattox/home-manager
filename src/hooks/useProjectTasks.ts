@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
+import { useUndoStore } from "@/stores/undoStore";
 import type { ProjectTask } from "@/types/app.types";
 
 export function useAddProjectTask() {
@@ -98,33 +99,53 @@ export function useCompleteProjectChecklistItem() {
     }: {
       task: ProjectTask;
       completedByMemberId: string | null;
-    }) => {
-      const { error: archiveError } = await supabase
-        .from("completed_checklist_items")
-        .insert({
-          source_type: "project",
-          source_id: task.project_id,
-          original_task_id: task.id,
-          title: task.title,
-          checklist_name: task.checklist_name ?? "General",
-          assigned_member_id: task.assigned_member_id,
-          due_date: task.due_date,
-          completed_by: completedByMemberId,
-        });
-      if (archiveError) throw archiveError;
+    }) => ({ task, completedByMemberId }),
+    onSuccess: ({ task, completedByMemberId }) => {
+      const allTasksKey = ["all_project_tasks"] as const;
+      const allTasks = qc.getQueryData<ProjectTask[]>(allTasksKey);
+      const index = allTasks?.findIndex((t) => t.id === task.id) ?? -1;
 
-      const { error: deleteError } = await supabase
-        .from("project_tasks")
-        .delete()
-        .eq("id", task.id);
-      if (deleteError) throw deleteError;
+      // Optimistically remove from all project tasks cache
+      qc.setQueryData(allTasksKey, (old: ProjectTask[] | undefined) =>
+        old ? old.filter((t) => t.id !== task.id) : old
+      );
 
-      return { project_id: task.project_id };
-    },
-    onSuccess: ({ project_id }) => {
-      qc.invalidateQueries({ queryKey: ["project", project_id] });
-      qc.invalidateQueries({ queryKey: ["completed_checklist", "project", project_id] });
-      qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
+      useUndoStore.getState().schedule({
+        label: "Task completed",
+        restore: () => {
+          qc.setQueryData(allTasksKey, (old: ProjectTask[] | undefined) => {
+            if (!old) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, task);
+            return arr;
+          });
+        },
+        execute: async () => {
+          const { error: archiveError } = await supabase
+            .from("completed_checklist_items")
+            .insert({
+              source_type: "project",
+              source_id: task.project_id,
+              original_task_id: task.id,
+              title: task.title,
+              checklist_name: task.checklist_name ?? "General",
+              assigned_member_id: task.assigned_member_id,
+              due_date: task.due_date,
+              completed_by: completedByMemberId,
+            });
+          if (archiveError) throw archiveError;
+
+          const { error: deleteError } = await supabase
+            .from("project_tasks")
+            .delete()
+            .eq("id", task.id);
+          if (deleteError) throw deleteError;
+
+          qc.invalidateQueries({ queryKey: ["project", task.project_id] });
+          qc.invalidateQueries({ queryKey: ["completed_checklist", "project", task.project_id] });
+          qc.invalidateQueries({ queryKey: allTasksKey });
+        },
+      });
     },
   });
 }

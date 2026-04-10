@@ -92,17 +92,37 @@ export function useCompleteTask() {
     }: {
       id: string;
       householdId: string;
-    }) => {
-      const { error } = await supabase
-        .from("tasks")
-        .update({ is_completed: true, completed_at: new Date().toISOString() })
-        .eq("id", id);
-      if (error) throw error;
-      return householdId;
-    },
-    onSuccess: (householdId) => {
-      qc.invalidateQueries({ queryKey: ["tasks", householdId] });
-      qc.invalidateQueries({ queryKey: ["tasks_completed", householdId] });
+    }) => ({ id, householdId }),
+    onSuccess: ({ id, householdId }) => {
+      const queryKey = ["tasks", householdId] as const;
+      const items = qc.getQueryData<Task[]>(queryKey);
+      const item = items?.find((t) => t.id === id);
+      const index = items?.findIndex((t) => t.id === id) ?? -1;
+
+      // Optimistically remove from active tasks
+      qc.setQueryData(queryKey, (old: Task[] | undefined) =>
+        old ? old.filter((t) => t.id !== id) : old
+      );
+
+      useUndoStore.getState().schedule({
+        label: "Task completed",
+        restore: () =>
+          qc.setQueryData(queryKey, (old: Task[] | undefined) => {
+            if (!old || !item) return old;
+            const arr = [...old];
+            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
+            return arr;
+          }),
+        execute: async () => {
+          const { error } = await supabase
+            .from("tasks")
+            .update({ is_completed: true, completed_at: new Date().toISOString() })
+            .eq("id", id);
+          if (error) throw error;
+          qc.invalidateQueries({ queryKey });
+          qc.invalidateQueries({ queryKey: ["tasks_completed", householdId] });
+        },
+      });
     },
   });
 }

@@ -62,9 +62,10 @@ export default function SettingsScreen() {
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [savedIndicator, setSavedIndicator] = useState(false);
 
-  // On mount: load prefs from DB and hydrate local state
+  // On mount: load prefs from DB and hydrate local state.
+  // If no row exists yet, create one with defaults so the digest cron can find it.
   useEffect(() => {
-    if (!currentMember) return;
+    if (!currentMember || !household) return;
     (async () => {
       const { data, error } = await supabase
         .from("notification_preferences" as any)
@@ -76,6 +77,17 @@ export default function SettingsScreen() {
         setDueSoonEnabled((data as any).due_soon_enabled);
         setReminderHour((data as any).reminder_hour);
         setReminderFrequency((data as any).reminder_frequency);
+      } else if (!error && !data) {
+        // No prefs row yet — create one with current defaults so the digest cron works
+        await supabase.from("notification_preferences" as any).upsert({
+          member_id: currentMember.id,
+          household_id: household.id,
+          overdue_enabled: overdueEnabled,
+          due_soon_enabled: dueSoonEnabled,
+          reminder_hour: reminderHour,
+          reminder_frequency: reminderFrequency,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "member_id" });
       }
       prefsLoadedRef.current = true;
     })();

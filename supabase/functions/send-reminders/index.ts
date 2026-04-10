@@ -275,13 +275,14 @@ Deno.serve(async (req) => {
     // ── 1. Load notification preferences for all members ─────────────────────
     const { data: allPrefs } = await supabase
       .from("notification_preferences")
-      .select("member_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency");
+      .select("member_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, last_digest_sent_at");
 
     const prefsByMemberId: Record<string, {
       overdue_enabled: boolean;
       due_soon_enabled: boolean;
       reminder_hour: number;
       reminder_frequency: string;
+      last_digest_sent_at: string | null;
     }> = {};
     for (const p of allPrefs ?? []) {
       prefsByMemberId[p.member_id] = p;
@@ -400,6 +401,14 @@ Deno.serve(async (req) => {
       // hour and this check gates each member to their chosen time slot.
       if (prefs.reminder_hour !== currentHourPT) { skipped++; continue; }
 
+      // Idempotency: skip if we already sent a digest to this member this hour.
+      // This prevents duplicates from pg_net retries or overlapping cron runs.
+      if (prefs.last_digest_sent_at) {
+        const lastSent = new Date(prefs.last_digest_sent_at);
+        const minutesSinceLast = (now.getTime() - lastSent.getTime()) / 60000;
+        if (minutesSinceLast < 55) { skipped++; continue; }
+      }
+
       const { data: userData } = await supabase.auth.admin.getUserById(userId);
       const email = userData?.user?.email;
       if (!email) continue;
@@ -410,6 +419,12 @@ Deno.serve(async (req) => {
 
       await sendDigestEmail(email, firstName, items);
       emailsSent++;
+
+      // Mark this member as sent so retries within the same hour are skipped
+      await supabase
+        .from("notification_preferences")
+        .update({ last_digest_sent_at: now.toISOString() })
+        .eq("member_id", member.id);
     }
 
     // ── 6. Build smart push notifications via Claude ──────────────────────────

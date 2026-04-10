@@ -297,6 +297,11 @@ export default function TasksScreen() {
   };
 
   const handleCompleteLowLift = async (task: RecurringTask) => {
+    // Cancel any pending auto-save to prevent it from overwriting the advanced due date
+    if (llAutoSaveRef.current) {
+      clearTimeout(llAutoSaveRef.current);
+      llAutoSaveRef.current = null;
+    }
     await notificationSuccess();
     if (!currentMember) return;
     try {
@@ -408,6 +413,10 @@ export default function TasksScreen() {
   };
 
   const handleCompletePA = async (task: ProjectTask) => {
+    if (paAutoSaveRef.current) {
+      clearTimeout(paAutoSaveRef.current);
+      paAutoSaveRef.current = null;
+    }
     await notificationSuccess();
     try {
       await completeProjectTask.mutateAsync({ task, completedByMemberId: currentMember?.id ?? null });
@@ -471,6 +480,10 @@ export default function TasksScreen() {
   };
 
   const handleCompleteStandalone = async (task: Task) => {
+    if (stAutoSaveRef.current) {
+      clearTimeout(stAutoSaveRef.current);
+      stAutoSaveRef.current = null;
+    }
     await notificationSuccess();
     try {
       await completeStandalone.mutateAsync({ id: task.id, householdId: household!.id });

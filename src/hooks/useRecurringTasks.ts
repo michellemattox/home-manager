@@ -54,48 +54,74 @@ export function useCompleteRecurringTask() {
     mutationFn: async ({
       task,
       completedBy,
-      notes,
     }: {
       task: RecurringTask;
       completedBy: string;
-      notes?: string;
-    }) => {
-      const now = new Date().toISOString();
+    }) => ({ task, completedBy }),
+    onSuccess: ({ task, completedBy }) => {
+      const queryKey = ["recurring_tasks", task.household_id] as const;
+      const items = qc.getQueryData<RecurringTask[]>(queryKey);
+      const index = items?.findIndex((t) => t.id === task.id) ?? -1;
 
-      // Log completion
-      const { error: logErr } = await supabase
-        .from("recurring_task_completions")
-        .insert({
-          recurring_task_id: task.id,
-          completed_by: completedBy,
-          completed_at: now,
-          notes: notes ?? null,
-        });
-      if (logErr) throw logErr;
+      const isNoRepeat = task.frequency_type === "no_repeat";
+      const newDueDate = isNoRepeat
+        ? task.next_due_date
+        : calculateNextDueDate(
+            task.frequency_type,
+            task.frequency_days,
+            new Date(task.next_due_date + "T12:00:00")
+          );
 
-      // no_repeat tasks are deactivated on completion; all others advance their due date
-      const taskUpdate = task.frequency_type === "no_repeat"
-        ? { last_completed_at: now, is_active: false }
-        : {
-            last_completed_at: now,
-            // Use local noon to avoid UTC midnight shifting the date backward in PT timezone
-            next_due_date: calculateNextDueDate(
-              task.frequency_type,
-              task.frequency_days,
-              new Date(task.next_due_date + "T12:00:00")
-            ),
-          };
+      // Optimistically update cache: remove if no_repeat, advance due date otherwise
+      qc.setQueryData(queryKey, (old: RecurringTask[] | undefined) => {
+        if (!old) return old;
+        if (isNoRepeat) return old.filter((t) => t.id !== task.id);
+        return old.map((t) =>
+          t.id === task.id ? { ...t, next_due_date: newDueDate, last_completed_at: new Date().toISOString() } : t
+        );
+      });
 
-      const { error: updateErr } = await supabase
-        .from("recurring_tasks")
-        .update(taskUpdate)
-        .eq("id", task.id);
-      if (updateErr) throw updateErr;
+      useUndoStore.getState().schedule({
+        label: isNoRepeat ? "Task completed" : "Task marked done",
+        restore: () => {
+          // Restore original task state in cache
+          qc.setQueryData(queryKey, (old: RecurringTask[] | undefined) => {
+            if (!old) return old;
+            if (isNoRepeat) {
+              const arr = [...old];
+              arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, task);
+              return arr;
+            }
+            return old.map((t) => (t.id === task.id ? task : t));
+          });
+        },
+        execute: async () => {
+          const now = new Date().toISOString();
 
-      return task.household_id;
+          const { error: logErr } = await supabase
+            .from("recurring_task_completions")
+            .insert({
+              recurring_task_id: task.id,
+              completed_by: completedBy,
+              completed_at: now,
+              notes: null,
+            });
+          if (logErr) throw logErr;
+
+          const taskUpdate = isNoRepeat
+            ? { last_completed_at: now, is_active: false }
+            : { last_completed_at: now, next_due_date: newDueDate };
+
+          const { error: updateErr } = await supabase
+            .from("recurring_tasks")
+            .update(taskUpdate)
+            .eq("id", task.id);
+          if (updateErr) throw updateErr;
+
+          qc.invalidateQueries({ queryKey });
+        },
+      });
     },
-    onSuccess: (householdId) =>
-      qc.invalidateQueries({ queryKey: ["recurring_tasks", householdId] }),
   });
 }
 
