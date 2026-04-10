@@ -428,7 +428,7 @@ export default function TripDetailScreen() {
       {/* Nav */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
         <TouchableOpacity onPress={() => router.back()} className="mr-4">
-          <Text className="text-blue-600 text-base">←</Text>
+          <Text className="text-green-700 text-base">← Back</Text>
         </TouchableOpacity>
         <View className="flex-1">
           <Text className="text-lg font-semibold text-gray-900" numberOfLines={1}>

@@ -725,7 +725,7 @@ export default function TasksScreen() {
         <SafeAreaView className="flex-1 bg-[#F6EDFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={handleDoneLowLift} className="mr-4">
-              <Text className="text-blue-600 text-base">Done</Text>
+              <Text className="text-green-700 text-base">← Back</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
             {llSaved
@@ -818,7 +818,7 @@ export default function TasksScreen() {
         <SafeAreaView className="flex-1 bg-[#F6EDFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={handleDonePA} className="mr-4">
-              <Text className="text-blue-600 text-base">Done</Text>
+              <Text className="text-green-700 text-base">← Back</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
             {paSaved
@@ -889,7 +889,7 @@ export default function TasksScreen() {
         <SafeAreaView className="flex-1 bg-[#F6EDFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={handleDoneStandalone} className="mr-4">
-              <Text className="text-blue-600 text-base">Done</Text>
+              <Text className="text-green-700 text-base">← Back</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Task</Text>
             {stSaved && <Text className="text-xs font-semibold text-green-600">Saved ✓</Text>}

@@ -529,7 +529,7 @@ export default function ProjectDetailScreen() {
       <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
         <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
           <TouchableOpacity onPress={() => router.back()} className="mr-4">
-            <Text className="text-blue-600 text-base">←</Text>
+            <Text className="text-green-700 text-base">← Back</Text>
           </TouchableOpacity>
           <Text className="flex-1 text-lg font-semibold text-gray-400">Loading…</Text>
         </View>
@@ -545,7 +545,7 @@ export default function ProjectDetailScreen() {
       <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
         <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
           <TouchableOpacity onPress={() => router.back()} className="mr-4">
-            <Text className="text-blue-600 text-base">←</Text>
+            <Text className="text-green-700 text-base">← Back</Text>
           </TouchableOpacity>
           <Text className="flex-1 text-lg font-semibold text-gray-400">Project not found</Text>
         </View>
@@ -554,7 +554,7 @@ export default function ProjectDetailScreen() {
             This project could not be loaded. It may have been deleted.
           </Text>
           <TouchableOpacity onPress={() => router.back()} className="mt-4">
-            <Text className="text-blue-600 text-sm font-medium">← Go back</Text>
+            <Text className="text-green-700 text-base">← Back</Text>
           </TouchableOpacity>
         </View>
       </SafeAreaView>
@@ -590,7 +590,7 @@ export default function ProjectDetailScreen() {
       {/* Nav bar */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
         <TouchableOpacity onPress={() => router.back()} className="mr-4">
-          <Text className="text-blue-600 text-base">←</Text>
+          <Text className="text-green-700 text-base">← Back</Text>
         </TouchableOpacity>
         <Text className="flex-1 text-lg font-semibold text-gray-900" numberOfLines={1}>
           {project.title}
