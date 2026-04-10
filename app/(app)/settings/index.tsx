@@ -114,12 +114,12 @@ export default function SettingsScreen() {
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ testEmail: "michellemattox1@gmail.com" }),
+          body: JSON.stringify({ testEmail: user?.email ?? "" }),
         }
       );
       const json = await res.json();
       if (!res.ok) throw new Error(json?.error ?? `Error ${res.status}`);
-      showAlert("Test Sent", "A test reminder email was sent to michellemattox1@gmail.com.");
+      showAlert("Test Sent", `A test reminder email was sent to ${user?.email ?? "your email"}.`);
     } catch (err: any) {
       showAlert("Error", err?.message ?? "Failed to send test reminder.");
     } finally {
@@ -483,7 +483,7 @@ export default function SettingsScreen() {
         <Card className="mb-6">
           <Text className="text-sm font-semibold text-gray-800 mb-1">Test Reminder Email</Text>
           <Text className="text-xs text-gray-500 mb-4">
-            Send a sample daily digest to michellemattox1@gmail.com to preview the reminder format.
+            Send a sample daily digest to your email to preview the reminder format.
           </Text>
           <TouchableOpacity
             onPress={handleTestReminder}
