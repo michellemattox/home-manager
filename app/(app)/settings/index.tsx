@@ -56,6 +56,10 @@ export default function SettingsScreen() {
   } = useNotificationStore();
 
   const isAllMembers = notifyMemberIds.includes("all") || notifyMemberIds.length === 0;
+  const [multiSelect, setMultiSelect] = useState(
+    // Auto-detect: if more than one selection (or "all" + individuals), start in multi-select mode
+    notifyMemberIds.length > 1 || (notifyMemberIds.includes("all") && notifyMemberIds.length > 1)
+  );
 
   // Track whether prefs have been loaded from DB (prevents overwriting DB with stale defaults)
   const prefsLoadedRef = useRef(false);
@@ -140,17 +144,21 @@ export default function SettingsScreen() {
   }, []);
 
   const toggleMember = (id: string) => {
-    if (id === "all") {
-      setNotifyMemberIds(["all"]);
-      return;
+    if (multiSelect) {
+      // Multi-select: toggle each chip independently, "all" and individuals can coexist
+      const has = notifyMemberIds.includes(id);
+      const next = has
+        ? notifyMemberIds.filter((x) => x !== id)
+        : [...notifyMemberIds, id];
+      setNotifyMemberIds(next.length === 0 ? ["all"] : next);
+    } else {
+      // Single-select: picking one deselects others
+      if (id === "all") {
+        setNotifyMemberIds(["all"]);
+      } else {
+        setNotifyMemberIds([id]);
+      }
     }
-    // Deselect "all", toggle this individual member
-    const current = notifyMemberIds.filter((x) => x !== "all");
-    const next = current.includes(id)
-      ? current.filter((x) => x !== id)
-      : [...current, id];
-    // If all individuals are now selected, collapse back to "all"
-    setNotifyMemberIds(next.length === 0 ? ["all"] : next.length === members.length ? ["all"] : next);
   };
 
   const { data: invites = [] } = useHouseholdInvites(household?.id);
@@ -413,22 +421,35 @@ export default function SettingsScreen() {
             />
           </View>
           {/* Member filter */}
-          <Text className="text-sm font-semibold text-gray-700 mb-2">Notify me about</Text>
+          <View className="flex-row items-center justify-between mb-2">
+            <Text className="text-sm font-semibold text-gray-700">Notify me about</Text>
+            <TouchableOpacity
+              onPress={() => setMultiSelect(!multiSelect)}
+              className="flex-row items-center gap-1.5"
+            >
+              <View className={`w-4 h-4 rounded border items-center justify-center ${
+                multiSelect ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white"
+              }`}>
+                {multiSelect && <Text className="text-white text-[10px] font-bold">✓</Text>}
+              </View>
+              <Text className="text-xs text-gray-500">Select Multiples</Text>
+            </TouchableOpacity>
+          </View>
           <View className="flex-row flex-wrap gap-2 mb-4">
             {/* All chip */}
             <TouchableOpacity
               onPress={() => toggleMember("all")}
               className={`px-3 py-1.5 rounded-xl border ${
-                isAllMembers ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                notifyMemberIds.includes("all") ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
               }`}
             >
-              <Text className={`text-sm font-medium ${isAllMembers ? "text-white" : "text-gray-700"}`}>
+              <Text className={`text-sm font-medium ${notifyMemberIds.includes("all") ? "text-white" : "text-gray-700"}`}>
                 All
               </Text>
             </TouchableOpacity>
             {/* Individual member chips */}
             {members.map((m) => {
-              const selected = !isAllMembers && notifyMemberIds.includes(m.id);
+              const selected = notifyMemberIds.includes(m.id);
               return (
                 <TouchableOpacity
                   key={m.id}
