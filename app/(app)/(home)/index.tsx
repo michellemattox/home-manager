@@ -15,12 +15,14 @@ import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
 import { useTasks, useCompleteTask } from "@/hooks/useTasks";
 import { useServiceRecords } from "@/hooks/useServices";
-import { isOverdue, isDueSoon, daysUntilDue, formatDate, formatDateShort } from "@/utils/dateUtils";
+import { useAllProjectTasks } from "@/hooks/useProjectTasks";
+import { useAllTripTasks } from "@/hooks/useTrips";
+import { isOverdue, isDueSoon, daysUntilDue, formatDate, formatDateShort, taskBadgeLabel } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
 import { showAlert } from "@/lib/alert";
 import { supabase } from "@/lib/supabase";
 import { notificationSuccess } from "@/lib/haptics";
-import type { ProjectWithOwners, RecurringTask, Task } from "@/types/app.types";
+import type { ProjectWithOwners, RecurringTask, Task, ProjectTask, TripTask } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { useWowUpdates, useGenerateWow, type WowUpdate } from "@/hooks/useWowUpdates";
 import {
@@ -110,7 +112,7 @@ function OverdueTaskRow({
       <View className="flex-row items-center">
         <View className="flex-1 mr-2">
           <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
-          <Text className="text-xs text-red-600 mt-0.5">Due {formatDate(task.next_due_date)}</Text>
+          <Text className="text-xs text-red-600 mt-0.5">{taskBadgeLabel(task.next_due_date, (task as any).time_of_day)}</Text>
         </View>
         <TouchableOpacity
           onPress={(e) => { e.stopPropagation(); onComplete(); }}
@@ -133,7 +135,7 @@ function DueSoonTaskRow({
       <View className="flex-row items-center">
         <View className="flex-1 mr-2">
           <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
-          <Text className="text-xs text-amber-700 mt-0.5">Due {formatDate(task.next_due_date)}</Text>
+          <Text className="text-xs text-amber-700 mt-0.5">{taskBadgeLabel(task.next_due_date, (task as any).time_of_day)}</Text>
         </View>
         <TouchableOpacity
           onPress={(e) => { e.stopPropagation(); onComplete(); }}
@@ -158,13 +160,42 @@ function OneOffTaskRow({
       <View className="flex-1 mr-2">
         <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
         {task.due_date && (
-          <Text className={`text-xs mt-0.5 ${dateColor}`}>Due {formatDate(task.due_date)}</Text>
+          <Text className={`text-xs mt-0.5 ${dateColor}`}>{taskBadgeLabel(task.due_date)}</Text>
         )}
       </View>
       <TouchableOpacity onPress={onComplete} className="bg-green-100 rounded-lg px-3 py-1.5">
         <Text className="text-green-700 text-xs font-semibold">Done</Text>
       </TouchableOpacity>
     </View>
+  );
+}
+
+function ChecklistItemRow({
+  title,
+  parentTitle,
+  dueDate,
+  variant,
+  onPress,
+}: {
+  title: string;
+  parentTitle: string;
+  dueDate: string;
+  variant: "overdue" | "due-soon";
+  onPress: () => void;
+}) {
+  const bg = variant === "overdue" ? "bg-red-50 border-red-200" : "bg-amber-50 border-amber-200";
+  const dateColor = variant === "overdue" ? "text-red-600" : "text-amber-700";
+  const badge = taskBadgeLabel(dueDate);
+  return (
+    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${bg}`}>
+      <View className="flex-row items-center">
+        <View className="flex-1 mr-2">
+          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{title}</Text>
+          <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={1}>{parentTitle}</Text>
+          <Text className={`text-xs mt-0.5 ${dateColor}`}>{badge}</Text>
+        </View>
+      </View>
+    </TouchableOpacity>
   );
 }
 
@@ -341,10 +372,14 @@ export default function HomeScreen() {
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
 
+  const [selectedMembers, setSelectedMembers] = useState<string[]>([]); // empty = All
+
   const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useProjects(household?.id);
   const { data: tasks, isLoading: loadingTasks, refetch: refetchTasks } = useRecurringTasks(household?.id);
   const { data: oneOffTasks = [], refetch: refetchOneOff } = useTasks(household?.id);
   const { data: serviceRecords, refetch: refetchServices } = useServiceRecords(household?.id);
+  const { data: allProjectTasks = [], refetch: refetchProjectTasks } = useAllProjectTasks(household?.id);
+  const { data: allTripTasks = [], refetch: refetchTripTasks } = useAllTripTasks(household?.id);
   const completeRecurring = useCompleteRecurringTask();
   const completeOneOff = useCompleteTask();
   const { data: wowUpdates = [], refetch: refetchWow } = useWowUpdates(household?.id);
@@ -458,35 +493,67 @@ export default function HomeScreen() {
     refetchTasks();
     refetchOneOff();
     refetchServices();
+    refetchProjectTasks();
+    refetchTripTasks();
     refetchWow();
     refetchAdvisor();
   };
+
+  // Member filter helper — empty array = show all
+  const matchesMember = (memberId: string | null | undefined) =>
+    selectedMembers.length === 0 || (memberId != null && selectedMembers.includes(memberId));
+
+  const toggleMember = (id: string) =>
+    setSelectedMembers((prev) =>
+      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
+    );
 
   // Projects
   const activeProjects = (projects ?? []).filter(
     (p) => p.status !== "completed" && p.status !== "finished"
   );
-  const overdueProjects = activeProjects.filter(
+  const filteredProjects = activeProjects.filter((p) =>
+    selectedMembers.length === 0 ||
+    (p.project_owners ?? []).some((po: any) => selectedMembers.includes(po.member_id))
+  );
+  const overdueProjects = filteredProjects.filter(
     (p) => p.expected_date && isOverdue(p.expected_date)
   );
-  const dueSoonProjects = activeProjects.filter(
+  const dueSoonProjects = filteredProjects.filter(
     (p) => p.expected_date && !isOverdue(p.expected_date) && isDueSoon(p.expected_date, 14)
   );
 
   // Recurring tasks
-  const overdueTasks = (tasks ?? []).filter((t) => isOverdue(t.next_due_date));
-  const dueSoonTasks = (tasks ?? []).filter(
+  const filteredRecurring = (tasks ?? []).filter((t) => matchesMember(t.assigned_member_id));
+  const overdueTasks = filteredRecurring.filter((t) => isOverdue(t.next_due_date));
+  const dueSoonTasks = filteredRecurring.filter(
     (t) => !isOverdue(t.next_due_date) && isDueSoon(t.next_due_date, 7)
   );
 
   // One-off tasks with due dates
-  const overdueOneOff = oneOffTasks.filter((t) => t.due_date && isOverdue(t.due_date));
-  const dueSoonOneOff = oneOffTasks.filter(
+  const filteredOneOff = oneOffTasks.filter((t) => matchesMember(t.assigned_member_id));
+  const overdueOneOff = filteredOneOff.filter((t) => t.due_date && isOverdue(t.due_date));
+  const dueSoonOneOff = filteredOneOff.filter(
     (t) => t.due_date && !isOverdue(t.due_date) && isDueSoon(t.due_date, 7)
   );
 
+  // Project checklist items with due dates
+  const filteredProjectTasks = allProjectTasks.filter((t) => t.due_date && matchesMember(t.assigned_member_id));
+  const overdueProjectTasks = filteredProjectTasks.filter((t) => isOverdue(t.due_date!));
+  const dueSoonProjectTasks = filteredProjectTasks.filter(
+    (t) => !isOverdue(t.due_date!) && isDueSoon(t.due_date!, 7)
+  );
+
+  // Trip checklist items with due dates
+  const filteredTripTasks = allTripTasks.filter((t) => t.due_date && matchesMember(t.assigned_member_id));
+  const overdueTripTasks = filteredTripTasks.filter((t) => isOverdue(t.due_date!));
+  const dueSoonTripTasks = filteredTripTasks.filter(
+    (t) => !isOverdue(t.due_date!) && isDueSoon(t.due_date!, 7)
+  );
+
   // Stats — year-to-date spend (Jan 1 of current year)
-  const totalAlerts = overdueProjects.length + overdueTasks.length + overdueOneOff.length;
+  const totalAlerts = overdueProjects.length + overdueTasks.length + overdueOneOff.length
+    + overdueProjectTasks.length + overdueTripTasks.length;
   const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
   const yearlySpend = (serviceRecords ?? [])
     .filter((r) => new Date(r.service_date) >= thisYearStart)
@@ -529,8 +596,10 @@ export default function HomeScreen() {
     }
   };
 
-  const hasAlerts = overdueProjects.length > 0 || overdueTasks.length > 0 || overdueOneOff.length > 0;
-  const hasUpcoming = dueSoonProjects.length > 0 || dueSoonTasks.length > 0 || dueSoonOneOff.length > 0;
+  const hasAlerts = overdueProjects.length > 0 || overdueTasks.length > 0 || overdueOneOff.length > 0
+    || overdueProjectTasks.length > 0 || overdueTripTasks.length > 0;
+  const hasUpcoming = dueSoonProjects.length > 0 || dueSoonTasks.length > 0 || dueSoonOneOff.length > 0
+    || dueSoonProjectTasks.length > 0 || dueSoonTripTasks.length > 0;
 
   return (
     <SafeAreaView className="flex-1 bg-[#E4F2E4]" edges={["top"]}>
@@ -549,6 +618,28 @@ export default function HomeScreen() {
           {household && (
             <Text className="text-sm text-gray-500 mt-0.5">{household.name}</Text>
           )}
+        </View>
+
+        {/* Member Filter */}
+        <View className="flex-row flex-wrap gap-2 mb-1">
+          <TouchableOpacity
+            onPress={() => setSelectedMembers([])}
+            className={`px-3 py-1 rounded-full border ${selectedMembers.length === 0 ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+          >
+            <Text className={`text-xs font-semibold ${selectedMembers.length === 0 ? "text-white" : "text-gray-600"}`}>All</Text>
+          </TouchableOpacity>
+          {members.map((m) => {
+            const active = selectedMembers.includes(m.id);
+            return (
+              <TouchableOpacity
+                key={m.id}
+                onPress={() => toggleMember(m.id)}
+                className={`px-3 py-1 rounded-full border ${active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
+              >
+                <Text className={`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>
+              </TouchableOpacity>
+            );
+          })}
         </View>
 
         {/* Stats Row */}
@@ -604,6 +695,26 @@ export default function HomeScreen() {
                 onComplete={() => handleCompleteOneOff(t)}
               />
             ))}
+            {overdueProjectTasks.map((t) => (
+              <ChecklistItemRow
+                key={`pt-${t.id}`}
+                title={t.title}
+                parentTitle={(t as any).project_title ?? "Project"}
+                dueDate={t.due_date!}
+                variant="overdue"
+                onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
+              />
+            ))}
+            {overdueTripTasks.map((t) => (
+              <ChecklistItemRow
+                key={`tt-${t.id}`}
+                title={t.title}
+                parentTitle={(t as any).trip_title ?? "Trip"}
+                dueDate={t.due_date!}
+                variant="overdue"
+                onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
+              />
+            ))}
           </>
         )}
 
@@ -632,6 +743,26 @@ export default function HomeScreen() {
                 task={t}
                 variant="due-soon"
                 onComplete={() => handleCompleteOneOff(t)}
+              />
+            ))}
+            {dueSoonProjectTasks.map((t) => (
+              <ChecklistItemRow
+                key={`pt-${t.id}`}
+                title={t.title}
+                parentTitle={(t as any).project_title ?? "Project"}
+                dueDate={t.due_date!}
+                variant="due-soon"
+                onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
+              />
+            ))}
+            {dueSoonTripTasks.map((t) => (
+              <ChecklistItemRow
+                key={`tt-${t.id}`}
+                title={t.title}
+                parentTitle={(t as any).trip_title ?? "Trip"}
+                dueDate={t.due_date!}
+                variant="due-soon"
+                onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
               />
             ))}
           </>

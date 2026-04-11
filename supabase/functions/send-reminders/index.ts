@@ -272,76 +272,86 @@ Deno.serve(async (req) => {
       return isNaN(h) ? now.getUTCHours() : h;
     })();
 
-    // ── 1. Load notification preferences for all members ─────────────────────
-    const { data: allPrefs } = await supabase
-      .from("notification_preferences")
-      .select("member_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, last_digest_sent_at");
+    // Pacific Time day-of-week / day-of-month for frequency checks
+    const ptDayOfWeek = (() => {
+      const d = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", weekday: "short" }).format(now);
+      return ({ Sun: 0, Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6 } as Record<string, number>)[d] ?? now.getUTCDay();
+    })();
+    const ptDayOfMonth = (() => {
+      const d = new Intl.DateTimeFormat("en-US", { timeZone: "America/Los_Angeles", day: "numeric" }).format(now);
+      return parseInt(d, 10) || now.getUTCDate();
+    })();
 
-    const prefsByMemberId: Record<string, {
-      overdue_enabled: boolean;
-      due_soon_enabled: boolean;
-      reminder_hour: number;
-      reminder_frequency: string;
-      last_digest_sent_at: string | null;
-    }> = {};
-    for (const p of allPrefs ?? []) {
-      prefsByMemberId[p.member_id] = p;
-    }
-
-    // Helper: should this member receive a reminder today based on frequency?
     function shouldSendToday(frequency: string): boolean {
       if (frequency === "daily") return true;
-      if (frequency === "every_other_day") {
-        const daysSinceEpoch = Math.floor(now.getTime() / 86400000);
-        return daysSinceEpoch % 2 === 0;
-      }
-      if (frequency === "weekly") return now.getUTCDay() === 1; // Monday
-      if (frequency === "monthly") return now.getUTCDate() === 1;
+      if (frequency === "every_other_day") return Math.floor(now.getTime() / 86400000) % 2 === 0;
+      if (frequency === "weekly") return ptDayOfWeek === 1; // Monday PT
+      if (frequency === "monthly") return ptDayOfMonth === 1;
       return true;
     }
 
-    // ── 2. Fetch all active recurring tasks due today or overdue ──────────────
-    const { data: recurringTasks, error: rtError } = await supabase
-      .from("recurring_tasks")
-      .select(`
-        id, title, next_due_date, household_id, assigned_member_id, time_of_day,
-        household_members!assigned_member_id (id, user_id, display_name)
-      `)
-      .eq("is_active", true)
-      .lte("next_due_date", today);
-    if (rtError) throw rtError;
+    // ── 1. Load ALL notification preferences ─────────────────────────────────
+    const { data: allPrefs } = await supabase
+      .from("notification_preferences")
+      .select("member_id, household_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, last_digest_sent_at");
 
-    if (!recurringTasks?.length) {
-      return new Response(JSON.stringify({ sent: 0, message: "No tasks due" }), {
+    if (!allPrefs?.length) {
+      return new Response(JSON.stringify({ sent: 0, message: "No members have notification preferences" }), {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
 
-    // ── 3. Load all household members (needed for unassigned tasks) ───────────
-    const householdIds = [...new Set(recurringTasks.map((t) => t.household_id))];
+    // ── 2. Filter to members who should receive an email RIGHT NOW ───────────
+    // Member-first: find eligible members, then gather their tasks.
+    // Guarantees delivery even when a member has zero due tasks ("all caught up").
+    const eligiblePrefs = allPrefs.filter((p) => {
+      if (p.reminder_hour !== currentHourPT) return false;
+      if (!shouldSendToday(p.reminder_frequency)) return false;
+      if (p.last_digest_sent_at) {
+        const minutesSinceLast = (now.getTime() - new Date(p.last_digest_sent_at).getTime()) / 60000;
+        if (minutesSinceLast < 55) return false;
+      }
+      return true;
+    });
+
+    if (!eligiblePrefs.length) {
+      return new Response(JSON.stringify({ sent: 0, skipped: allPrefs.length, currentHourPT, message: "No members eligible this hour" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    const eligibleMemberIds = eligiblePrefs.map((p) => p.member_id);
+    const prefsByMemberId: Record<string, typeof allPrefs[0]> = {};
+    for (const p of allPrefs) prefsByMemberId[p.member_id] = p;
+
+    // ── 3. Load member records for eligible members ──────────────────────────
     const { data: allMembers } = await supabase
       .from("household_members")
       .select("id, user_id, display_name, household_id")
-      .in("household_id", householdIds)
+      .in("id", eligibleMemberIds)
       .is("invite_token", null);
 
-    const membersByHousehold: Record<string, typeof allMembers> = {};
-    for (const m of allMembers ?? []) {
-      if (!membersByHousehold[m.household_id]) membersByHousehold[m.household_id] = [];
-      membersByHousehold[m.household_id]!.push(m);
+    if (!allMembers?.length) {
+      return new Response(JSON.stringify({ sent: 0, message: "No matching member records" }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
     }
 
-    // ── 4. Group tasks by user_id ─────────────────────────────────────────────
-    const tasksByUserId: Record<string, ReminderItem[]> = {};
+    const householdIds = [...new Set(allMembers.map((m) => m.household_id))];
 
-    const addItem = (userId: string, item: ReminderItem) => {
-      if (!tasksByUserId[userId]) tasksByUserId[userId] = [];
-      if (!tasksByUserId[userId].some((i) => i.title === item.title)) {
-        tasksByUserId[userId].push(item);
-      }
-    };
+    // ── 4. Fetch all active recurring tasks due today or overdue ──────────────
+    const { data: recurringTasks } = await supabase
+      .from("recurring_tasks")
+      .select("id, title, next_due_date, household_id, assigned_member_id, time_of_day")
+      .eq("is_active", true)
+      .in("household_id", householdIds)
+      .lte("next_due_date", today);
 
-    for (const task of recurringTasks) {
+    // ── 5. Group tasks by member_id ──────────────────────────────────────────
+    const tasksByMemberId: Record<string, ReminderItem[]> = {};
+    for (const m of allMembers) tasksByMemberId[m.id] = [];
+
+    for (const task of recurringTasks ?? []) {
       const overdue = task.next_due_date < today;
       const item: ReminderItem = {
         title: task.title,
@@ -351,83 +361,60 @@ Deno.serve(async (req) => {
       };
 
       if (task.assigned_member_id) {
-        const member = task.household_members as any;
-        if (member?.user_id) {
+        if (tasksByMemberId[task.assigned_member_id]) {
           const prefs = prefsByMemberId[task.assigned_member_id];
-          // Skip entirely if this member has no saved notification preferences
-          if (!prefs) continue;
-          if (overdue && !prefs.overdue_enabled) continue;
-          if (!overdue && !prefs.due_soon_enabled) continue;
-          addItem(member.user_id, item);
+          if (prefs) {
+            if (overdue && !prefs.overdue_enabled) continue;
+            if (!overdue && !prefs.due_soon_enabled) continue;
+          }
+          tasksByMemberId[task.assigned_member_id].push(item);
         }
       } else {
-        // Unassigned task — add to all members who have prefs set up
-        for (const m of membersByHousehold[task.household_id] ?? []) {
-          if (!m.user_id) continue;
+        for (const m of allMembers) {
+          if (m.household_id !== task.household_id) continue;
           const prefs = prefsByMemberId[m.id];
-          if (!prefs) continue; // skip members with no saved preferences
-          if (overdue && !prefs.overdue_enabled) continue;
-          if (!overdue && !prefs.due_soon_enabled) continue;
-          addItem(m.user_id, item);
+          if (prefs) {
+            if (overdue && !prefs.overdue_enabled) continue;
+            if (!overdue && !prefs.due_soon_enabled) continue;
+          }
+          if (!tasksByMemberId[m.id].some((i) => i.title === item.title)) {
+            tasksByMemberId[m.id].push(item);
+          }
         }
       }
     }
 
-    const userIds = Object.keys(tasksByUserId);
-    if (!userIds.length) {
-      return new Response(JSON.stringify({ sent: 0, message: "No users to notify" }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // ── 5. Send email digest to each user (respecting their prefs) ────────────
+    // ── 6. Send email digest to each eligible member ─────────────────────────
     let emailsSent = 0;
     let skipped = 0;
-    for (const userId of userIds) {
-      const items = tasksByUserId[userId];
-      if (!items.length) continue;
+    const userIds: string[] = [];
 
-      // Find this user's member record and their saved prefs
-      const member = (allMembers ?? []).find((m) => m.user_id === userId);
-      const prefs = member ? prefsByMemberId[member.id] : undefined;
+    for (const member of allMembers) {
+      if (!member.user_id) { skipped++; continue; }
 
-      // No saved preferences = user has not opted in to reminders
-      if (!prefs) { skipped++; continue; }
-
-      // Only send on the right day based on their chosen frequency
-      if (!shouldSendToday(prefs.reminder_frequency)) { skipped++; continue; }
-
-      // Only send during the member's preferred hour (PT). The cron fires every
-      // hour and this check gates each member to their chosen time slot.
-      if (prefs.reminder_hour !== currentHourPT) { skipped++; continue; }
-
-      // Idempotency: skip if we already sent a digest to this member this hour.
-      // This prevents duplicates from pg_net retries or overlapping cron runs.
-      if (prefs.last_digest_sent_at) {
-        const lastSent = new Date(prefs.last_digest_sent_at);
-        const minutesSinceLast = (now.getTime() - lastSent.getTime()) / 60000;
-        if (minutesSinceLast < 55) { skipped++; continue; }
-      }
-
-      const { data: userData } = await supabase.auth.admin.getUserById(userId);
+      const { data: userData } = await supabase.auth.admin.getUserById(member.user_id);
       const email = userData?.user?.email;
-      if (!email) continue;
+      if (!email) { skipped++; continue; }
 
-      const firstName =
-        (allMembers ?? []).find((m) => m.user_id === userId)?.display_name?.split(" ")[0] ??
-        "there";
+      const items = tasksByMemberId[member.id] ?? [];
+      const firstName = member.display_name?.split(" ")[0] ?? "there";
 
-      await sendDigestEmail(email, firstName, items);
+      // Always send — if no tasks, send "all caught up"
+      const itemsToSend = items.length > 0
+        ? items
+        : [{ title: "You're all caught up — no tasks due today!", dueDate: today, overdue: false }];
+
+      await sendDigestEmail(email, firstName, itemsToSend);
       emailsSent++;
+      userIds.push(member.user_id);
 
-      // Mark this member as sent so retries within the same hour are skipped
       await supabase
         .from("notification_preferences")
         .update({ last_digest_sent_at: now.toISOString() })
         .eq("member_id", member.id);
     }
 
-    // ── 6. Build smart push notifications via Claude ──────────────────────────
+    // ── 7. Build smart push notifications via Claude ──────────────────────────
     const { data: tokens } = await supabase
       .from("device_tokens")
       .select("user_id, expo_push_token")
@@ -476,7 +463,8 @@ Deno.serve(async (req) => {
 
     const smartMessageResults = await Promise.all(
       Object.entries(tokensByUserId).map(async ([userId, userTokens]) => {
-        const items = tasksByUserId[userId] ?? [];
+        const member = (allMembers ?? []).find((m) => m.user_id === userId);
+        const items = member ? (tasksByMemberId[member.id] ?? []) : [];
         if (!items.length) return null;
         const hhId = householdByUserId[userId] ?? householdIds[0];
         const weatherSummary = weatherByHousehold[hhId] ?? "No weather data";

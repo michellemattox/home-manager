@@ -50,7 +50,7 @@ const FREQUENCIES: { label: string; value: FrequencyType }[] = [
 ];
 
 // ── Low-Lift Card ─────────────────────────────────────────────────────────────
-function LowLiftCard({ task, onPress }: { task: RecurringTask; onPress: () => void }) {
+function LowLiftCard({ task, onPress, onComplete }: { task: RecurringTask; onPress: () => void; onComplete: () => void }) {
   const { members } = useHouseholdStore();
   const assignee = members.find((m) => m.id === task.assigned_member_id);
   const overdue = isOverdue(task.next_due_date);
@@ -76,7 +76,15 @@ function LowLiftCard({ task, onPress }: { task: RecurringTask; onPress: () => vo
               </Text>
             </View>
           </View>
-          {assignee && <MemberAvatar member={assignee} size="sm" />}
+          <View className="items-end gap-2">
+            {assignee && <MemberAvatar member={assignee} size="sm" />}
+            <TouchableOpacity
+              onPress={(e) => { e.stopPropagation(); onComplete(); }}
+              className="bg-green-100 rounded-lg px-3 py-1.5"
+            >
+              <Text className="text-green-700 text-xs font-semibold">Done</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Card>
     </TouchableOpacity>
@@ -88,10 +96,12 @@ function ProjectAdjacentCard({
   task,
   projectTitle,
   onPress,
+  onComplete,
 }: {
   task: ProjectTask & { notes?: string | null };
   projectTitle?: string;
   onPress: () => void;
+  onComplete: () => void;
 }) {
   const { members } = useHouseholdStore();
   const assignee = task.assigned_member_id
@@ -126,7 +136,15 @@ function ProjectAdjacentCard({
               </View>
             )}
           </View>
-          {assignee && <MemberAvatar member={assignee} size="sm" />}
+          <View className="items-end gap-2">
+            {assignee && <MemberAvatar member={assignee} size="sm" />}
+            <TouchableOpacity
+              onPress={(e) => { e.stopPropagation(); onComplete(); }}
+              className="bg-green-100 rounded-lg px-3 py-1.5"
+            >
+              <Text className="text-green-700 text-xs font-semibold">Done</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Card>
     </TouchableOpacity>
@@ -134,7 +152,7 @@ function ProjectAdjacentCard({
 }
 
 // ── Standalone Task Card ──────────────────────────────────────────────────────
-function StandaloneTaskCard({ task, onPress }: { task: Task; onPress: () => void }) {
+function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress: () => void; onComplete: () => void }) {
   const { members } = useHouseholdStore();
   const assignee = task.assigned_member_id
     ? members.find((m) => m.id === task.assigned_member_id)
@@ -161,7 +179,15 @@ function StandaloneTaskCard({ task, onPress }: { task: Task; onPress: () => void
               </View>
             )}
           </View>
-          {assignee && <MemberAvatar member={assignee} size="sm" />}
+          <View className="items-end gap-2">
+            {assignee && <MemberAvatar member={assignee} size="sm" />}
+            <TouchableOpacity
+              onPress={(e) => { e.stopPropagation(); onComplete(); }}
+              className="bg-green-100 rounded-lg px-3 py-1.5"
+            >
+              <Text className="text-green-700 text-xs font-semibold">Done</Text>
+            </TouchableOpacity>
+          </View>
         </View>
       </Card>
     </TouchableOpacity>
@@ -175,7 +201,7 @@ export default function TasksScreen() {
   const { user } = useAuthStore();
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
-  const [ownerFilter, setOwnerFilter] = useState<string | null>(null); // null = All
+  const [ownerFilter, setOwnerFilter] = useState<string[]>([]); // empty = All
   const [filterDue, setFilterDue] = useState<"overdue" | "due_soon" | null>(null);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -506,6 +532,36 @@ export default function TasksScreen() {
     );
   };
 
+  // Direct-complete from card (no modal involved)
+  const handleCardCompleteLowLift = async (task: RecurringTask) => {
+    await notificationSuccess();
+    if (!currentMember) return;
+    try {
+      await completeRecurring.mutateAsync({ task, completedBy: currentMember.id });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleCardCompletePA = async (task: ProjectTask) => {
+    await notificationSuccess();
+    try {
+      await completeProjectTask.mutateAsync({ task, completedByMemberId: currentMember?.id ?? null });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleCardCompleteStandalone = async (task: Task) => {
+    await notificationSuccess();
+    if (!household) return;
+    try {
+      await completeStandalone.mutateAsync({ id: task.id, householdId: household.id });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
   // Personal task visibility — only show is_personal=true tasks to the assignee
   const isVisible = (assignedMemberId: string | null | undefined, isPersonal: boolean) => {
     if (!isPersonal) return true;
@@ -515,7 +571,7 @@ export default function TasksScreen() {
   // Apply owner + due filter + personal task visibility
   const visibleRecurring = recurringTasks.filter((t) => {
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
-    if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    if (ownerFilter.length > 0 && (!t.assigned_member_id || !ownerFilter.includes(t.assigned_member_id))) return false;
     if (filterDue === "overdue" && !isOverdue(t.next_due_date)) return false;
     if (filterDue === "due_soon" && !isDueSoon(t.next_due_date)) return false;
     return true;
@@ -524,7 +580,7 @@ export default function TasksScreen() {
   const visibleProjectTasks = projectTasks.filter((t) => {
     const personal = (t as any).is_personal ?? false;
     if (!isVisible(t.assigned_member_id, personal)) return false;
-    if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    if (ownerFilter.length > 0 && (!t.assigned_member_id || !ownerFilter.includes(t.assigned_member_id))) return false;
     if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
     if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
     return true;
@@ -532,7 +588,7 @@ export default function TasksScreen() {
 
   const visibleStandalone = standaloneTasks.filter((t) => {
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
-    if (ownerFilter && t.assigned_member_id !== ownerFilter) return false;
+    if (ownerFilter.length > 0 && (!t.assigned_member_id || !ownerFilter.includes(t.assigned_member_id))) return false;
     if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
     if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
     return true;
@@ -598,20 +654,23 @@ export default function TasksScreen() {
           <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 72 }}>Assign To</Text>
           <View className="flex-row flex-wrap gap-2">
             <TouchableOpacity
-              onPress={() => setOwnerFilter(null)}
-              className={`px-3 py-1 rounded-full border ${ownerFilter === null ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+              onPress={() => setOwnerFilter([])}
+              className={`px-3 py-1 rounded-full border ${ownerFilter.length === 0 ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
             >
-              <Text className={`text-xs font-semibold ${ownerFilter === null ? "text-white" : "text-gray-600"}`}>All</Text>
+              <Text className={`text-xs font-semibold ${ownerFilter.length === 0 ? "text-white" : "text-gray-600"}`}>All</Text>
             </TouchableOpacity>
-            {members.map((m) => (
-              <TouchableOpacity
-                key={m.id}
-                onPress={() => setOwnerFilter(ownerFilter === m.id ? null : m.id)}
-                className={`px-3 py-1 rounded-full border ${ownerFilter === m.id ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
-              >
-                <Text className={`text-xs font-semibold ${ownerFilter === m.id ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>
-              </TouchableOpacity>
-            ))}
+            {members.map((m) => {
+              const active = ownerFilter.includes(m.id);
+              return (
+                <TouchableOpacity
+                  key={m.id}
+                  onPress={() => setOwnerFilter(active ? ownerFilter.filter((id) => id !== m.id) : [...ownerFilter, m.id])}
+                  className={`px-3 py-1 rounded-full border ${active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
+                >
+                  <Text className={`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
@@ -649,7 +708,7 @@ export default function TasksScreen() {
         {mode === "low-lift" && (
           <>
             {sortedRecurring.map((task) => (
-              <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} />
+              <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} onComplete={() => handleCardCompleteLowLift(task)} />
             ))}
 
             {visibleRecurring.length === 0 && (
@@ -678,6 +737,7 @@ export default function TasksScreen() {
                     task={task as any}
                     projectTitle={(task as any).project_title}
                     onPress={() => openPAEdit(task as any)}
+                    onComplete={() => handleCardCompletePA(task)}
                   />
                 ))}
               </>
@@ -693,6 +753,7 @@ export default function TasksScreen() {
                     key={task.id}
                     task={task}
                     onPress={() => openStandaloneEdit(task)}
+                    onComplete={() => handleCardCompleteStandalone(task)}
                   />
                 ))}
               </>

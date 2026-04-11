@@ -23,6 +23,7 @@ import {
 import {
   useCompletedChecklistItems,
   useDeleteCompletedChecklistItem,
+  useUncompleteChecklistItem,
 } from "@/hooks/useChecklistItems";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -198,6 +199,7 @@ export default function TripDetailScreen() {
   const updateTrip = useUpdateTrip();
   const deleteTrip = useDeleteTrip();
   const deleteCompleted = useDeleteCompletedChecklistItem();
+  const uncompleteItem = useUncompleteChecklistItem();
 
   // Edit task modal
   const [editingTask, setEditingTask] = useState<TripTask | null>(null);
@@ -580,9 +582,12 @@ export default function TripDetailScreen() {
               <Card>
                 {completedItems.map((item) => (
                   <View key={item.id} className="flex-row items-center py-2 border-b border-gray-50">
-                    <View className="w-5 h-5 rounded bg-green-500 mr-3 items-center justify-center">
+                    <TouchableOpacity
+                      onPress={() => uncompleteItem.mutate({ item })}
+                      className="w-5 h-5 rounded bg-green-500 mr-3 items-center justify-center"
+                    >
                       <Text className="text-white text-xs font-bold">✓</Text>
-                    </View>
+                    </TouchableOpacity>
                     <View className="flex-1">
                       <Text className="text-sm text-gray-400 line-through">{item.title}</Text>
                       {item.checklist_name && item.checklist_name !== "General" && (

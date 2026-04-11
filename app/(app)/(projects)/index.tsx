@@ -126,7 +126,7 @@ function ProjectsTab() {
   const [showFinished, setShowFinished] = useState(false);
   const [filterPriority, setFilterPriority] = useState<ProjectPriority | null>(null);
   const [filterDue, setFilterDue] = useState<DueFilter>(null);
-  const [filterOwner, setFilterOwner] = useState<string | null>(null);
+  const [filterOwner, setFilterOwner] = useState<string[]>([]);
 
   const openCount = (projects ?? []).filter((p) => OPEN_STATUSES.includes(p.status as ProjectStatus)).length;
   const finishedCount = (projects ?? []).filter((p) => p.status === "finished" || p.status === "completed").length;
@@ -144,8 +144,8 @@ function ProjectsTab() {
     if (filterPriority) list = list.filter((p) => p.priority === filterPriority);
     if (filterDue === "overdue") list = list.filter((p) => p.expected_date && isOverdue(p.expected_date));
     else if (filterDue === "due_soon") list = list.filter((p) => p.expected_date && isDueSoon(p.expected_date));
-    if (filterOwner) list = list.filter((p) =>
-      (p.project_owners ?? []).some((po: any) => po.member_id === filterOwner)
+    if (filterOwner.length > 0) list = list.filter((p) =>
+      (p.project_owners ?? []).some((po: any) => filterOwner.includes(po.member_id))
     );
     return [...list].sort((a, b) => {
       if (!a.expected_date && !b.expected_date) return 0;
@@ -255,17 +255,17 @@ function ProjectsTab() {
               <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 60 }}>Assign To</Text>
               <View className="flex-row flex-wrap gap-2">
                 <TouchableOpacity
-                  onPress={() => setFilterOwner(null)}
-                  className={`px-3 py-1 rounded-full border ${filterOwner === null ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+                  onPress={() => setFilterOwner([])}
+                  className={`px-3 py-1 rounded-full border ${filterOwner.length === 0 ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
                 >
-                  <Text className={`text-xs font-semibold ${filterOwner === null ? "text-white" : "text-gray-600"}`}>All</Text>
+                  <Text className={`text-xs font-semibold ${filterOwner.length === 0 ? "text-white" : "text-gray-600"}`}>All</Text>
                 </TouchableOpacity>
                 {members.map((m) => {
-                  const active = filterOwner === m.id;
+                  const active = filterOwner.includes(m.id);
                   return (
                     <TouchableOpacity
                       key={m.id}
-                      onPress={() => setFilterOwner(active ? null : m.id)}
+                      onPress={() => setFilterOwner(active ? filterOwner.filter((id) => id !== m.id) : [...filterOwner, m.id])}
                       className={`px-3 py-1 rounded-full border ${active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
                     >
                       <Text className={`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>

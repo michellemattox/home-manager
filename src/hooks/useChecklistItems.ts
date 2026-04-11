@@ -26,6 +26,61 @@ export function useCompletedChecklistItems(
   });
 }
 
+export function useUncompleteChecklistItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      item,
+    }: {
+      item: CompletedChecklistItem;
+    }) => {
+      // Re-create the task in its original table
+      if (item.source_type === "project") {
+        const { error } = await supabase.from("project_tasks").insert({
+          project_id: item.source_id,
+          title: item.title,
+          checklist_name: item.checklist_name,
+          assigned_member_id: item.assigned_member_id,
+          due_date: item.due_date,
+          is_completed: false,
+          sort_order: 9999,
+        });
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("trip_tasks").insert({
+          trip_id: item.source_id,
+          title: item.title,
+          checklist_name: item.checklist_name,
+          assigned_member_id: item.assigned_member_id,
+          due_date: item.due_date,
+          is_completed: false,
+          sort_order: 9999,
+        });
+        if (error) throw error;
+      }
+
+      // Remove from completed list
+      const { error: delError } = await supabase
+        .from("completed_checklist_items")
+        .delete()
+        .eq("id", item.id);
+      if (delError) throw delError;
+
+      return { sourceType: item.source_type, sourceId: item.source_id };
+    },
+    onSuccess: ({ sourceType, sourceId }) => {
+      qc.invalidateQueries({ queryKey: ["completed_checklist", sourceType, sourceId] });
+      if (sourceType === "project") {
+        qc.invalidateQueries({ queryKey: ["project", sourceId] });
+        qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
+      } else {
+        qc.invalidateQueries({ queryKey: ["trip", sourceId] });
+        qc.invalidateQueries({ queryKey: ["all_trip_tasks"] });
+      }
+    },
+  });
+}
+
 export function useDeleteCompletedChecklistItem() {
   const qc = useQueryClient();
   return useMutation({

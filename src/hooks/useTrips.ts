@@ -218,6 +218,45 @@ export function useUpdateTrip() {
   });
 }
 
+// Fetches all uncompleted trip_tasks across all household trips (with due dates)
+export function useAllTripTasks(householdId: string | undefined) {
+  return useQuery({
+    queryKey: ["all_trip_tasks", householdId],
+    queryFn: async () => {
+      if (!householdId) return [];
+      // Step 1: get all trip IDs + titles for the household
+      const { data: tripData, error: tripErr } = await supabase
+        .from("trips")
+        .select("id, title")
+        .eq("household_id", householdId);
+      if (tripErr) throw tripErr;
+
+      const trips = tripData ?? [];
+      if (trips.length === 0) return [];
+
+      const tripIds = trips.map((t) => t.id);
+      const tripTitleMap: Record<string, string> = Object.fromEntries(
+        trips.map((t) => [t.id, t.title])
+      );
+
+      // Step 2: get all uncompleted tasks with due dates for those trips
+      const { data, error } = await supabase
+        .from("trip_tasks")
+        .select("*")
+        .in("trip_id", tripIds)
+        .eq("is_completed", false)
+        .order("due_date", { ascending: true, nullsFirst: false });
+      if (error) throw error;
+
+      return (data ?? []).map((t) => ({
+        ...(t as TripTask),
+        trip_title: tripTitleMap[t.trip_id] ?? "",
+      }));
+    },
+    enabled: !!householdId,
+  });
+}
+
 export function useDeleteTrip() {
   const qc = useQueryClient();
   return useMutation({

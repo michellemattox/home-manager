@@ -25,6 +25,7 @@ import {
 import {
   useCompletedChecklistItems,
   useDeleteCompletedChecklistItem,
+  useUncompleteChecklistItem,
 } from "@/hooks/useChecklistItems";
 import { useEventServiceRecords } from "@/hooks/useServices";
 import { useQueryClient } from "@tanstack/react-query";
@@ -124,6 +125,7 @@ export default function ProjectDetailScreen() {
   const completeTask = useCompleteProjectChecklistItem();
   const deleteTask = useDeleteProjectTask();
   const deleteCompleted = useDeleteCompletedChecklistItem();
+  const uncompleteItem = useUncompleteChecklistItem();
   const { data: completedItems = [] } = useCompletedChecklistItems("project", id);
   const { data: eventServiceRecords = [] } = useEventServiceRecords("project", id);
   const { data: vendors = [] } = usePreferredVendors(household?.id);
@@ -959,9 +961,12 @@ export default function ProjectDetailScreen() {
               <Card>
                 {completedItems.map((item) => (
                   <View key={item.id} className="flex-row items-center py-2 border-b border-gray-50">
-                    <View className="w-5 h-5 rounded-full bg-green-500 mr-3 items-center justify-center">
+                    <TouchableOpacity
+                      onPress={() => uncompleteItem.mutate({ item })}
+                      className="w-5 h-5 rounded-full bg-green-500 mr-3 items-center justify-center"
+                    >
                       <Text className="text-white text-xs font-bold">✓</Text>
-                    </View>
+                    </TouchableOpacity>
                     <View className="flex-1">
                       <Text className="text-sm text-gray-400 line-through">{item.title}</Text>
                       {item.checklist_name && item.checklist_name !== "General" && (
