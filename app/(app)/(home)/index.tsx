@@ -515,9 +515,12 @@ export default function HomeScreen() {
     refetchAdvisor();
   };
 
-  // Member filter helper — empty array = show all
-  const matchesMember = (memberId: string | null | undefined) =>
-    selectedMembers.length === 0 || (memberId != null && selectedMembers.includes(memberId));
+  // Member filter — empty array = no filter (show all); "__unassigned__" = unassigned; member IDs = those members
+  const matchesMember = (memberId: string | null | undefined) => {
+    if (selectedMembers.length === 0) return true; // no filter active
+    if (memberId == null) return selectedMembers.includes("__unassigned__");
+    return selectedMembers.includes(memberId);
+  };
 
   const toggleMember = (id: string) =>
     setSelectedMembers((prev) =>
@@ -528,10 +531,12 @@ export default function HomeScreen() {
   const activeProjects = (projects ?? []).filter(
     (p) => p.status !== "completed" && p.status !== "finished"
   );
-  const filteredProjects = activeProjects.filter((p) =>
-    selectedMembers.length === 0 ||
-    (p.project_owners ?? []).some((po: any) => selectedMembers.includes(po.member_id))
-  );
+  const filteredProjects = activeProjects.filter((p) => {
+    if (selectedMembers.length === 0) return true;
+    const owners = (p.project_owners ?? []).map((po: any) => po.member_id);
+    if (owners.length === 0) return selectedMembers.includes("__unassigned__");
+    return owners.some((id: string) => selectedMembers.includes(id));
+  });
   const overdueProjects = filteredProjects.filter(
     (p) => p.expected_date && isOverdue(p.expected_date)
   );
@@ -659,10 +664,10 @@ export default function HomeScreen() {
         {/* Member Filter */}
         <View className="flex-row flex-wrap gap-2 mb-1">
           <TouchableOpacity
-            onPress={() => setSelectedMembers([])}
-            className={`px-3 py-1 rounded-full border ${selectedMembers.length === 0 ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+            onPress={() => toggleMember("__unassigned__")}
+            className={`px-3 py-1 rounded-full border ${selectedMembers.includes("__unassigned__") ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
           >
-            <Text className={`text-xs font-semibold ${selectedMembers.length === 0 ? "text-white" : "text-gray-600"}`}>All</Text>
+            <Text className={`text-xs font-semibold ${selectedMembers.includes("__unassigned__") ? "text-white" : "text-gray-600"}`}>All</Text>
           </TouchableOpacity>
           {members.map((m) => {
             const active = selectedMembers.includes(m.id);

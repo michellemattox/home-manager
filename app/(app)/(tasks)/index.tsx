@@ -571,7 +571,7 @@ export default function TasksScreen() {
   // Apply owner + due filter + personal task visibility
   const visibleRecurring = recurringTasks.filter((t) => {
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
-    if (ownerFilter.length > 0 && (!t.assigned_member_id || !ownerFilter.includes(t.assigned_member_id))) return false;
+    if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !isOverdue(t.next_due_date)) return false;
     if (filterDue === "due_soon" && !isDueSoon(t.next_due_date)) return false;
     return true;
@@ -580,7 +580,7 @@ export default function TasksScreen() {
   const visibleProjectTasks = projectTasks.filter((t) => {
     const personal = (t as any).is_personal ?? false;
     if (!isVisible(t.assigned_member_id, personal)) return false;
-    if (ownerFilter.length > 0 && (!t.assigned_member_id || !ownerFilter.includes(t.assigned_member_id))) return false;
+    if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
     if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
     return true;
@@ -588,7 +588,7 @@ export default function TasksScreen() {
 
   const visibleStandalone = standaloneTasks.filter((t) => {
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
-    if (ownerFilter.length > 0 && (!t.assigned_member_id || !ownerFilter.includes(t.assigned_member_id))) return false;
+    if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
     if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
     return true;
@@ -654,10 +654,10 @@ export default function TasksScreen() {
           <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 72 }}>Assign To</Text>
           <View className="flex-row flex-wrap gap-2">
             <TouchableOpacity
-              onPress={() => setOwnerFilter([])}
-              className={`px-3 py-1 rounded-full border ${ownerFilter.length === 0 ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+              onPress={() => setOwnerFilter(ownerFilter.includes("__unassigned__") ? ownerFilter.filter((id) => id !== "__unassigned__") : [...ownerFilter, "__unassigned__"])}
+              className={`px-3 py-1 rounded-full border ${ownerFilter.includes("__unassigned__") ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
             >
-              <Text className={`text-xs font-semibold ${ownerFilter.length === 0 ? "text-white" : "text-gray-600"}`}>All</Text>
+              <Text className={`text-xs font-semibold ${ownerFilter.includes("__unassigned__") ? "text-white" : "text-gray-600"}`}>All</Text>
             </TouchableOpacity>
             {members.map((m) => {
               const active = ownerFilter.includes(m.id);

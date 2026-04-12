@@ -439,7 +439,7 @@ export default function GoalsScreen() {
 
   // Filters
   const [userTypeFilter, setUserTypeFilter] = useState<UserTypeFilter>("all");
-  const [memberFilter, setMemberFilter] = useState<string | null>(null);
+  const [memberFilter, setMemberFilter] = useState<string[]>([]);
   const [showCompleted, setShowCompleted] = useState(false);
 
   // New goal modal
@@ -480,16 +480,17 @@ export default function GoalsScreen() {
   const [editingGoalUpdate, setEditingGoalUpdate] = useState<GoalUpdate | null>(null);
   const [editGoalUpdateBody, setEditGoalUpdateBody] = useState("");
 
-  // Filter logic
+  // Filter logic — memberFilter [] = no filter (show all); "__unassigned__" = family/unassigned; IDs = those members
   const filteredGoals = goals.filter((g) => {
     if (!showCompleted && g.status === "completed") return false;
     if (userTypeFilter === "family") return g.user_type === "family";
     if (userTypeFilter === "individual") {
-      if (memberFilter) return g.user_type === "individual" && g.member_id === memberFilter;
-      return g.user_type === "individual";
+      if (memberFilter.length === 0) return g.user_type === "individual";
+      return g.user_type === "individual" && g.member_id != null && memberFilter.includes(g.member_id);
     }
-    if (memberFilter) return g.member_id === memberFilter || g.user_type === "family";
-    return true;
+    if (memberFilter.length === 0) return true;
+    if (g.user_type === "family" || g.member_id == null) return memberFilter.includes("__unassigned__");
+    return memberFilter.includes(g.member_id);
   });
 
   const activeGoals = filteredGoals
@@ -704,7 +705,7 @@ export default function GoalsScreen() {
           {(["all", "family", "individual"] as UserTypeFilter[]).map((f) => (
             <TouchableOpacity
               key={f}
-              onPress={() => { setUserTypeFilter(f); if (f !== "individual") setMemberFilter(null); }}
+              onPress={() => { setUserTypeFilter(f); if (f !== "individual") setMemberFilter([]); }}
               className={`px-3 py-1.5 rounded-full border mr-2 ${
                 userTypeFilter === f ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
               }`}
@@ -714,19 +715,22 @@ export default function GoalsScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-          {userTypeFilter !== "family" && members.map((m) => (
-            <TouchableOpacity
-              key={m.id}
-              onPress={() => setMemberFilter(memberFilter === m.id ? null : m.id)}
-              className={`px-3 py-1.5 rounded-full border mr-2 ${
-                memberFilter === m.id ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
-              }`}
-            >
-              <Text className={`text-xs font-semibold ${memberFilter === m.id ? "text-white" : "text-gray-600"}`}>
-                {m.display_name}
-              </Text>
-            </TouchableOpacity>
-          ))}
+          {userTypeFilter !== "family" && members.map((m) => {
+            const active = memberFilter.includes(m.id);
+            return (
+              <TouchableOpacity
+                key={m.id}
+                onPress={() => setMemberFilter(active ? memberFilter.filter((id) => id !== m.id) : [...memberFilter, m.id])}
+                className={`px-3 py-1.5 rounded-full border mr-2 ${
+                  active ? "bg-indigo-600 border-indigo-600" : "bg-white border-gray-200"
+                }`}
+              >
+                <Text className={`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`}>
+                  {m.display_name}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
         </ScrollView>
       </View>
 

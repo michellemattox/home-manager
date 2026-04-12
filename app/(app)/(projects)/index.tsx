@@ -144,9 +144,11 @@ function ProjectsTab() {
     if (filterPriority) list = list.filter((p) => p.priority === filterPriority);
     if (filterDue === "overdue") list = list.filter((p) => p.expected_date && isOverdue(p.expected_date));
     else if (filterDue === "due_soon") list = list.filter((p) => p.expected_date && isDueSoon(p.expected_date));
-    if (filterOwner.length > 0) list = list.filter((p) =>
-      (p.project_owners ?? []).some((po: any) => filterOwner.includes(po.member_id))
-    );
+    if (filterOwner.length > 0) list = list.filter((p) => {
+      const owners = (p.project_owners ?? []).map((po: any) => po.member_id);
+      if (owners.length === 0) return filterOwner.includes("__unassigned__");
+      return owners.some((id: string) => filterOwner.includes(id));
+    });
     return [...list].sort((a, b) => {
       if (!a.expected_date && !b.expected_date) return 0;
       if (!a.expected_date) return 1;
@@ -255,10 +257,10 @@ function ProjectsTab() {
               <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 60 }}>Assign To</Text>
               <View className="flex-row flex-wrap gap-2">
                 <TouchableOpacity
-                  onPress={() => setFilterOwner([])}
-                  className={`px-3 py-1 rounded-full border ${filterOwner.length === 0 ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+                  onPress={() => setFilterOwner(filterOwner.includes("__unassigned__") ? filterOwner.filter((id) => id !== "__unassigned__") : [...filterOwner, "__unassigned__"])}
+                  className={`px-3 py-1 rounded-full border ${filterOwner.includes("__unassigned__") ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
                 >
-                  <Text className={`text-xs font-semibold ${filterOwner.length === 0 ? "text-white" : "text-gray-600"}`}>All</Text>
+                  <Text className={`text-xs font-semibold ${filterOwner.includes("__unassigned__") ? "text-white" : "text-gray-600"}`}>All</Text>
                 </TouchableOpacity>
                 {members.map((m) => {
                   const active = filterOwner.includes(m.id);
