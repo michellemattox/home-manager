@@ -27,6 +27,7 @@ import { toISODateString } from "@/utils/dateUtils";
 import { frequencyToDays } from "@/utils/scheduleUtils";
 import type { ProjectWithOwners } from "@/types/app.types";
 import { parseTaskFromText } from "@/hooks/useParseTask";
+import { RepeatPickerModal, type RepeatResult } from "@/components/ui/RepeatPicker";
 
 type TaskMode = "low-lift" | "project-adjacent";
 
@@ -51,15 +52,6 @@ const paSchema = z.object({
 });
 type PAFormData = z.infer<typeof paSchema>;
 
-const FREQUENCIES: { label: string; value: FrequencyType | "no_repeat" }[] = [
-  { label: "Does Not Repeat", value: "no_repeat" },
-  { label: "Daily", value: "daily" },
-  { label: "Weekly", value: "weekly" },
-  { label: "Monthly", value: "monthly" },
-  { label: "Yearly", value: "yearly" },
-  { label: "Custom", value: "custom" },
-];
-
 export default function NewTaskScreen() {
   const router = useRouter();
   const { household, members } = useHouseholdStore();
@@ -78,6 +70,10 @@ export default function NewTaskScreen() {
   // Personal task toggles
   const [llIsPersonal, setLlIsPersonal] = useState(false);
   const [paIsPersonal, setPaIsPersonal] = useState(false);
+
+  // Repeat picker state
+  const [showRepeatPicker, setShowRepeatPicker] = useState(false);
+  const [repeatLabel, setRepeatLabel] = useState("Doesn't Repeat");
 
   // Project Adjacent — project + checklist selection
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -307,40 +303,52 @@ export default function NewTaskScreen() {
               control={llControl}
               name="frequencyType"
               render={({ field: { onChange, value } }) => (
-                <View className="flex-row flex-wrap gap-2 mb-4">
-                  {FREQUENCIES.map((f) => (
+                <View className="mb-4">
+                  <View className="flex-row gap-2 mb-2">
                     <TouchableOpacity
-                      key={f.value}
-                      onPress={() => onChange(f.value)}
+                      onPress={() => {
+                        onChange("no_repeat");
+                        setRepeatLabel("Doesn't Repeat");
+                      }}
                       className={`px-4 py-2 rounded-xl border ${
-                        value === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                        value === "no_repeat" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                       }`}
                     >
-                      <Text className={`font-medium ${value === f.value ? "text-white" : "text-gray-700"}`}>
-                        {f.label}
+                      <Text className={`font-medium ${value === "no_repeat" ? "text-white" : "text-gray-700"}`}>
+                        Doesn't Repeat
                       </Text>
                     </TouchableOpacity>
-                  ))}
+                    <TouchableOpacity
+                      onPress={() => setShowRepeatPicker(true)}
+                      className={`px-4 py-2 rounded-xl border ${
+                        value !== "no_repeat" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`font-medium ${value !== "no_repeat" ? "text-white" : "text-gray-700"}`}>
+                        Repeat
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {value !== "no_repeat" && (
+                    <TouchableOpacity
+                      onPress={() => setShowRepeatPicker(true)}
+                      className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2"
+                    >
+                      <Text className="text-blue-700 text-sm font-medium">{repeatLabel}</Text>
+                    </TouchableOpacity>
+                  )}
+                  <RepeatPickerModal
+                    visible={showRepeatPicker}
+                    onClose={() => setShowRepeatPicker(false)}
+                    onSelect={(result) => {
+                      onChange(result.frequencyType);
+                      llSetValue("customDays", String(result.frequencyDays));
+                      setRepeatLabel(result.label);
+                    }}
+                  />
                 </View>
               )}
             />
-
-            {frequencyType === "custom" && (
-              <Controller
-                control={llControl}
-                name="customDays"
-                render={({ field: { onChange, value, onBlur } }) => (
-                  <Input
-                    label="Every how many days?"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    keyboardType="number-pad"
-                    placeholder="e.g. 45"
-                  />
-                )}
-              />
-            )}
 
             <View className="flex-row items-center justify-between mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
               <View className="flex-1 mr-3">

@@ -21,12 +21,32 @@ export function isOverdue(dateStr: string): boolean {
   return dateStr < getTodayPT();
 }
 
+export function isDueToday(dateStr: string): boolean {
+  return dateStr === getTodayPT();
+}
+
+export function isDueTomorrow(dateStr: string): boolean {
+  const todayPT = getTodayPT();
+  const parts = todayPT.split("-").map(Number);
+  const tomorrow = new Date(parts[0], parts[1] - 1, parts[2] + 1);
+  return dateStr === format(tomorrow, "yyyy-MM-dd");
+}
+
 export function isDueSoon(dateStr: string, withinDays = 7): boolean {
   const todayPT = getTodayPT();
   const todayParts = todayPT.split("-").map(Number);
   const limitDate = new Date(todayParts[0], todayParts[1] - 1, todayParts[2] + withinDays);
   const limitStr = format(limitDate, "yyyy-MM-dd");
   return dateStr >= todayPT && dateStr <= limitStr;
+}
+
+/** Returns the 4-tier due status for a date string */
+export function dueTier(dateStr: string): "overdue" | "due_today" | "due_tomorrow" | "due_soon" | null {
+  if (isOverdue(dateStr)) return "overdue";
+  if (isDueToday(dateStr)) return "due_today";
+  if (isDueTomorrow(dateStr)) return "due_tomorrow";
+  if (isDueSoon(dateStr)) return "due_soon";
+  return null;
 }
 
 export function daysUntilDue(dateStr: string): number {
@@ -76,7 +96,10 @@ export function formatDateCompact(dateStr: string, timeOfDay?: string | null): s
  */
 export function taskBadgeLabel(dateStr: string, timeOfDay?: string | null): string {
   const compact = formatDateCompact(dateStr, timeOfDay);
-  if (isOverdue(dateStr)) return `Overdue · ${compact}`;
-  if (isDueSoon(dateStr)) return `Due Soon · ${compact}`;
+  const tier = dueTier(dateStr);
+  if (tier === "overdue") return `Overdue · ${compact}`;
+  if (tier === "due_today") return `Due Today · ${compact}`;
+  if (tier === "due_tomorrow") return `Due Tomorrow · ${compact}`;
+  if (tier === "due_soon") return `Due Soon · ${compact}`;
   return compact;
 }

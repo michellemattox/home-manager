@@ -27,7 +27,7 @@ import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatarGroup } from "@/components/ui/MemberAvatar";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { buildGoogleMapsUrl, buildYelpUrl, getServiceTypeKeyword } from "@/lib/vendorLinks";
-import { formatDate, formatDateTime, isOverdue, isDueSoon } from "@/utils/dateUtils";
+import { formatDate, formatDateTime, isOverdue, isDueSoon, dueTier } from "@/utils/dateUtils";
 import { centsToDisplay, displayToCents } from "@/utils/currencyUtils";
 import { SERVICE_TYPES } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
@@ -69,8 +69,13 @@ function ProjectCard({ project }: { project: ProjectWithOwners }) {
   const updateAuthor = latestUpdate ? members.find((m) => m.id === latestUpdate.author_id) : null;
   const sc = STATUS_CONFIG[project.status];
   const pc = PRIORITY_CONFIG[project.priority];
-  const overdue = project.expected_date && isOverdue(project.expected_date);
-  const dueSoon = project.expected_date && !overdue && isDueSoon(project.expected_date);
+  const tier = project.expected_date ? dueTier(project.expected_date) : null;
+  const tierBadge: Record<string, { label: string; variant: "danger" | "due_today" | "due_tomorrow" | "due_soon" }> = {
+    overdue:      { label: "Overdue",      variant: "danger" },
+    due_today:    { label: "Due Today",    variant: "due_today" },
+    due_tomorrow: { label: "Due Tomorrow", variant: "due_tomorrow" },
+    due_soon:     { label: "Due Soon",     variant: "due_soon" },
+  };
 
   return (
     <TouchableOpacity onPress={() => router.push(`/(app)/(projects)/${project.id}`)}>
@@ -92,9 +97,10 @@ function ProjectCard({ project }: { project: ProjectWithOwners }) {
           <Badge label={sc.label} variant={sc.variant} size="sm" />
           <Badge label={pc.label} variant={pc.variant} size="sm" />
           {project.category && <Badge label={project.category} variant="default" size="sm" />}
-          {overdue && <Badge label="Overdue" variant="danger" size="sm" />}
-          {dueSoon && <Badge label="Due Soon" variant="warning" size="sm" />}
-          {project.expected_date && !overdue && !dueSoon && (
+          {tier && tierBadge[tier] && (
+            <Badge label={tierBadge[tier].label} variant={tierBadge[tier].variant} size="sm" />
+          )}
+          {project.expected_date && !tier && (
             <Badge label={`Due ${formatDate(project.expected_date)}`} variant="default" size="sm" />
           )}
           {project.estimated_cost_cents > 0 && (

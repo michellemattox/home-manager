@@ -7,6 +7,7 @@ import {
   Modal,
   ScrollView,
   TextInput,
+  Switch,
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useRouter, useLocalSearchParams } from "expo-router";
@@ -33,28 +34,27 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
-import { isOverdue, isDueSoon, formatDate, formatDateShort, toISODateString, taskBadgeLabel, parseTimeToMinutes } from "@/utils/dateUtils";
+import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, formatDate, formatDateShort, toISODateString, taskBadgeLabel, parseTimeToMinutes } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
 import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
+import { RepeatPickerModal } from "@/components/ui/RepeatPicker";
 
 type TaskMode = "low-lift" | "project-adjacent";
 
-const FREQUENCIES: { label: string; value: FrequencyType }[] = [
-  { label: "No Repeat", value: "no_repeat" },
-  { label: "Daily", value: "daily" },
-  { label: "Weekly", value: "weekly" },
-  { label: "Monthly", value: "monthly" },
-  { label: "Yearly", value: "yearly" },
-  { label: "Custom", value: "custom" },
-];
-
 // ── Low-Lift Card ─────────────────────────────────────────────────────────────
+function dueTierToVariant(dateStr: string): "danger" | "due_today" | "due_tomorrow" | "due_soon" | "default" {
+  const tier = dueTier(dateStr);
+  if (tier === "overdue") return "danger";
+  if (tier === "due_today") return "due_today";
+  if (tier === "due_tomorrow") return "due_tomorrow";
+  if (tier === "due_soon") return "due_soon";
+  return "default";
+}
+
 function LowLiftCard({ task, onPress, onComplete }: { task: RecurringTask; onPress: () => void; onComplete: () => void }) {
   const { members } = useHouseholdStore();
   const assignee = members.find((m) => m.id === task.assigned_member_id);
-  const overdue = isOverdue(task.next_due_date);
-  const dueSoon = isDueSoon(task.next_due_date);
 
   return (
     <TouchableOpacity onPress={onPress}>
@@ -68,7 +68,7 @@ function LowLiftCard({ task, onPress, onComplete }: { task: RecurringTask; onPre
             <View className="flex-row items-center mt-1.5 gap-2 flex-wrap">
               <Badge
                 label={taskBadgeLabel(task.next_due_date, (task as any).time_of_day)}
-                variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                variant={dueTierToVariant(task.next_due_date)}
                 size="sm"
               />
               <Text className="text-xs text-gray-400">
@@ -107,9 +107,6 @@ function ProjectAdjacentCard({
   const assignee = task.assigned_member_id
     ? members.find((m) => m.id === task.assigned_member_id)
     : null;
-  const overdue = task.due_date ? isOverdue(task.due_date) : false;
-  const dueSoon = task.due_date ? isDueSoon(task.due_date) : false;
-
   return (
     <TouchableOpacity onPress={onPress}>
       <Card className="mb-3">
@@ -130,7 +127,7 @@ function ProjectAdjacentCard({
               <View className="mt-1.5">
                 <Badge
                   label={taskBadgeLabel(task.due_date)}
-                  variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                  variant={dueTierToVariant(task.due_date)}
                   size="sm"
                 />
               </View>
@@ -157,8 +154,6 @@ function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress
   const assignee = task.assigned_member_id
     ? members.find((m) => m.id === task.assigned_member_id)
     : null;
-  const overdue = task.due_date ? isOverdue(task.due_date) : false;
-  const dueSoon = task.due_date ? isDueSoon(task.due_date) : false;
 
   return (
     <TouchableOpacity onPress={onPress}>
@@ -173,7 +168,7 @@ function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress
               <View className="mt-1.5">
                 <Badge
                   label={taskBadgeLabel(task.due_date)}
-                  variant={overdue ? "danger" : dueSoon ? "warning" : "default"}
+                  variant={dueTierToVariant(task.due_date)}
                   size="sm"
                 />
               </View>
@@ -238,6 +233,9 @@ export default function TasksScreen() {
   const [llFreqType, setLlFreqType] = useState<FrequencyType>("monthly");
   const [llCustomDays, setLlCustomDays] = useState("");
   const [llAssignedId, setLlAssignedId] = useState<string | undefined>(undefined);
+  const [llIsPersonal, setLlIsPersonal] = useState(false);
+  const [llShowRepeatPicker, setLlShowRepeatPicker] = useState(false);
+  const [llRepeatLabel, setLlRepeatLabel] = useState("");
 
   // Auto-save state for low-lift modal
   const llInitialRef = useRef<{ title: string; notes: string; anchor: string; time: string; freq: string; days: string; assigned: string | undefined } | null>(null);
@@ -254,11 +252,18 @@ export default function TasksScreen() {
     setLlFreqType(task.frequency_type);
     setLlCustomDays(String(task.frequency_days));
     setLlAssignedId(task.assigned_member_id ?? undefined);
+    setLlIsPersonal(task.is_personal);
+    setLlRepeatLabel(
+      task.frequency_type === "no_repeat"
+        ? "Doesn't Repeat"
+        : getFreqLabel(task.frequency_type, task.frequency_days)
+    );
     setLlSaved(false);
     llInitialRef.current = {
       title: task.title, notes: task.description ?? "", anchor: task.anchor_date,
       time: (task as any).time_of_day ?? "", freq: task.frequency_type,
       days: String(task.frequency_days), assigned: task.assigned_member_id ?? undefined,
+      personal: task.is_personal,
     };
   };
 
@@ -287,9 +292,10 @@ export default function TasksScreen() {
           frequency_days: freqDays,
           assigned_member_id: llAssignedId ?? null,
           time_of_day: llTimeOfDay.trim() || null,
+          is_personal: llIsPersonal,
         },
       });
-      llInitialRef.current = { title: llTitle, notes: llNotes, anchor: llAnchorDate, time: llTimeOfDay, freq: llFreqType, days: llCustomDays, assigned: llAssignedId };
+      llInitialRef.current = { title: llTitle, notes: llNotes, anchor: llAnchorDate, time: llTimeOfDay, freq: llFreqType, days: llCustomDays, assigned: llAssignedId, personal: llIsPersonal };
       setLlSaved(true);
       setTimeout(() => setLlSaved(false), 2000);
     } catch (e: any) {
@@ -303,12 +309,12 @@ export default function TasksScreen() {
     const init = llInitialRef.current;
     const dirty = llTitle !== init.title || llNotes !== init.notes || llAnchorDate !== init.anchor
       || llTimeOfDay !== init.time || llFreqType !== init.freq || llCustomDays !== init.days
-      || llAssignedId !== init.assigned;
+      || llAssignedId !== init.assigned || llIsPersonal !== init.personal;
     if (!dirty) return;
     if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current);
     llAutoSaveRef.current = setTimeout(() => { doSaveLowLift(); }, 3000);
     return () => { if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current); };
-  }, [llTitle, llNotes, llAnchorDate, llTimeOfDay, llFreqType, llCustomDays, llAssignedId]);
+  }, [llTitle, llNotes, llAnchorDate, llTimeOfDay, llFreqType, llCustomDays, llAssignedId, llIsPersonal]);
 
   const handleDoneLowLift = async () => {
     if (llAutoSaveRef.current) {
@@ -365,7 +371,8 @@ export default function TasksScreen() {
   const [stNotes, setStNotes] = useState("");
   const [stDueDate, setStDueDate] = useState("");
   const [stAssignedId, setStAssignedId] = useState<string | undefined>(undefined);
-  const stInitialRef = useRef<{ title: string; notes: string; due: string; assigned: string | undefined } | null>(null);
+  const [stIsPersonal, setStIsPersonal] = useState(false);
+  const stInitialRef = useRef<{ title: string; notes: string; due: string; assigned: string | undefined; personal: boolean } | null>(null);
   const stAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [stSaved, setStSaved] = useState(false);
 
@@ -391,8 +398,9 @@ export default function TasksScreen() {
     setStNotes(task.notes ?? "");
     setStDueDate(task.due_date ?? "");
     setStAssignedId(task.assigned_member_id ?? undefined);
+    setStIsPersonal(task.is_personal ?? false);
     setStSaved(false);
-    stInitialRef.current = { title: task.title, notes: task.notes ?? "", due: task.due_date ?? "", assigned: task.assigned_member_id ?? undefined };
+    stInitialRef.current = { title: task.title, notes: task.notes ?? "", due: task.due_date ?? "", assigned: task.assigned_member_id ?? undefined, personal: task.is_personal ?? false };
   };
 
   const doSavePA = async () => {
@@ -471,11 +479,11 @@ export default function TasksScreen() {
       const { supabase } = await import("@/lib/supabase");
       const { error } = await supabase
         .from("tasks")
-        .update({ title: stTitle.trim(), notes: stNotes.trim() || null, due_date: stDueDate || null, assigned_member_id: stAssignedId ?? null })
+        .update({ title: stTitle.trim(), notes: stNotes.trim() || null, due_date: stDueDate || null, assigned_member_id: stAssignedId ?? null, is_personal: stIsPersonal })
         .eq("id", editingStandalone.id);
       if (error) throw error;
       refetchStandalone();
-      stInitialRef.current = { title: stTitle, notes: stNotes, due: stDueDate, assigned: stAssignedId };
+      stInitialRef.current = { title: stTitle, notes: stNotes, due: stDueDate, assigned: stAssignedId, personal: stIsPersonal };
       setStSaved(true);
       setTimeout(() => setStSaved(false), 2000);
     } catch (e: any) {
@@ -486,12 +494,12 @@ export default function TasksScreen() {
   useEffect(() => {
     if (!editingStandalone || !stInitialRef.current) return;
     const init = stInitialRef.current;
-    const dirty = stTitle !== init.title || stNotes !== init.notes || stDueDate !== init.due || stAssignedId !== init.assigned;
+    const dirty = stTitle !== init.title || stNotes !== init.notes || stDueDate !== init.due || stAssignedId !== init.assigned || stIsPersonal !== init.personal;
     if (!dirty) return;
     if (stAutoSaveRef.current) clearTimeout(stAutoSaveRef.current);
     stAutoSaveRef.current = setTimeout(() => { doSaveStandalone(); }, 3000);
     return () => { if (stAutoSaveRef.current) clearTimeout(stAutoSaveRef.current); };
-  }, [stTitle, stNotes, stDueDate, stAssignedId]);
+  }, [stTitle, stNotes, stDueDate, stAssignedId, stIsPersonal]);
 
   const handleDoneStandalone = async () => {
     if (stAutoSaveRef.current) {
@@ -622,14 +630,16 @@ export default function TasksScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#F6EDFF]" edges={["top"]}>
       <AppHeader compact />
-      <View className="flex-row items-center justify-between px-4 py-3">
-        <Text className="text-xl font-bold text-gray-900">Tasks</Text>
+      <View className="items-center pt-3 pb-1">
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tasks)/new")}
-          className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center"
+          className="bg-blue-600 rounded-full w-14 h-14 items-center justify-center shadow-md"
         >
-          <Text className="text-white text-xl font-light">+</Text>
+          <Text className="text-white text-3xl font-light" style={{ marginTop: -2 }}>+</Text>
         </TouchableOpacity>
+      </View>
+      <View className="px-4 py-2">
+        <Text className="text-xl font-bold text-gray-900">Tasks</Text>
       </View>
 
       {/* Tab toggle — Low-Lift left/default */}
@@ -812,25 +822,63 @@ export default function TasksScreen() {
             />
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Frequency</Text>
-            <View className="flex-row flex-wrap gap-2 mb-4">
-              {FREQUENCIES.map((f) => (
+            <View className="mb-4">
+              <View className="flex-row gap-2 mb-2">
                 <TouchableOpacity
-                  key={f.value}
-                  onPress={() => setLlFreqType(f.value)}
+                  onPress={() => {
+                    setLlFreqType("no_repeat" as FrequencyType);
+                    setLlRepeatLabel("Doesn't Repeat");
+                  }}
                   className={`px-4 py-2 rounded-xl border ${
-                    llFreqType === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    llFreqType === "no_repeat" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                   }`}
                 >
-                  <Text className={`font-medium ${llFreqType === f.value ? "text-white" : "text-gray-700"}`}>
-                    {f.label}
+                  <Text className={`font-medium ${llFreqType === "no_repeat" ? "text-white" : "text-gray-700"}`}>
+                    Doesn't Repeat
                   </Text>
                 </TouchableOpacity>
-              ))}
+                <TouchableOpacity
+                  onPress={() => setLlShowRepeatPicker(true)}
+                  className={`px-4 py-2 rounded-xl border ${
+                    llFreqType !== "no_repeat" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                  }`}
+                >
+                  <Text className={`font-medium ${llFreqType !== "no_repeat" ? "text-white" : "text-gray-700"}`}>
+                    Repeat
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {llFreqType !== "no_repeat" && (
+                <TouchableOpacity
+                  onPress={() => setLlShowRepeatPicker(true)}
+                  className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2"
+                >
+                  <Text className="text-blue-700 text-sm font-medium">{llRepeatLabel}</Text>
+                </TouchableOpacity>
+              )}
+              <RepeatPickerModal
+                visible={llShowRepeatPicker}
+                onClose={() => setLlShowRepeatPicker(false)}
+                onSelect={(result) => {
+                  setLlFreqType(result.frequencyType);
+                  setLlCustomDays(String(result.frequencyDays));
+                  setLlRepeatLabel(result.label);
+                }}
+              />
             </View>
-            {llFreqType === "custom" && (
-              <Input label="Every how many days?" value={llCustomDays} onChangeText={setLlCustomDays}
-                keyboardType="number-pad" placeholder="e.g. 45" />
-            )}
+
+            <View className="flex-row items-center justify-between mb-4 bg-white border border-gray-200 rounded-xl px-4 py-3">
+              <View className="flex-1 mr-3">
+                <Text className="text-sm font-semibold text-gray-900">Personal Task</Text>
+                <Text className="text-xs text-gray-400 mt-0.5">Only visible to the assigned person</Text>
+              </View>
+              <Switch
+                value={llIsPersonal}
+                onValueChange={setLlIsPersonal}
+                trackColor={{ false: "#e5e7eb", true: "#3b82f6" }}
+                thumbColor="#fff"
+              />
+            </View>
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">
@@ -962,6 +1010,11 @@ export default function TasksScreen() {
               placeholder="Add details..."
             />
             <DateInput label="Due Date (optional)" value={stDueDate} onChange={setStDueDate} />
+
+            <View className="flex-row items-center justify-between mb-4">
+              <Text className="text-sm font-medium text-gray-700">Personal Task</Text>
+              <Switch value={stIsPersonal} onValueChange={setStIsPersonal} />
+            </View>
 
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">
