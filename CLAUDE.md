@@ -64,6 +64,7 @@ When project/trip checklist items are marked done, they're archived to `complete
 - `authStore` — Supabase session + user
 - `householdStore` — current household, members list, current member, and `householdChecked` flag (set to `true` once the household lookup after login completes — used by AuthGate to avoid premature redirects)
 - `notificationStore` — notification preferences (persisted via Zustand persist middleware). `notifyMemberIds` controls which members' tasks appear in notifications; supports multi-select with "all" + individual IDs
+- `filterStore` — persistent member filter (`memberFilter: string[]`) shared across Home and Tasks tabs, persisted via Zustand + AsyncStorage. Empty array = show all
 - `undoStore` — manages optimistic undo with 5-second delay (see Undo Pattern above)
 
 ### Supabase Client (`src/lib/supabase.ts`)
@@ -88,6 +89,17 @@ Deploy with `--no-verify-jwt` (both functions are called with the user's session
 - Times are stored and displayed in **12-hour format** (e.g., "9am", "2:30pm").
 - `taskBadgeLabel()` produces compact date/time strings like "Overdue · 4/9 @ 9am" or "Tomorrow @ 2pm".
 - The `send-reminders` edge function computes PT hours/days via `Intl.DateTimeFormat`.
+- **4-tier due date system**: `dueTier()` returns `"overdue" | "due_today" | "due_tomorrow" | "due_soon" | null`. Badge variants map to: overdue→danger (red), due_today→orange, due_tomorrow→yellow, due_soon→green.
+
+### Frequency / Repeat Picker
+`src/components/ui/RepeatPicker.tsx` provides `RepeatPickerModal` for selecting task repeat frequency. Returns `{ frequencyType, frequencyDays, label }`. Frequency types are the DB enum: `daily | weekly | monthly | yearly | custom | no_repeat`. Sub-options include day-of-week multi-select, day-of-month (week + day), and custom (number + unit).
+
+### Rich Text Notes
+Activity (trip) notes support rich text via `react-native-pell-rich-editor`. Components:
+- `RichTextEditor` — toolbar with Bold, Italic, Underline, Ordered List, Bullet List
+- `RichTextViewer` — renders HTML (WebView on native, `dangerouslySetInnerHTML` on web)
+- `plainTextToHtml()` / `htmlToPlainText()` — conversion utilities for migrating existing plain text notes
+- Notes are stored as HTML in the `notes` column
 
 ### Home Page Data Aggregation
 The Home screen (`app/(app)/(home)/index.tsx`) pulls data from multiple tabs:
@@ -97,8 +109,19 @@ The Home screen (`app/(app)/(home)/index.tsx`) pulls data from multiple tabs:
 - Service records with computed next-due dates
 - Each item shows a source type label (Task, Project, Activity) and a Done button for inline completion
 
+### Auto-Save Pattern
+Task edit modals (low-lift, standalone, project-adjacent) in the Tasks tab use a 3-second debounced auto-save:
+- `useRef` tracks the initial values when the modal opens (`llInitialRef`, `stInitialRef`, `paInitialRef`)
+- A `useEffect` watches all editable fields, compares against initial values for dirty detection
+- On dirty, sets a 3-second timeout to call the save function; clears previous timeout on each change
+- "Done" button flushes any pending save immediately before closing
+- After save, the initial ref is updated to the new values so the next dirty check works correctly
+
 ### Multi-Select Filter Pattern
-Member filters across Home, Tasks, and Projects tabs use `string[]` (empty = All). Settings "Notify me about" has a "Select Multiples" checkbox that toggles between single-select (one at a time) and multi-select (combine "All" + individuals).
+Member filters across Home and Tasks tabs use `filterStore` (Zustand + AsyncStorage) for persistence. The store provides `memberFilter: string[]` (empty = All), `toggleMember(id)`, and `setMemberFilter(ids)`. Settings "Notify me about" has a "Select Multiples" checkbox that toggles between single-select (one at a time) and multi-select (combine "All" + individuals).
+
+### Personal Task Privacy
+`recurring_tasks` and `tasks` tables have an `is_personal` boolean column. When `is_personal` is true, the task is only visible to the assigned member. Filtering is done client-side via the `isVisible(assignedMemberId, isPersonal)` helper in Home and Tasks tabs. Edit modals expose a "Personal Task" Switch toggle.
 
 ### Realtime
 `src/hooks/useRealtimeInvalidate.ts` subscribes to Supabase realtime channels and invalidates relevant query keys when rows change. `useHomeRealtime` is an alias for the global realtime hook.
