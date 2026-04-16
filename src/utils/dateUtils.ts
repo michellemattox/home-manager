@@ -69,11 +69,11 @@ export function toISODateString(date: Date): string {
  */
 export function parseTimeToMinutes(time?: string | null): number {
   if (!time) return -1; // no time → sort before timed items
-  const m = time.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  const m = time.match(/^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(am|pm)?$/i);
   if (!m) return -1;
   let hours = parseInt(m[1], 10);
   const mins = m[2] ? parseInt(m[2], 10) : 0;
-  const ampm = (m[3] || "").toLowerCase();
+  const ampm = (m[4] || "").toLowerCase();
   if (ampm === "pm" && hours < 12) hours += 12;
   if (ampm === "am" && hours === 12) hours = 0;
   return hours * 60 + mins;
@@ -81,13 +81,13 @@ export function parseTimeToMinutes(time?: string | null): number {
 
 /**
  * Normalize a time string to 12-hour AM/PM format.
- * Handles: "18:00" → "6pm", "09:00" → "9am", "2:30pm" → "2:30pm", "9am" → "9am"
+ * Handles Postgres TIME ("19:00:00"), "18:00", "09:00", and passes through "2:30pm"/"9am".
  */
 export function normalizeTimeTo12h(time: string): string {
   // Already in 12-hour format (has am/pm)?
   if (/am|pm/i.test(time)) return time;
-  // Try to parse as 24-hour "HH:MM" or "H:MM"
-  const m = time.match(/^(\d{1,2}):(\d{2})$/);
+  // Parse 24-hour formats: "HH:MM:SS" (Postgres TIME), "HH:MM", or "H:MM"
+  const m = time.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return time;
   let hours = parseInt(m[1], 10);
   const mins = parseInt(m[2], 10);

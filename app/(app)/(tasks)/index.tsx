@@ -249,7 +249,7 @@ export default function TasksScreen() {
     setLlTitle(task.title);
     setLlNotes(task.description ?? "");
     setLlAnchorDate(task.anchor_date);
-    setLlTimeOfDay((task as any).time_of_day ?? "");
+    setLlTimeOfDay((task as any).time_of_day ? normalizeTimeTo12h((task as any).time_of_day) : "");
     setLlFreqType(task.frequency_type);
     setLlCustomDays(String(task.frequency_days));
     setLlAssignedId(task.assigned_member_id ?? undefined);

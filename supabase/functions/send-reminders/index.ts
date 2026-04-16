@@ -42,7 +42,7 @@ function sortItems(items: ReminderItem[]): ReminderItem[] {
 
 function normalizeTimeTo12h(time: string): string {
   if (/am|pm/i.test(time)) return time;
-  const m = time.match(/^(\d{1,2}):(\d{2})$/);
+  const m = time.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
   if (!m) return time;
   let hours = parseInt(m[1], 10);
   const mins = parseInt(m[2], 10);
@@ -54,11 +54,11 @@ function normalizeTimeTo12h(time: string): string {
 
 function parseTimeToMinutes(time?: string | null): number {
   if (!time) return -1;
-  const m = time.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
+  const m = time.match(/^(\d{1,2})(?::(\d{2}))?(?::(\d{2}))?\s*(am|pm)?$/i);
   if (!m) return -1;
   let hours = parseInt(m[1], 10);
   const mins = m[2] ? parseInt(m[2], 10) : 0;
-  const ampm = (m[3] || "").toLowerCase();
+  const ampm = (m[4] || "").toLowerCase();
   if (ampm === "pm" && hours < 12) hours += 12;
   if (ampm === "am" && hours === 12) hours = 0;
   return hours * 60 + mins;
