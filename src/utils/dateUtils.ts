@@ -80,13 +80,31 @@ export function parseTimeToMinutes(time?: string | null): number {
 }
 
 /**
+ * Normalize a time string to 12-hour AM/PM format.
+ * Handles: "18:00" → "6pm", "09:00" → "9am", "2:30pm" → "2:30pm", "9am" → "9am"
+ */
+export function normalizeTimeTo12h(time: string): string {
+  // Already in 12-hour format (has am/pm)?
+  if (/am|pm/i.test(time)) return time;
+  // Try to parse as 24-hour "HH:MM" or "H:MM"
+  const m = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return time;
+  let hours = parseInt(m[1], 10);
+  const mins = parseInt(m[2], 10);
+  const suffix = hours >= 12 ? "pm" : "am";
+  if (hours === 0) hours = 12;
+  else if (hours > 12) hours -= 12;
+  return mins === 0 ? `${hours}${suffix}` : `${hours}:${m[2]}${suffix}`;
+}
+
+/**
  * Format a compact date + optional time for task badges.
  * Examples: "4/9 @ 9am", "4/11 @ 10am", "4/15"
  */
 export function formatDateCompact(dateStr: string, timeOfDay?: string | null): string {
   const d = parseISO(dateStr);
   const datePart = format(d, "M/d");
-  if (timeOfDay) return `${datePart} @ ${timeOfDay}`;
+  if (timeOfDay) return `${datePart} @ ${normalizeTimeTo12h(timeOfDay)}`;
   return datePart;
 }
 

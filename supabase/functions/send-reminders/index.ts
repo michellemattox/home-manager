@@ -40,6 +40,18 @@ function sortItems(items: ReminderItem[]): ReminderItem[] {
   });
 }
 
+function normalizeTimeTo12h(time: string): string {
+  if (/am|pm/i.test(time)) return time;
+  const m = time.match(/^(\d{1,2}):(\d{2})$/);
+  if (!m) return time;
+  let hours = parseInt(m[1], 10);
+  const mins = parseInt(m[2], 10);
+  const suffix = hours >= 12 ? "pm" : "am";
+  if (hours === 0) hours = 12;
+  else if (hours > 12) hours -= 12;
+  return mins === 0 ? `${hours}${suffix}` : `${hours}:${m[2]}${suffix}`;
+}
+
 function parseTimeToMinutes(time?: string | null): number {
   if (!time) return -1;
   const m = time.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)?$/i);
@@ -343,7 +355,7 @@ function sendDigestEmail(
   const renderItem = (i: ReminderItem) => {
     const color = SOURCE_COLORS[i.source] ?? "#6b7280";
     const icon = SOURCE_ICONS[i.source] ?? "•";
-    const time = i.timeOfDay ? ` <span style="color:#6b7280;font-size:12px;">@ ${i.timeOfDay}</span>` : "";
+    const time = i.timeOfDay ? ` <span style="color:#6b7280;font-size:12px;">@ ${normalizeTimeTo12h(i.timeOfDay)}</span>` : "";
     const overdueMeta = i.overdue
       ? ` <span style="color:#9ca3af;font-size:12px;">(was due ${formatDateCompact(i.dueDate)})</span>`
       : "";
