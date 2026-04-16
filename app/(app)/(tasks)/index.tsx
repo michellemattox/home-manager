@@ -631,16 +631,14 @@ export default function TasksScreen() {
   return (
     <SafeAreaView className="flex-1 bg-[#F6EDFF]" edges={["top"]}>
       <AppHeader compact />
-      <View className="items-center pt-3 pb-1">
+      <View className="px-4 py-3 flex-row items-center">
+        <Text className="text-xl font-bold text-gray-900 flex-1">Tasks</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(tasks)/new")}
-          className="bg-blue-600 rounded-full w-14 h-14 items-center justify-center shadow-md"
+          className="bg-blue-600 rounded-full px-4 py-2"
         >
-          <Text className="text-white text-3xl font-light" style={{ marginTop: -2 }}>+</Text>
+          <Text className="text-white text-sm font-semibold">+ New</Text>
         </TouchableOpacity>
-      </View>
-      <View className="px-4 py-2">
-        <Text className="text-xl font-bold text-gray-900">Tasks</Text>
       </View>
 
       {/* Tab toggle — Low-Lift left/default */}

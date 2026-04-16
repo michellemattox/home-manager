@@ -173,9 +173,9 @@ function ProjectsTab() {
         </View>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(projects)/new")}
-          className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center"
+          className="bg-blue-600 rounded-full px-4 py-2"
         >
-          <Text className="text-white text-xl font-light">+</Text>
+          <Text className="text-white text-sm font-semibold">+ New</Text>
         </TouchableOpacity>
       </View>
 

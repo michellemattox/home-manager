@@ -74,9 +74,9 @@ export default function ActivityScreen() {
         <Text className="text-xl font-bold text-gray-900">Activity</Text>
         <TouchableOpacity
           onPress={() => router.push("/(app)/(activity)/new")}
-          className="bg-blue-600 rounded-full w-9 h-9 items-center justify-center"
+          className="bg-blue-600 rounded-full px-4 py-2"
         >
-          <Text className="text-white text-xl font-light">+</Text>
+          <Text className="text-white text-sm font-semibold">+ New</Text>
         </TouchableOpacity>
       </View>
 
