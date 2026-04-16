@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { Input } from "@/components/ui/Input";
 import { DateInput } from "@/components/ui/DateInput";
 import { Button } from "@/components/ui/Button";
+import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -145,14 +146,11 @@ export default function NewActivityScreen() {
         <Controller
           control={control}
           name="notes"
-          render={({ field: { onChange, value, onBlur } }) => (
-            <Input
+          render={({ field: { onChange, value } }) => (
+            <RichTextEditor
               label="Notes (optional)"
-              value={value}
-              onChangeText={onChange}
-              onBlur={onBlur}
-              multiline
-              numberOfLines={3}
+              value={value ?? ""}
+              onChange={onChange}
               placeholder="Hotel info, packing reminders..."
             />
           )}

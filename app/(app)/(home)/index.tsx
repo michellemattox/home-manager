@@ -11,6 +11,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useFilterStore } from "@/stores/filterStore";
 import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
 import { useTasks, useCompleteTask } from "@/hooks/useTasks";
@@ -369,7 +370,7 @@ export default function HomeScreen() {
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  const [selectedMembers, setSelectedMembers] = useState<string[]>([]); // empty = All
+  const { memberFilter: selectedMembers, toggleMember } = useFilterStore();
 
   const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useProjects(household?.id);
   const { data: tasks, isLoading: loadingTasks, refetch: refetchTasks } = useRecurringTasks(household?.id);
@@ -504,11 +505,6 @@ export default function HomeScreen() {
     if (memberId == null) return selectedMembers.includes("__unassigned__");
     return selectedMembers.includes(memberId);
   };
-
-  const toggleMember = (id: string) =>
-    setSelectedMembers((prev) =>
-      prev.includes(id) ? prev.filter((m) => m !== id) : [...prev, id]
-    );
 
   // Projects
   const activeProjects = (projects ?? []).filter(

@@ -34,6 +34,8 @@ import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { formatDateShort } from "@/utils/dateUtils";
+import { RichTextViewer } from "@/components/ui/RichTextViewer";
+import { RichTextEditor, plainTextToHtml } from "@/components/ui/RichTextEditor";
 import type { TripTask } from "@/types/app.types";
 
 // ─── Add Item Modal ───────────────────────────────────────────────────────────
@@ -276,7 +278,7 @@ export default function TripDetailScreen() {
     setEditDestination(trip.destination);
     setEditDeparture(trip.departure_date);
     setEditReturn(trip.return_date);
-    setEditNotes(trip.notes ?? "");
+    setEditNotes(plainTextToHtml(trip.notes ?? ""));
     setEditAssignedTo((trip as any).assigned_to ?? "all");
     setShowEditModal(true);
   };
@@ -460,7 +462,7 @@ export default function TripDetailScreen() {
         {trip.notes && (
           <Card className="mb-4">
             <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-1">Notes</Text>
-            <Text className="text-sm text-gray-700">{trip.notes}</Text>
+            <RichTextViewer html={trip.notes} />
           </Card>
         )}
 
@@ -763,12 +765,10 @@ export default function TripDetailScreen() {
             <Input label="Destination" value={editDestination} onChangeText={setEditDestination} placeholder="e.g. Paris, France" />
             <DateInput label="Departure Date" value={editDeparture} onChange={setEditDeparture} />
             <DateInput label="Return Date" value={editReturn} onChange={setEditReturn} />
-            <Input
+            <RichTextEditor
               label="Notes (optional)"
               value={editNotes}
-              onChangeText={setEditNotes}
-              multiline
-              numberOfLines={3}
+              onChange={setEditNotes}
               placeholder="Packing notes, reservations, etc..."
             />
             <Text className="text-sm font-medium text-gray-700 mb-2">Assign To</Text>

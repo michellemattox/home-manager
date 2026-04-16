@@ -28,6 +28,7 @@ import {
   useCompleteProjectChecklistItem,
 } from "@/hooks/useProjectTasks";
 import { useAuthStore } from "@/stores/authStore";
+import { useFilterStore } from "@/stores/filterStore";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
@@ -196,7 +197,7 @@ export default function TasksScreen() {
   const { user } = useAuthStore();
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
-  const [ownerFilter, setOwnerFilter] = useState<string[]>([]); // empty = All
+  const { memberFilter: ownerFilter, toggleMember: toggleOwnerFilter } = useFilterStore();
   const [filterDue, setFilterDue] = useState<"overdue" | "due_soon" | null>(null);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -664,7 +665,7 @@ export default function TasksScreen() {
           <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 72 }}>Assign To</Text>
           <View className="flex-row flex-wrap gap-2">
             <TouchableOpacity
-              onPress={() => setOwnerFilter(ownerFilter.includes("__unassigned__") ? ownerFilter.filter((id) => id !== "__unassigned__") : [...ownerFilter, "__unassigned__"])}
+              onPress={() => toggleOwnerFilter("__unassigned__")}
               className={`px-3 py-1 rounded-full border ${ownerFilter.includes("__unassigned__") ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
             >
               <Text className={`text-xs font-semibold ${ownerFilter.includes("__unassigned__") ? "text-white" : "text-gray-600"}`}>All</Text>
@@ -674,7 +675,7 @@ export default function TasksScreen() {
               return (
                 <TouchableOpacity
                   key={m.id}
-                  onPress={() => setOwnerFilter(active ? ownerFilter.filter((id) => id !== m.id) : [...ownerFilter, m.id])}
+                  onPress={() => toggleOwnerFilter(m.id)}
                   className={`px-3 py-1 rounded-full border ${active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
                 >
                   <Text className={`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>
