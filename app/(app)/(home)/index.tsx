@@ -18,7 +18,7 @@ import { useTasks, useCompleteTask } from "@/hooks/useTasks";
 import { useServiceRecords } from "@/hooks/useServices";
 import { useAllProjectTasks, useCompleteProjectChecklistItem } from "@/hooks/useProjectTasks";
 import { useAllTripTasks, useCompleteTripChecklistItem } from "@/hooks/useTrips";
-import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, daysUntilDue, formatDate, formatDateShort, taskBadgeLabel } from "@/utils/dateUtils";
+import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, daysUntilDue, formatDate, formatDateShort, taskBadgeLabel, parseTimeToMinutes } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
 import { showAlert } from "@/lib/alert";
 import { supabase } from "@/lib/supabase";
@@ -529,14 +529,16 @@ export default function HomeScreen() {
     return assignedMemberId === currentMember?.id;
   };
 
-  // Recurring tasks
+  // Recurring tasks — sorted by time within each tier (no-time first, then AM→PM)
   const filteredRecurring = (tasks ?? []).filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
-  const overdueTasks = filteredRecurring.filter((t) => isOverdue(t.next_due_date));
-  const dueTodayTasks = filteredRecurring.filter((t) => isDueToday(t.next_due_date));
-  const dueTomorrowTasks = filteredRecurring.filter((t) => isDueTomorrow(t.next_due_date));
+  const sortByTime = (a: RecurringTask, b: RecurringTask) =>
+    parseTimeToMinutes((a as any).time_of_day) - parseTimeToMinutes((b as any).time_of_day);
+  const overdueTasks = filteredRecurring.filter((t) => isOverdue(t.next_due_date)).sort(sortByTime);
+  const dueTodayTasks = filteredRecurring.filter((t) => isDueToday(t.next_due_date)).sort(sortByTime);
+  const dueTomorrowTasks = filteredRecurring.filter((t) => isDueTomorrow(t.next_due_date)).sort(sortByTime);
   const dueSoonTasks = filteredRecurring.filter(
     (t) => !isOverdue(t.next_due_date) && !isDueToday(t.next_due_date) && !isDueTomorrow(t.next_due_date) && isDueSoon(t.next_due_date, 7)
-  );
+  ).sort(sortByTime);
 
   // One-off tasks with due dates
   const filteredOneOff = oneOffTasks.filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));

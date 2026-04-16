@@ -1,5 +1,5 @@
-import React, { useRef, useCallback } from "react";
-import { View, Text, TouchableOpacity, StyleSheet } from "react-native";
+import React, { useRef, useCallback, useEffect } from "react";
+import { View, Text } from "react-native";
 
 interface RichTextEditorProps {
   label?: string;
@@ -27,6 +27,15 @@ export function RichTextEditor({
   minHeight = 150,
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
+  const initializedRef = useRef(false);
+
+  // Set initial content only once on mount
+  useEffect(() => {
+    if (editorRef.current && !initializedRef.current) {
+      editorRef.current.innerHTML = value;
+      initializedRef.current = true;
+    }
+  }, [value]);
 
   const handleInput = useCallback(() => {
     if (editorRef.current) {
@@ -35,8 +44,24 @@ export function RichTextEditor({
   }, [onChange]);
 
   const execCommand = useCallback((command: FormatCommand) => {
+    // Save current selection
+    const sel = window.getSelection();
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // Ensure focus is in the editor
+    editor.focus();
+
+    // If no selection is inside the editor, place cursor at end
+    if (!sel || sel.rangeCount === 0 || !editor.contains(sel.anchorNode)) {
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
+      sel?.removeAllRanges();
+      sel?.addRange(range);
+    }
+
     document.execCommand(command, false);
-    editorRef.current?.focus();
     handleInput();
   }, [handleInput]);
 
@@ -78,7 +103,6 @@ export function RichTextEditor({
           ref={editorRef}
           contentEditable
           suppressContentEditableWarning
-          dangerouslySetInnerHTML={{ __html: value }}
           onInput={handleInput}
           onBlur={handleInput}
           data-placeholder={placeholder}
@@ -128,8 +152,6 @@ const webStyles: Record<string, React.CSSProperties> = {
     color: "#1f2937",
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif",
     outline: "none",
-    whiteSpace: "pre-wrap" as const,
-    wordWrap: "break-word" as const,
   },
 };
 

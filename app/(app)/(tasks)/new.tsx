@@ -23,7 +23,7 @@ import { useCreateRecurringTask } from "@/hooks/useRecurringTasks";
 import { useAddProjectTask } from "@/hooks/useProjectTasks";
 import { useProjects } from "@/hooks/useProjects";
 import { type FrequencyType } from "@/types/app.types";
-import { toISODateString } from "@/utils/dateUtils";
+import { toISODateString, normalizeTimeTo12h } from "@/utils/dateUtils";
 import { frequencyToDays } from "@/utils/scheduleUtils";
 import type { ProjectWithOwners } from "@/types/app.types";
 import { parseTaskFromText } from "@/hooks/useParseTask";
@@ -129,7 +129,7 @@ export default function NewTaskScreen() {
           title: data.title,
           notes: data.notes?.trim() || null,
           due_date: anchorDate,
-          due_time: data.timeOfDay?.trim() || null,
+          due_time: data.timeOfDay?.trim() ? normalizeTimeTo12h(data.timeOfDay.trim()) : null,
           assigned_member_id: data.assignedMemberId ?? null,
           linked_event_type: null,
           linked_event_id: null,
@@ -151,7 +151,7 @@ export default function NewTaskScreen() {
           next_due_date: anchorDate,
           assigned_member_id: data.assignedMemberId ?? null,
           is_active: true,
-          time_of_day: data.timeOfDay?.trim() || null,
+          time_of_day: data.timeOfDay?.trim() ? normalizeTimeTo12h(data.timeOfDay.trim()) : null,
           is_personal: llIsPersonal,
         });
       }

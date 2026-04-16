@@ -23,12 +23,16 @@ import {
   useGardenPlots,
   useGardenWeatherLogs,
 } from "@/hooks/useGarden";
+import { useGardenWeather } from "@/hooks/useGardenWeather";
 import { WATERING_METHODS, type GardenWateringLog, type WateringMethod } from "@/types/app.types";
 
 export default function WateringScreen() {
   const router = useRouter();
   const { household } = useHouseholdStore();
   const householdId = household?.id;
+
+  // Trigger weather fetch on visit — ensures today's rain is logged and weather data is fresh
+  useGardenWeather(household?.zip_code ?? null, householdId);
 
   const { data: logs = [], isLoading } = useGardenWatering(householdId);
   const { data: zones = [] } = useGardenZonesByHousehold(householdId);
