@@ -101,7 +101,7 @@ export default function PestsScreen() {
   const [severity, setSeverity] = useState<number>(3);
   const [treatment, setTreatment] = useState("");
   const [notes, setNotes] = useState("");
-  const [obsDate, setObsDate] = useState<Date>(new Date());
+  const [obsDate, setObsDate] = useState<string>(TODAY_STR);
   const [resolved, setResolved] = useState(false);
 
   // Photo & AI state
@@ -149,7 +149,7 @@ export default function PestsScreen() {
       setSeverity(log.severity ?? 3);
       setTreatment(log.treatment ?? "");
       setNotes(plainTextToHtml(log.notes ?? ""));
-      setObsDate(new Date(log.observation_date + "T12:00:00"));
+      setObsDate(log.observation_date);
       setResolved(log.resolved);
     } else {
       setPlotId(defaultPlotId);
@@ -158,7 +158,7 @@ export default function PestsScreen() {
       setSeverity(3);
       setTreatment("");
       setNotes("");
-      setObsDate(new Date());
+      setObsDate(TODAY_STR);
       setResolved(false);
     }
     setPhotoUri(null);
@@ -291,7 +291,7 @@ export default function PestsScreen() {
         plot_id: plotId,
         zone_id: null,
         planting_id: null,
-        observation_date: obsDate.toISOString().split("T")[0],
+        observation_date: obsDate,
         log_type: logType,
         name: name.trim(),
         severity,
