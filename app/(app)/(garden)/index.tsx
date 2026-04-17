@@ -136,10 +136,10 @@ export default function GardenScreen() {
     setRefreshing(false);
   }, [refetch]);
 
-  // Section open/close state (all open by default)
-  const [planningOpen, setPlanningOpen] = useState(true);
-  const [maintenanceOpen, setMaintenanceOpen] = useState(true);
-  const [troubleshootingOpen, setTroubleshootingOpen] = useState(true);
+  // Section open/close state (all collapsed by default — tap carrot to expand)
+  const [planningOpen, setPlanningOpen] = useState(false);
+  const [maintenanceOpen, setMaintenanceOpen] = useState(false);
+  const [troubleshootingOpen, setTroubleshootingOpen] = useState(false);
 
   // New / Edit garden modal state (shared form)
   const [showNew, setShowNew] = useState(false);

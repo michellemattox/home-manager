@@ -32,6 +32,15 @@ import {
 } from "@/types/app.types";
 import { showAlert } from "@/lib/alert";
 import { supabase } from "@/lib/supabase";
+import {
+  getCatalogFor,
+  getRemediesFor,
+} from "@/lib/seattlePestData";
+import { useCustomRemediesStore } from "@/stores/customRemediesStore";
+import {
+  RichTextEditor,
+  plainTextToHtml,
+} from "@/components/ui/RichTextEditor";
 
 const TODAY_STR = new Date().toISOString().split("T")[0];
 
@@ -106,6 +115,24 @@ export default function PestsScreen() {
 
   const defaultPlotId = plots[0]?.id ?? "";
 
+  // Custom-remedy persistence — user-typed remedies get saved per issue name
+  // and reappear as chips next time the same pest/disease is selected.
+  const customByIssue = useCustomRemediesStore((s) => s.byIssue);
+  const addCustomRemedy = useCustomRemediesStore((s) => s.addRemedy);
+
+  const catalogForType = getCatalogFor(logType);
+  const remedyChipOptions = useMemo(() => {
+    const built = name ? getRemediesFor(name) : [];
+    const custom = name ? (customByIssue[name.trim()] ?? []) : [];
+    const seen = new Set<string>();
+    return [...built, ...custom].filter((r) => {
+      const k = r.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  }, [name, customByIssue]);
+
   // Keep plotId in sync if plots load after the component mounts but before
   // the user has opened the modal and picked a plot themselves.
   useEffect(() => {
@@ -121,7 +148,7 @@ export default function PestsScreen() {
       setName(log.name);
       setSeverity(log.severity ?? 3);
       setTreatment(log.treatment ?? "");
-      setNotes(log.notes ?? "");
+      setNotes(plainTextToHtml(log.notes ?? ""));
       setObsDate(new Date(log.observation_date + "T12:00:00"));
       setResolved(log.resolved);
     } else {
@@ -275,6 +302,20 @@ export default function PestsScreen() {
 
       if (uploadedPhotoUrl) payload.photo_url = uploadedPhotoUrl;
       if (aiResult) payload.ai_identification = aiResult as any;
+
+      // If the user typed a remedy that isn't in the built-in catalog or
+      // their previously-saved customs, persist it so it shows up as a chip
+      // next time this pest/disease is selected.
+      const t = treatment.trim();
+      if (t && name.trim()) {
+        const known = [
+          ...getRemediesFor(name),
+          ...(customByIssue[name.trim()] ?? []),
+        ].map((r) => r.toLowerCase());
+        if (!known.includes(t.toLowerCase())) {
+          addCustomRemedy(name.trim(), t);
+        }
+      }
 
       if (editTarget) {
         await updateLog.mutateAsync({ id: editTarget.id, householdId, updates: payload });
@@ -647,7 +688,61 @@ export default function PestsScreen() {
               </>
             )}
 
-            <Input label="Name *" placeholder="e.g. Aphids, Powdery mildew, Iron deficiency" value={name} onChangeText={setName} />
+            {/* Name picker — catalog chips for pest/disease/deficiency, free-text fallback */}
+            <Text className="text-sm font-medium text-gray-700 mb-2">
+              {logType === "pest"
+                ? "Pest * (Seattle metro)"
+                : logType === "disease"
+                ? "Disease * (Seattle metro)"
+                : logType === "deficiency"
+                ? "Deficiency *"
+                : "Name *"}
+            </Text>
+            {catalogForType.length > 0 && (
+              <View className="flex-row flex-wrap gap-2 mb-2">
+                {catalogForType.map((opt) => {
+                  const selected = name === opt.name;
+                  return (
+                    <TouchableOpacity
+                      key={opt.name}
+                      onPress={() => {
+                        setName(opt.name);
+                        // Clear any treatment that doesn't belong to the new issue
+                        const nextRemedies = [
+                          ...getRemediesFor(opt.name),
+                          ...(customByIssue[opt.name.trim()] ?? []),
+                        ].map((r) => r.toLowerCase());
+                        if (treatment && !nextRemedies.includes(treatment.toLowerCase())) {
+                          setTreatment("");
+                        }
+                      }}
+                      className={`px-3 py-1.5 rounded-xl border ${
+                        selected
+                          ? "bg-red-600 border-red-600"
+                          : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-medium ${
+                          selected ? "text-white" : "text-gray-700"
+                        }`}
+                      >
+                        {opt.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+            <Input
+              placeholder={
+                catalogForType.length > 0
+                  ? "Or type a custom name…"
+                  : "e.g. Aphids, Powdery mildew, Iron deficiency"
+              }
+              value={name}
+              onChangeText={setName}
+            />
 
             <DateInput label="Date Observed" value={obsDate} onChange={setObsDate} />
 
@@ -669,21 +764,52 @@ export default function PestsScreen() {
               ))}
             </View>
 
+            {/* Remedy picker — auto-populated from selected pest/disease,
+                plus any custom remedies the user has previously saved */}
+            <Text className="text-sm font-medium text-gray-700 mb-2 mt-2">
+              Remedy / Treatment
+            </Text>
+            {name.trim().length > 0 && remedyChipOptions.length > 0 && (
+              <View className="flex-row flex-wrap gap-2 mb-2">
+                {remedyChipOptions.map((r) => {
+                  const selected = treatment === r;
+                  return (
+                    <TouchableOpacity
+                      key={r}
+                      onPress={() => setTreatment(r)}
+                      className={`px-3 py-1.5 rounded-xl border ${
+                        selected
+                          ? "bg-green-600 border-green-600"
+                          : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text
+                        className={`text-xs font-medium ${
+                          selected ? "text-white" : "text-gray-700"
+                        }`}
+                      >
+                        {r}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
             <Input
-              label="Treatment Applied"
-              placeholder="e.g. Neem oil spray, copper fungicide, hand-picked"
+              placeholder={
+                remedyChipOptions.length > 0
+                  ? "Custom remedy — will be saved for next time"
+                  : "What did you do? e.g. Neem oil spray, hand-picked"
+              }
               value={treatment}
               onChangeText={setTreatment}
             />
 
-            <Input
+            <RichTextEditor
               label="Notes"
-              placeholder="Additional observations…"
               value={notes}
-              onChangeText={setNotes}
-              multiline
-              numberOfLines={3}
-              className="min-h-[72px]"
+              onChange={setNotes}
+              placeholder="Additional observations, photos context, timeline…"
             />
 
             {/* Resolved toggle */}
