@@ -606,11 +606,21 @@ Deno.serve(async (req) => {
       return parseInt(d, 10) || now.getUTCDate();
     })();
 
-    function shouldSendToday(frequency: string): boolean {
+    function shouldSendToday(frequency: string, lastSentAt: string | null): boolean {
       if (frequency === "daily") return true;
-      if (frequency === "every_other_day") return Math.floor(now.getTime() / 86400000) % 2 === 0;
-      if (frequency === "weekly") return ptDayOfWeek === 1;
-      if (frequency === "monthly") return ptDayOfMonth === 1;
+
+      if (!lastSentAt) return true; // never sent before — send now
+
+      // Calculate days since last digest in PT
+      const lastSent = new Date(lastSentAt);
+      const lastSentDatePT = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(lastSent);
+      const daysSinceLast = Math.floor(
+        (new Date(today + "T00:00:00").getTime() - new Date(lastSentDatePT + "T00:00:00").getTime()) / 86400000
+      );
+
+      if (frequency === "every_other_day") return daysSinceLast >= 2;
+      if (frequency === "weekly") return daysSinceLast >= 7;
+      if (frequency === "monthly") return daysSinceLast >= 28;
       return true;
     }
 
@@ -628,7 +638,7 @@ Deno.serve(async (req) => {
     // 2. Filter to eligible members
     const eligiblePrefs = allPrefs.filter((p) => {
       if (p.reminder_hour !== currentHourPT) return false;
-      if (!shouldSendToday(p.reminder_frequency)) return false;
+      if (!shouldSendToday(p.reminder_frequency, p.last_digest_sent_at)) return false;
       if (p.last_digest_sent_at) {
         const minutesSinceLast = (now.getTime() - new Date(p.last_digest_sent_at).getTime()) / 60000;
         if (minutesSinceLast < 55) return false;

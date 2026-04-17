@@ -69,6 +69,29 @@ export function useGlobalRealtime(householdId: string | undefined) {
       .on("postgres_changes", { event: "*", schema: "public", table: "goal_updates", filter: hf },
         () => qc.invalidateQueries({ queryKey: ["goals", householdId] }))
 
+      // ── Checklist items ───────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "project_tasks" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["project"] });
+          qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
+        })
+      .on("postgres_changes", { event: "*", schema: "public", table: "completed_checklist_items" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["completed_checklist"] });
+          qc.invalidateQueries({ queryKey: ["project"] });
+          qc.invalidateQueries({ queryKey: ["trip"] });
+        })
+
+      // ── Vendors ──────────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "preferred_vendors", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["preferred_vendors", householdId] }))
+
+      // ── Household ────────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "household_members", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["household_members", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "household_invites", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["household_invites", householdId] }))
+
       // ── Garden ───────────────────────────────────────────────────────────────
       .on("postgres_changes", { event: "*", schema: "public", table: "garden_plots", filter: hf },
         () => qc.invalidateQueries({ queryKey: ["garden_plots", householdId] }))
