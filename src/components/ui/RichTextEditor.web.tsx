@@ -27,7 +27,6 @@ export function RichTextEditor({
 }: RichTextEditorProps) {
   const editorRef = useRef<HTMLDivElement>(null);
   const initializedRef = useRef(false);
-  const savedSelectionRef = useRef<Range | null>(null);
 
   // Set initial content only once on mount
   useEffect(() => {
@@ -43,60 +42,27 @@ export function RichTextEditor({
     }
   }, [onChange]);
 
-  // Save selection whenever it changes inside the editor
-  const saveSelection = useCallback(() => {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0 && editorRef.current?.contains(sel.anchorNode)) {
-      savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
-    }
-  }, []);
-
-  // Restore saved selection
-  const restoreSelection = useCallback(() => {
-    const sel = window.getSelection();
-    if (savedSelectionRef.current && sel) {
-      sel.removeAllRanges();
-      sel.addRange(savedSelectionRef.current);
-      return true;
-    }
-    return false;
-  }, []);
-
   const execCommand = useCallback((command: FormatCommand) => {
     const editor = editorRef.current;
     if (!editor) return;
 
-    // Restore the saved selection (toolbar mousedown blurs the editor)
-    editor.focus();
-    const restored = restoreSelection();
-
-    // If we couldn't restore a selection, place cursor at end
-    if (!restored) {
+    // If editor has no content, add a zero-width space so execCommand has
+    // something to work with (browsers need a text node for list commands).
+    if (!editor.textContent && editor.childNodes.length === 0) {
+      editor.innerHTML = "\u200B";
+      const range = document.createRange();
+      range.selectNodeContents(editor);
+      range.collapse(false);
       const sel = window.getSelection();
       if (sel) {
-        // Ensure there's at least a text node to work with
-        if (!editor.textContent && editor.childNodes.length === 0) {
-          const br = document.createElement("br");
-          editor.appendChild(br);
-        }
-        const range = document.createRange();
-        range.selectNodeContents(editor);
-        range.collapse(false);
         sel.removeAllRanges();
         sel.addRange(range);
       }
     }
 
     document.execCommand(command, false);
-
-    // Save the new selection position after the command
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-      savedSelectionRef.current = sel.getRangeAt(0).cloneRange();
-    }
-
     handleInput();
-  }, [handleInput, restoreSelection]);
+  }, [handleInput]);
 
   return (
     <div style={{ marginBottom: 16 }}>
@@ -121,14 +87,29 @@ export function RichTextEditor({
       ` }} />
 
       <div style={webStyles.wrapper}>
-        {/* Toolbar */}
+        {/* Editable area */}
+        <div
+          className="rte-editor"
+          ref={editorRef}
+          contentEditable
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onBlur={handleInput}
+          data-placeholder={placeholder}
+          style={{
+            ...webStyles.editor,
+            minHeight,
+          }}
+        />
+
+        {/* Toolbar at bottom — prevents pop-up conflicts when highlighting text */}
         <div style={webStyles.toolbar}>
           {TOOLBAR_ACTIONS.map((action) => (
             <button
               key={action.command}
               type="button"
               onMouseDown={(e) => {
-                // Prevent blur so selection stays in the editor
+                // preventDefault keeps focus + selection inside the editor
                 e.preventDefault();
                 execCommand(action.command);
               }}
@@ -140,27 +121,6 @@ export function RichTextEditor({
             </button>
           ))}
         </div>
-
-        {/* Editable area — pure HTML, no React Native View wrappers */}
-        <div
-          className="rte-editor"
-          ref={editorRef}
-          contentEditable
-          suppressContentEditableWarning
-          onInput={handleInput}
-          onBlur={() => {
-            saveSelection();
-            handleInput();
-          }}
-          onMouseUp={saveSelection}
-          onKeyUp={saveSelection}
-          onSelect={saveSelection}
-          data-placeholder={placeholder}
-          style={{
-            ...webStyles.editor,
-            minHeight,
-          }}
-        />
       </div>
     </div>
   );
@@ -184,7 +144,7 @@ const webStyles: Record<string, React.CSSProperties> = {
     display: "flex",
     flexDirection: "row" as const,
     backgroundColor: "#f9fafb",
-    borderBottom: "1px solid #e5e7eb",
+    borderTop: "1px solid #e5e7eb",
     height: 40,
     alignItems: "center",
     paddingLeft: 4,

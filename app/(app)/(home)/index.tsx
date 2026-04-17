@@ -529,47 +529,82 @@ export default function HomeScreen() {
     return assignedMemberId === currentMember?.id;
   };
 
-  // Recurring tasks — sorted by time within each tier (no-time first, then AM→PM)
+  // ── Build unified, time-sorted item lists per tier ──
+  // Each item becomes a tagged union so we can render the right component.
+  type HomeItem =
+    | { kind: "recurring"; data: RecurringTask }
+    | { kind: "oneoff"; data: Task }
+    | { kind: "project"; data: ProjectTask }
+    | { kind: "trip"; data: TripTask }
+    | { kind: "projectCard"; data: ProjectWithOwners };
+
+  const getItemTime = (item: HomeItem): number => {
+    switch (item.kind) {
+      case "recurring": return parseTimeToMinutes((item.data as any).time_of_day);
+      case "oneoff": return parseTimeToMinutes((item.data as any).due_time);
+      case "project": return parseTimeToMinutes((item.data as any).due_time);
+      case "trip": return parseTimeToMinutes((item.data as any).due_time);
+      case "projectCard": return parseTimeToMinutes(null);
+    }
+  };
+
+  const sortItems = (a: HomeItem, b: HomeItem) => getItemTime(a) - getItemTime(b);
+
   const filteredRecurring = (tasks ?? []).filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
-  const sortByTime = (a: RecurringTask, b: RecurringTask) =>
-    parseTimeToMinutes((a as any).time_of_day) - parseTimeToMinutes((b as any).time_of_day);
-  const overdueTasks = filteredRecurring.filter((t) => isOverdue(t.next_due_date)).sort(sortByTime);
-  const dueTodayTasks = filteredRecurring.filter((t) => isDueToday(t.next_due_date)).sort(sortByTime);
-  const dueTomorrowTasks = filteredRecurring.filter((t) => isDueTomorrow(t.next_due_date)).sort(sortByTime);
-  const dueSoonTasks = filteredRecurring.filter(
-    (t) => !isOverdue(t.next_due_date) && !isDueToday(t.next_due_date) && !isDueTomorrow(t.next_due_date) && isDueSoon(t.next_due_date, 7)
-  ).sort(sortByTime);
-
-  // One-off tasks with due dates
   const filteredOneOff = oneOffTasks.filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
-  const overdueOneOff = filteredOneOff.filter((t) => t.due_date && isOverdue(t.due_date));
-  const dueTodayOneOff = filteredOneOff.filter((t) => t.due_date && isDueToday(t.due_date));
-  const dueTomorrowOneOff = filteredOneOff.filter((t) => t.due_date && isDueTomorrow(t.due_date));
-  const dueSoonOneOff = filteredOneOff.filter(
-    (t) => t.due_date && !isOverdue(t.due_date) && !isDueToday(t.due_date) && !isDueTomorrow(t.due_date) && isDueSoon(t.due_date, 7)
-  );
-
-  // Project checklist items with due dates
   const filteredProjectTasks = allProjectTasks.filter((t) => t.due_date && isVisible(t.assigned_member_id, (t as any).is_personal) && matchesMember(t.assigned_member_id));
-  const overdueProjectTasks = filteredProjectTasks.filter((t) => isOverdue(t.due_date!));
-  const dueTodayProjectTasks = filteredProjectTasks.filter((t) => isDueToday(t.due_date!));
-  const dueTomorrowProjectTasks = filteredProjectTasks.filter((t) => isDueTomorrow(t.due_date!));
-  const dueSoonProjectTasks = filteredProjectTasks.filter(
-    (t) => !isOverdue(t.due_date!) && !isDueToday(t.due_date!) && !isDueTomorrow(t.due_date!) && isDueSoon(t.due_date!, 7)
+  const filteredTripTasks = allTripTasks.filter((t) => t.due_date && matchesMember(t.assigned_member_id));
+
+  function buildTierItems(
+    recurringFilter: (t: RecurringTask) => boolean,
+    oneOffFilter: (t: Task) => boolean,
+    projectTaskFilter: (t: ProjectTask) => boolean,
+    tripTaskFilter: (t: TripTask) => boolean,
+  ): HomeItem[] {
+    const items: HomeItem[] = [];
+    filteredRecurring.filter(recurringFilter).forEach((t) => items.push({ kind: "recurring", data: t }));
+    filteredOneOff.filter(oneOffFilter).forEach((t) => items.push({ kind: "oneoff", data: t }));
+    filteredProjectTasks.filter(projectTaskFilter).forEach((t) => items.push({ kind: "project", data: t }));
+    filteredTripTasks.filter(tripTaskFilter).forEach((t) => items.push({ kind: "trip", data: t }));
+    return items.sort(sortItems);
+  }
+
+  const overdueItems = [
+    ...overdueProjects.map((p): HomeItem => ({ kind: "projectCard", data: p })),
+    ...buildTierItems(
+      (t) => isOverdue(t.next_due_date),
+      (t) => !!t.due_date && isOverdue(t.due_date),
+      (t) => isOverdue(t.due_date!),
+      (t) => isOverdue(t.due_date!),
+    ),
+  ];
+
+  const dueTodayItems = buildTierItems(
+    (t) => isDueToday(t.next_due_date),
+    (t) => !!t.due_date && isDueToday(t.due_date),
+    (t) => isDueToday(t.due_date!),
+    (t) => isDueToday(t.due_date!),
   );
 
-  // Trip checklist items with due dates
-  const filteredTripTasks = allTripTasks.filter((t) => t.due_date && matchesMember(t.assigned_member_id));
-  const overdueTripTasks = filteredTripTasks.filter((t) => isOverdue(t.due_date!));
-  const dueTodayTripTasks = filteredTripTasks.filter((t) => isDueToday(t.due_date!));
-  const dueTomorrowTripTasks = filteredTripTasks.filter((t) => isDueTomorrow(t.due_date!));
-  const dueSoonTripTasks = filteredTripTasks.filter(
-    (t) => !isOverdue(t.due_date!) && !isDueToday(t.due_date!) && !isDueTomorrow(t.due_date!) && isDueSoon(t.due_date!, 7)
+  const dueTomorrowItems = buildTierItems(
+    (t) => isDueTomorrow(t.next_due_date),
+    (t) => !!t.due_date && isDueTomorrow(t.due_date),
+    (t) => isDueTomorrow(t.due_date!),
+    (t) => isDueTomorrow(t.due_date!),
   );
+
+  const dueSoonItems = [
+    ...dueSoonProjects.map((p): HomeItem => ({ kind: "projectCard", data: p })),
+    ...buildTierItems(
+      (t) => !isOverdue(t.next_due_date) && !isDueToday(t.next_due_date) && !isDueTomorrow(t.next_due_date) && isDueSoon(t.next_due_date, 7),
+      (t) => !!t.due_date && !isOverdue(t.due_date) && !isDueToday(t.due_date) && !isDueTomorrow(t.due_date) && isDueSoon(t.due_date, 7),
+      (t) => !isOverdue(t.due_date!) && !isDueToday(t.due_date!) && !isDueTomorrow(t.due_date!) && isDueSoon(t.due_date!, 7),
+      (t) => !isOverdue(t.due_date!) && !isDueToday(t.due_date!) && !isDueTomorrow(t.due_date!) && isDueSoon(t.due_date!, 7),
+    ),
+  ];
 
   // Stats — year-to-date spend (Jan 1 of current year)
-  const totalAlerts = overdueProjects.length + overdueTasks.length + overdueOneOff.length
-    + overdueProjectTasks.length + overdueTripTasks.length;
+  const totalAlerts = overdueItems.length;
   const thisYearStart = new Date(new Date().getFullYear(), 0, 1);
   const yearlySpend = (serviceRecords ?? [])
     .filter((r) => new Date(r.service_date) >= thisYearStart)
@@ -632,14 +667,67 @@ export default function HomeScreen() {
     }
   };
 
-  const hasAlerts = overdueProjects.length > 0 || overdueTasks.length > 0 || overdueOneOff.length > 0
-    || overdueProjectTasks.length > 0 || overdueTripTasks.length > 0;
-  const hasDueToday = dueTodayTasks.length > 0 || dueTodayOneOff.length > 0
-    || dueTodayProjectTasks.length > 0 || dueTodayTripTasks.length > 0;
-  const hasDueTomorrow = dueTomorrowTasks.length > 0 || dueTomorrowOneOff.length > 0
-    || dueTomorrowProjectTasks.length > 0 || dueTomorrowTripTasks.length > 0;
-  const hasUpcoming = dueSoonProjects.length > 0 || dueSoonTasks.length > 0 || dueSoonOneOff.length > 0
-    || dueSoonProjectTasks.length > 0 || dueSoonTripTasks.length > 0;
+  const hasAlerts = overdueItems.length > 0;
+  const hasDueToday = dueTodayItems.length > 0;
+  const hasDueTomorrow = dueTomorrowItems.length > 0;
+  const hasUpcoming = dueSoonItems.length > 0;
+
+  const renderHomeItem = (item: HomeItem, index: number) => {
+    switch (item.kind) {
+      case "projectCard": {
+        const p = item.data;
+        const isOD = p.expected_date && isOverdue(p.expected_date);
+        return isOD ? (
+          <OverdueProjectCard key={`pc-${p.id}`} project={p} onPress={() => router.push(`/(app)/(projects)/${p.id}`)} />
+        ) : (
+          <DueSoonProjectCard key={`pc-${p.id}`} project={p} onPress={() => router.push(`/(app)/(projects)/${p.id}`)} />
+        );
+      }
+      case "recurring": {
+        const t = item.data;
+        return (
+          <RecurringTaskRow
+            key={`rt-${t.id}-${index}`}
+            task={t}
+            onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
+            onComplete={() => handleCompleteRecurring(t)}
+          />
+        );
+      }
+      case "oneoff": {
+        const t = item.data;
+        return <OneOffTaskRow key={`oo-${t.id}-${index}`} task={t} onComplete={() => handleCompleteOneOff(t)} />;
+      }
+      case "project": {
+        const t = item.data;
+        return (
+          <ChecklistItemRow
+            key={`pt-${t.id}-${index}`}
+            title={t.title}
+            parentTitle={(t as any).project_title ?? "Project"}
+            dueDate={t.due_date!}
+            sourceType="Project"
+            onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
+            onComplete={() => handleCompleteProjectTask(t)}
+          />
+        );
+      }
+      case "trip": {
+        const t = item.data;
+        return (
+          <ChecklistItemRow
+            key={`tt-${t.id}-${index}`}
+            title={t.title}
+            parentTitle={(t as any).trip_title ?? "Trip"}
+            dueDate={t.due_date!}
+            sourceType="Activity"
+            onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
+            onComplete={() => handleCompleteTripTask(t)}
+          />
+        );
+      }
+    }
+  };
 
   return (
     <SafeAreaView className="flex-1 bg-[#E4F2E4]" edges={["top"]}>
@@ -712,46 +800,7 @@ export default function HomeScreen() {
         {hasAlerts && (
           <>
             <SectionHeader title="Needs Attention" count={totalAlerts} />
-            {overdueProjects.map((p) => (
-              <OverdueProjectCard
-                key={p.id}
-                project={p}
-                onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
-              />
-            ))}
-            {overdueTasks.map((t) => (
-              <RecurringTaskRow
-                key={t.id}
-                task={t}
-                onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
-                onComplete={() => handleCompleteRecurring(t)}
-              />
-            ))}
-            {overdueOneOff.map((t) => (
-              <OneOffTaskRow key={t.id} task={t} onComplete={() => handleCompleteOneOff(t)} />
-            ))}
-            {overdueProjectTasks.map((t) => (
-              <ChecklistItemRow
-                key={`pt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).project_title ?? "Project"}
-                dueDate={t.due_date!}
-                sourceType="Project"
-                onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
-                onComplete={() => handleCompleteProjectTask(t)}
-              />
-            ))}
-            {overdueTripTasks.map((t) => (
-              <ChecklistItemRow
-                key={`tt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).trip_title ?? "Trip"}
-                dueDate={t.due_date!}
-                sourceType="Activity"
-                onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
-                onComplete={() => handleCompleteTripTask(t)}
-              />
-            ))}
+            {overdueItems.map(renderHomeItem)}
           </>
         )}
 
@@ -759,39 +808,7 @@ export default function HomeScreen() {
         {hasDueToday && (
           <>
             <SectionHeader title="Due Today" />
-            {dueTodayTasks.map((t) => (
-              <RecurringTaskRow
-                key={t.id}
-                task={t}
-                onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
-                onComplete={() => handleCompleteRecurring(t)}
-              />
-            ))}
-            {dueTodayOneOff.map((t) => (
-              <OneOffTaskRow key={t.id} task={t} onComplete={() => handleCompleteOneOff(t)} />
-            ))}
-            {dueTodayProjectTasks.map((t) => (
-              <ChecklistItemRow
-                key={`pt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).project_title ?? "Project"}
-                dueDate={t.due_date!}
-                sourceType="Project"
-                onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
-                onComplete={() => handleCompleteProjectTask(t)}
-              />
-            ))}
-            {dueTodayTripTasks.map((t) => (
-              <ChecklistItemRow
-                key={`tt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).trip_title ?? "Trip"}
-                dueDate={t.due_date!}
-                sourceType="Activity"
-                onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
-                onComplete={() => handleCompleteTripTask(t)}
-              />
-            ))}
+            {dueTodayItems.map(renderHomeItem)}
           </>
         )}
 
@@ -799,39 +816,7 @@ export default function HomeScreen() {
         {hasDueTomorrow && (
           <>
             <SectionHeader title="Due Tomorrow" />
-            {dueTomorrowTasks.map((t) => (
-              <RecurringTaskRow
-                key={t.id}
-                task={t}
-                onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
-                onComplete={() => handleCompleteRecurring(t)}
-              />
-            ))}
-            {dueTomorrowOneOff.map((t) => (
-              <OneOffTaskRow key={t.id} task={t} onComplete={() => handleCompleteOneOff(t)} />
-            ))}
-            {dueTomorrowProjectTasks.map((t) => (
-              <ChecklistItemRow
-                key={`pt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).project_title ?? "Project"}
-                dueDate={t.due_date!}
-                sourceType="Project"
-                onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
-                onComplete={() => handleCompleteProjectTask(t)}
-              />
-            ))}
-            {dueTomorrowTripTasks.map((t) => (
-              <ChecklistItemRow
-                key={`tt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).trip_title ?? "Trip"}
-                dueDate={t.due_date!}
-                sourceType="Activity"
-                onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
-                onComplete={() => handleCompleteTripTask(t)}
-              />
-            ))}
+            {dueTomorrowItems.map(renderHomeItem)}
           </>
         )}
 
@@ -839,46 +824,7 @@ export default function HomeScreen() {
         {hasUpcoming && (
           <>
             <SectionHeader title="Coming Up" />
-            {dueSoonProjects.map((p) => (
-              <DueSoonProjectCard
-                key={p.id}
-                project={p}
-                onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
-              />
-            ))}
-            {dueSoonTasks.map((t) => (
-              <RecurringTaskRow
-                key={t.id}
-                task={t}
-                onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
-                onComplete={() => handleCompleteRecurring(t)}
-              />
-            ))}
-            {dueSoonOneOff.map((t) => (
-              <OneOffTaskRow key={t.id} task={t} onComplete={() => handleCompleteOneOff(t)} />
-            ))}
-            {dueSoonProjectTasks.map((t) => (
-              <ChecklistItemRow
-                key={`pt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).project_title ?? "Project"}
-                dueDate={t.due_date!}
-                sourceType="Project"
-                onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
-                onComplete={() => handleCompleteProjectTask(t)}
-              />
-            ))}
-            {dueSoonTripTasks.map((t) => (
-              <ChecklistItemRow
-                key={`tt-${t.id}`}
-                title={t.title}
-                parentTitle={(t as any).trip_title ?? "Trip"}
-                dueDate={t.due_date!}
-                sourceType="Activity"
-                onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
-                onComplete={() => handleCompleteTripTask(t)}
-              />
-            ))}
+            {dueSoonItems.map(renderHomeItem)}
           </>
         )}
 
