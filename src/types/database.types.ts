@@ -749,6 +749,66 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      gifts: {
+        Row: {
+          id: string;
+          household_id: string;
+          recipient_member_id: string;
+          added_by_member_id: string | null;
+          name: string | null;
+          gift_date: string | null;
+          priority: "high" | "medium" | "low" | null;
+          store: string | null;
+          price: number | null;
+          color_material: string | null;
+          size: string | null;
+          link: string | null;
+          bought: boolean;
+          bought_by_member_id: string | null;
+          bought_at: string | null;
+          totals_cleared_at: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          household_id: string;
+          recipient_member_id: string;
+          added_by_member_id?: string | null;
+          name?: string | null;
+          gift_date?: string | null;
+          priority?: "high" | "medium" | "low" | null;
+          store?: string | null;
+          price?: number | null;
+          color_material?: string | null;
+          size?: string | null;
+          link?: string | null;
+          bought?: boolean;
+          bought_by_member_id?: string | null;
+          bought_at?: string | null;
+          totals_cleared_at?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          household_id?: string;
+          recipient_member_id?: string;
+          added_by_member_id?: string | null;
+          name?: string | null;
+          gift_date?: string | null;
+          priority?: "high" | "medium" | "low" | null;
+          store?: string | null;
+          price?: number | null;
+          color_material?: string | null;
+          size?: string | null;
+          link?: string | null;
+          bought?: boolean;
+          bought_by_member_id?: string | null;
+          bought_at?: string | null;
+          totals_cleared_at?: string | null;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
       garden_weather_logs: {
         Row: {
           id: string;

@@ -111,6 +111,14 @@ export default function AppLayout() {
         }}
       />
       <Tabs.Screen
+        name="(gifts)"
+        options={{
+          tabBarIcon: ({ focused }) => (
+            <TabIcon emoji="🎁" label="Gifts" focused={focused} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="(garden)"
         options={{
           tabBarIcon: ({ focused }) => (

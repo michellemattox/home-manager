@@ -26,6 +26,8 @@ export type PreferredVendor = Database["public"]["Tables"]["preferred_vendors"][
 export type HouseholdInvite = Database["public"]["Tables"]["household_invites"]["Row"];
 export type Goal = Database["public"]["Tables"]["goals"]["Row"];
 export type GoalUpdate = Database["public"]["Tables"]["goal_updates"]["Row"];
+export type Gift = Database["public"]["Tables"]["gifts"]["Row"];
+export type GiftPriority = NonNullable<Gift["priority"]>;
 
 export type ProjectStatus = Project["status"];
 export type ProjectPriority = Project["priority"];
