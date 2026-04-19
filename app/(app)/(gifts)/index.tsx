@@ -28,7 +28,10 @@ import { formatDateShort } from "@/utils/dateUtils";
 import type { Gift, GiftPriority } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 
-type SortMode = "priority" | "price" | "date_added";
+type SortMode = "priority" | "price" | "date_added" | "store";
+
+// Sentinel recipient id for the shared "Home" list (stored as NULL in DB).
+const HOME_LIST_ID = "__home__";
 
 const PRIORITY_OPTIONS: { label: string; value: GiftPriority }[] = [
   { label: "High", value: "high" },
@@ -155,15 +158,19 @@ function GiftFormFields(props: {
 
 function GiftCard({
   gift,
-  viewerIsRecipient,
+  canSeeBought,
+  canMarkBought,
   buyerName,
+  storeHint,
   onMarkBought,
   onEdit,
   onDelete,
 }: {
   gift: Gift;
-  viewerIsRecipient: boolean;
+  canSeeBought: boolean;
+  canMarkBought: boolean;
   buyerName: string | null;
+  storeHint: string | null;
   onMarkBought: (gift: Gift, bought: boolean) => void;
   onEdit: (gift: Gift) => void;
   onDelete: (gift: Gift) => void;
@@ -177,8 +184,7 @@ function GiftCard({
     }
   };
 
-  // Recipient (viewer) must see a "clean" view — no bought state hints.
-  const showBought = !viewerIsRecipient && gift.bought;
+  const showBought = canSeeBought && gift.bought;
 
   return (
     <Card className="mb-3">
@@ -229,8 +235,14 @@ function GiftCard({
         </View>
       )}
 
+      {storeHint && (
+        <View className="mt-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          <Text className="text-xs text-amber-800">💡 {storeHint}</Text>
+        </View>
+      )}
+
       <View className="mt-3 pt-2 border-t border-gray-100 flex-row flex-wrap gap-2">
-        {!viewerIsRecipient && (
+        {canMarkBought && (
           <TouchableOpacity
             onPress={() => onMarkBought(gift, !gift.bought)}
             className={`px-3 py-1.5 rounded-full border ${
@@ -325,11 +337,14 @@ export default function GiftsScreen() {
       .reduce((sum, g) => sum + Number(g.price), 0);
   }, [gifts, currentMember]);
 
-  // Apply recipient filter
+  // Apply recipient filter (HOME_LIST_ID matches gifts with null recipient)
   const visibleGifts = useMemo(() => {
-    const base = recipientFilter
-      ? gifts.filter((g) => g.recipient_member_id === recipientFilter)
-      : gifts;
+    const base =
+      recipientFilter === HOME_LIST_ID
+        ? gifts.filter((g) => g.recipient_member_id == null)
+        : recipientFilter
+        ? gifts.filter((g) => g.recipient_member_id === recipientFilter)
+        : gifts;
     const sorted = [...base];
     if (sortMode === "priority") {
       sorted.sort((a, b) => {
@@ -348,13 +363,69 @@ export default function GiftsScreen() {
       sorted.sort(
         (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
       );
+    } else if (sortMode === "store") {
+      sorted.sort((a, b) => {
+        const sa = (a.store ?? "").toLowerCase();
+        const sb = (b.store ?? "").toLowerCase();
+        if (!sa && !sb) return 0;
+        if (!sa) return 1;
+        if (!sb) return -1;
+        return sa.localeCompare(sb);
+      });
     }
     return sorted;
   }, [gifts, recipientFilter, sortMode]);
 
+  // Build store → [{ gift, recipientId }] index for cross-list hints.
+  // Groups all household gifts by normalized store name.
+  const storeIndex = useMemo(() => {
+    const map = new Map<string, Gift[]>();
+    for (const g of gifts) {
+      if (!g.store) continue;
+      const key = g.store.trim().toLowerCase();
+      if (!key) continue;
+      const arr = map.get(key) ?? [];
+      arr.push(g);
+      map.set(key, arr);
+    }
+    return map;
+  }, [gifts]);
+
+  // For a given gift, produce a hint about other items from the same store
+  // that sit on a *different* recipient's list. Returns null if nothing to show.
+  const buildStoreHint = (gift: Gift): string | null => {
+    if (!gift.store) return null;
+    const key = gift.store.trim().toLowerCase();
+    const peers = (storeIndex.get(key) ?? []).filter(
+      (g) => g.id !== gift.id && g.recipient_member_id !== gift.recipient_member_id
+    );
+    if (peers.length === 0) return null;
+    // Group peers by list label
+    const byList = new Map<string, string[]>();
+    for (const p of peers) {
+      const label =
+        p.recipient_member_id == null
+          ? "the Home list"
+          : p.recipient_member_id === currentMember?.id
+          ? "your list"
+          : `${members.find((m) => m.id === p.recipient_member_id)?.display_name ?? "someone"}'s list`;
+      const arr = byList.get(label) ?? [];
+      arr.push(p.name || "Untitled");
+      byList.set(label, arr);
+    }
+    const parts = Array.from(byList.entries()).map(
+      ([label, names]) => `${names.slice(0, 3).join(", ")}${names.length > 3 ? "…" : ""} on ${label}`
+    );
+    return `${gift.store} also has ${parts.join(" and ")} from this store.`;
+  };
+
   const handleCreate = async () => {
     if (!household || !currentMember) return;
-    const recipientId = newRecipient ?? currentMember.id;
+    // newRecipient: string member id, HOME_LIST_ID, or null (defaults to self).
+    const recipientId =
+      newRecipient === HOME_LIST_ID
+        ? null
+        : newRecipient ?? currentMember.id;
     try {
       await createGift.mutateAsync({
         household_id: household.id,
@@ -446,12 +517,12 @@ export default function GiftsScreen() {
   };
 
   return (
-    <SafeAreaView className="flex-1 bg-[#F5E7D3]" edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-[#BACAFF]" edges={["top"]}>
       <AppHeader compact />
       <View className="px-4 py-3 flex-row items-center">
         <View className="flex-1">
           <Text className="text-xl font-bold text-gray-900">Gifts</Text>
-          <Text className="text-xs text-gray-400">
+          <Text className="text-xs text-gray-700">
             Shared wish lists and gift tracking.
           </Text>
         </View>
@@ -526,6 +597,24 @@ export default function GiftsScreen() {
               </TouchableOpacity>
             );
           })}
+          <TouchableOpacity
+            onPress={() =>
+              setRecipientFilter(recipientFilter === HOME_LIST_ID ? null : HOME_LIST_ID)
+            }
+            className={`px-3 py-1.5 rounded-full border mr-2 ${
+              recipientFilter === HOME_LIST_ID
+                ? "bg-emerald-600 border-emerald-600"
+                : "bg-white border-gray-200"
+            }`}
+          >
+            <Text
+              className={`text-xs font-semibold ${
+                recipientFilter === HOME_LIST_ID ? "text-white" : "text-gray-600"
+              }`}
+            >
+              🏠 Home (shared)
+            </Text>
+          </TouchableOpacity>
         </ScrollView>
       </View>
 
@@ -536,6 +625,7 @@ export default function GiftsScreen() {
             { v: "priority", l: "Priority (High → Low)" },
             { v: "price", l: "Price (High → Low)" },
             { v: "date_added", l: "Date Added (Oldest)" },
+            { v: "store", l: "Store (A → Z)" },
           ] as const).map((s) => {
             const active = sortMode === s.v;
             return (
@@ -573,21 +663,33 @@ export default function GiftsScreen() {
           </View>
         ) : (
           visibleGifts.map((g) => {
+            const isHomeList = g.recipient_member_id == null;
             const viewerIsRecipient = g.recipient_member_id === currentMember?.id;
             const recipient = members.find((m) => m.id === g.recipient_member_id);
             const buyer = members.find((m) => m.id === g.bought_by_member_id);
+            // Home list: both members see bought state AND can mark bought.
+            // Personal list: recipient sees clean view; non-recipients can buy.
+            const canSeeBought = isHomeList || !viewerIsRecipient;
+            const canMarkBought = isHomeList || !viewerIsRecipient;
             return (
               <View key={g.id}>
-                {recipientFilter === null && recipient && (
-                  <Text className="text-xs text-gray-400 mb-1 px-1">
-                    For {recipient.display_name}
-                    {recipient.id === currentMember?.id ? " (You)" : ""}
+                {recipientFilter === null && (
+                  <Text className="text-xs text-gray-700 mb-1 px-1">
+                    {isHomeList
+                      ? "For 🏠 Home"
+                      : recipient
+                      ? `For ${recipient.display_name}${
+                          recipient.id === currentMember?.id ? " (You)" : ""
+                        }`
+                      : ""}
                   </Text>
                 )}
                 <GiftCard
                   gift={g}
-                  viewerIsRecipient={viewerIsRecipient}
+                  canSeeBought={canSeeBought}
+                  canMarkBought={canMarkBought}
                   buyerName={buyer?.display_name ?? null}
+                  storeHint={buildStoreHint(g)}
                   onMarkBought={handleMarkBought}
                   onEdit={openEdit}
                   onDelete={handleDelete}
@@ -605,7 +707,7 @@ export default function GiftsScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setShowNewModal(false)}
       >
-        <SafeAreaView className="flex-1 bg-[#F5E7D3]">
+        <SafeAreaView className="flex-1 bg-[#BACAFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity
               onPress={() => {
@@ -645,6 +747,22 @@ export default function GiftsScreen() {
                   </TouchableOpacity>
                 );
               })}
+              <TouchableOpacity
+                onPress={() => setNewRecipient(HOME_LIST_ID)}
+                className={`px-3 py-1.5 rounded-full border ${
+                  newRecipient === HOME_LIST_ID
+                    ? "bg-emerald-600 border-emerald-600"
+                    : "bg-white border-gray-200"
+                }`}
+              >
+                <Text
+                  className={`text-sm font-medium ${
+                    newRecipient === HOME_LIST_ID ? "text-white" : "text-gray-700"
+                  }`}
+                >
+                  🏠 Home (shared)
+                </Text>
+              </TouchableOpacity>
             </View>
 
             <GiftFormFields
@@ -678,7 +796,7 @@ export default function GiftsScreen() {
         presentationStyle="pageSheet"
         onRequestClose={() => setEditingGift(null)}
       >
-        <SafeAreaView className="flex-1 bg-[#F5E7D3]">
+        <SafeAreaView className="flex-1 bg-[#BACAFF]">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
             <TouchableOpacity onPress={() => setEditingGift(null)} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>

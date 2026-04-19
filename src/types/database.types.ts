@@ -753,7 +753,7 @@ export interface Database {
         Row: {
           id: string;
           household_id: string;
-          recipient_member_id: string;
+          recipient_member_id: string | null;
           added_by_member_id: string | null;
           name: string | null;
           gift_date: string | null;
@@ -772,7 +772,7 @@ export interface Database {
         Insert: {
           id?: string;
           household_id: string;
-          recipient_member_id: string;
+          recipient_member_id: string | null;
           added_by_member_id?: string | null;
           name?: string | null;
           gift_date?: string | null;
@@ -791,7 +791,7 @@ export interface Database {
         Update: {
           id?: string;
           household_id?: string;
-          recipient_member_id?: string;
+          recipient_member_id?: string | null;
           added_by_member_id?: string | null;
           name?: string | null;
           gift_date?: string | null;
