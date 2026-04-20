@@ -1,8 +1,8 @@
 import React from "react";
 import { Tabs } from "expo-router";
 import { Text, View } from "react-native";
-import { useNotificationStore } from "@/stores/notificationStore";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
+import { useOverdueOrDueTodayCount } from "@/hooks/useRecurringTasks";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useGlobalRealtime } from "@/hooks/useRealtimeInvalidate";
 
@@ -20,7 +20,8 @@ function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focu
 }
 
 function TasksTabIcon({ focused }: { focused: boolean }) {
-  const count = useNotificationStore((s) => s.overdueTaskCount);
+  const householdId = useHouseholdStore((s) => s.household?.id);
+  const count = useOverdueOrDueTodayCount(householdId);
   return (
     <View className="items-center pt-1">
       <View>

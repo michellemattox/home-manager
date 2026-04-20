@@ -31,9 +31,6 @@ const notifStorage =
 export type ReminderFrequency = "daily" | "every_other_day" | "weekly" | "monthly";
 
 interface NotificationState {
-  overdueTaskCount: number;
-  setOverdueTaskCount: (count: number) => void;
-
   // User preferences (persisted)
   overdueEnabled: boolean;
   dueSoonEnabled: boolean;
@@ -53,9 +50,6 @@ interface NotificationState {
 export const useNotificationStore = create<NotificationState>()(
   persist(
     (set) => ({
-      overdueTaskCount: 0,
-      setOverdueTaskCount: (count) => set({ overdueTaskCount: count }),
-
       overdueEnabled: true,
       dueSoonEnabled: true,
       summaryEnabled: false,

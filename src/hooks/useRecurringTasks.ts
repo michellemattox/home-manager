@@ -1,14 +1,12 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { calculateNextDueDate } from "@/utils/scheduleUtils";
-import { useNotificationStore } from "@/stores/notificationStore";
-import { isOverdue } from "@/utils/dateUtils";
+import { isOverdue, isDueToday } from "@/utils/dateUtils";
 import { useUndoStore } from "@/stores/undoStore";
-import type { RecurringTask, RecurringTaskCompletion } from "@/types/app.types";
+import { useTasks } from "@/hooks/useTasks";
+import type { RecurringTask, RecurringTaskCompletion, Task } from "@/types/app.types";
 
 export function useRecurringTasks(householdId: string | undefined) {
-  const setOverdueCount = useNotificationStore((s) => s.setOverdueTaskCount);
-
   return useQuery({
     queryKey: ["recurring_tasks", householdId],
     queryFn: async () => {
@@ -20,13 +18,28 @@ export function useRecurringTasks(householdId: string | undefined) {
         .eq("is_active", true)
         .order("next_due_date");
       if (error) throw error;
-      const tasks = (data ?? []) as RecurringTask[];
-      const overdue = tasks.filter((t) => isOverdue(t.next_due_date)).length;
-      setOverdueCount(overdue);
-      return tasks;
+      return (data ?? []) as RecurringTask[];
     },
     enabled: !!householdId,
   });
+}
+
+// Live count of tasks that are overdue or due today across both recurring and
+// one-off tasks. Derives from the same TanStack query caches the tab screens
+// read, so optimistic setQueryData updates (task completion, delete) re-render
+// the badge instantly instead of waiting for a refetch.
+export function useOverdueOrDueTodayCount(householdId: string | undefined): number {
+  const { data: recurring } = useRecurringTasks(householdId);
+  const { data: oneOff } = useTasks(householdId);
+
+  const fromRecurring = (recurring ?? []).filter(
+    (t: RecurringTask) => isOverdue(t.next_due_date) || isDueToday(t.next_due_date)
+  ).length;
+  const fromOneOff = (oneOff ?? []).filter(
+    (t: Task) => !!t.due_date && (isOverdue(t.due_date) || isDueToday(t.due_date))
+  ).length;
+
+  return fromRecurring + fromOneOff;
 }
 
 export function useCreateRecurringTask() {
