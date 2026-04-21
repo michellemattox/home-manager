@@ -1,6 +1,6 @@
 {
   "installCommand": "npm install --legacy-peer-deps",
-  "buildCommand": "npx expo export --platform web",
+  "buildCommand": "npx expo export --platform web && node scripts/inject-pwa.mjs",
   "outputDirectory": "dist",
   "framework": null,
   "rewrites": [

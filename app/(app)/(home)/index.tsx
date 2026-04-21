@@ -305,10 +305,10 @@ function StatCard({ label, value, sub, color, bgColor, onPress }: {
   label: string; value: string; sub?: string; color: string; bgColor?: string; onPress?: () => void;
 }) {
   const content = (
-    <View className={`flex-1 rounded-xl p-3 ${color}`} style={bgColor ? { backgroundColor: bgColor } : undefined}>
-      <Text className="text-2xl font-bold text-gray-900">{value}</Text>
-      <Text className="text-xs font-semibold text-gray-700 mt-0.5">{label}</Text>
-      {sub && <Text className="text-xs text-gray-500 mt-0.5">{sub}</Text>}
+    <View className={`flex-1 rounded-xl px-3 py-2 ${color}`} style={bgColor ? { backgroundColor: bgColor } : undefined}>
+      <Text className="text-lg font-bold text-gray-900">{value}</Text>
+      <Text className="text-[11px] font-semibold text-gray-700 mt-0.5" numberOfLines={1}>{label}</Text>
+      {sub && <Text className="text-[10px] text-gray-500 mt-0.5" numberOfLines={1}>{sub}</Text>}
     </View>
   );
   return onPress ? <TouchableOpacity className="flex-1" onPress={onPress}>{content}</TouchableOpacity> : content;
@@ -771,7 +771,7 @@ export default function HomeScreen() {
         </View>
 
         {/* Stats Row */}
-        <View className="flex-row gap-3 mt-3">
+        <View className="flex-row gap-2 mt-3">
           <StatCard
             label="Active Projects"
             value={String(activeProjects.length)}
@@ -794,6 +794,24 @@ export default function HomeScreen() {
             bgColor="#FA9B75"
             onPress={() => router.push("/(app)/(services)")}
           />
+        </View>
+
+        {/* Quick-link buttons (Goals + Garden — moved off the tab bar) */}
+        <View className="flex-row gap-2 mt-2">
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(goals)")}
+            className="flex-1 flex-row items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-300 bg-white"
+          >
+            <Text style={{ fontSize: 14 }}>🎯</Text>
+            <Text className="text-xs font-semibold text-gray-700">Goals</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/(garden)")}
+            className="flex-1 flex-row items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-300 bg-white"
+          >
+            <Text style={{ fontSize: 14 }}>🌱</Text>
+            <Text className="text-xs font-semibold text-gray-700">Garden</Text>
+          </TouchableOpacity>
         </View>
 
         {/* Needs Attention (Overdue) */}

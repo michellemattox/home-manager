@@ -4,6 +4,9 @@ import { calculateNextDueDate } from "@/utils/scheduleUtils";
 import { isOverdue, isDueToday } from "@/utils/dateUtils";
 import { useUndoStore } from "@/stores/undoStore";
 import { useTasks } from "@/hooks/useTasks";
+import { useFilterStore } from "@/stores/filterStore";
+import { useHouseholdStore } from "@/stores/householdStore";
+import { useAuthStore } from "@/stores/authStore";
 import type { RecurringTask, RecurringTaskCompletion, Task } from "@/types/app.types";
 
 export function useRecurringTasks(householdId: string | undefined) {
@@ -25,18 +28,39 @@ export function useRecurringTasks(householdId: string | undefined) {
 }
 
 // Live count of tasks that are overdue or due today across both recurring and
-// one-off tasks. Derives from the same TanStack query caches the tab screens
-// read, so optimistic setQueryData updates (task completion, delete) re-render
-// the badge instantly instead of waiting for a refetch.
+// one-off tasks, honoring the member filter + personal-task visibility rules
+// used by the Home and Tasks tabs. Derives from the same TanStack query caches
+// so optimistic setQueryData updates re-render the badge instantly.
 export function useOverdueOrDueTodayCount(householdId: string | undefined): number {
   const { data: recurring } = useRecurringTasks(householdId);
   const { data: oneOff } = useTasks(householdId);
+  const selectedMembers = useFilterStore((s) => s.memberFilter);
+  const members = useHouseholdStore((s) => s.members);
+  const user = useAuthStore((s) => s.user);
+  const currentMemberId = members.find((m) => m.user_id === user?.id)?.id;
+
+  const matchesMember = (memberId: string | null | undefined) => {
+    if (selectedMembers.length === 0) return true;
+    if (memberId == null) return selectedMembers.includes("__unassigned__");
+    return selectedMembers.includes(memberId);
+  };
+  const isVisible = (memberId: string | null | undefined, isPersonal: boolean | null | undefined) => {
+    if (!isPersonal) return true;
+    return memberId === currentMemberId;
+  };
 
   const fromRecurring = (recurring ?? []).filter(
-    (t: RecurringTask) => isOverdue(t.next_due_date) || isDueToday(t.next_due_date)
+    (t: RecurringTask) =>
+      isVisible(t.assigned_member_id, t.is_personal) &&
+      matchesMember(t.assigned_member_id) &&
+      (isOverdue(t.next_due_date) || isDueToday(t.next_due_date))
   ).length;
   const fromOneOff = (oneOff ?? []).filter(
-    (t: Task) => !!t.due_date && (isOverdue(t.due_date) || isDueToday(t.due_date))
+    (t: Task) =>
+      !!t.due_date &&
+      isVisible(t.assigned_member_id, t.is_personal) &&
+      matchesMember(t.assigned_member_id) &&
+      (isOverdue(t.due_date) || isDueToday(t.due_date))
   ).length;
 
   return fromRecurring + fromOneOff;
