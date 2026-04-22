@@ -360,9 +360,13 @@ export default function GiftsScreen() {
         return pb - pa;
       });
     } else if (sortMode === "date_added") {
-      sorted.sort(
-        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
-      );
+      sorted.sort((a, b) => {
+        // Sort by gift_date (oldest → newest). Items without a gift_date fall to the end.
+        if (!a.gift_date && !b.gift_date) return 0;
+        if (!a.gift_date) return 1;
+        if (!b.gift_date) return -1;
+        return a.gift_date.localeCompare(b.gift_date);
+      });
     } else if (sortMode === "store") {
       sorted.sort((a, b) => {
         const sa = (a.store ?? "").toLowerCase();

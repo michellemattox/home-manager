@@ -387,6 +387,9 @@ export interface Database {
           linked_event_id: string | null;
           time_of_day: string | null;
           is_personal: boolean;
+          days_of_week: number[] | null;
+          nth_week: number | null;
+          nth_weekday: number | null;
         };
         Insert: {
           id?: string;
@@ -406,6 +409,9 @@ export interface Database {
           linked_event_id?: string | null;
           time_of_day?: string | null;
           is_personal?: boolean;
+          days_of_week?: number[] | null;
+          nth_week?: number | null;
+          nth_weekday?: number | null;
         };
         Update: {
           id?: string;
@@ -425,6 +431,9 @@ export interface Database {
           linked_event_id?: string | null;
           time_of_day?: string | null;
           is_personal?: boolean;
+          days_of_week?: number[] | null;
+          nth_week?: number | null;
+          nth_weekday?: number | null;
         };
         Relationships: Rel;
       };

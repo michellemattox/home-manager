@@ -36,7 +36,7 @@ import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, formatDate, formatDateShort, toISODateString, taskBadgeLabel, parseTimeToMinutes, normalizeTimeTo12h } from "@/utils/dateUtils";
-import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
+import { frequencyLabel as getFreqLabel, frequencyToDays, frequencyLabelFromRule, firstOccurrenceOnOrAfter } from "@/utils/scheduleUtils";
 import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { RepeatPickerModal } from "@/components/ui/RepeatPicker";
@@ -237,9 +237,12 @@ export default function TasksScreen() {
   const [llIsPersonal, setLlIsPersonal] = useState(false);
   const [llShowRepeatPicker, setLlShowRepeatPicker] = useState(false);
   const [llRepeatLabel, setLlRepeatLabel] = useState("");
+  const [llDaysOfWeek, setLlDaysOfWeek] = useState<number[] | null>(null);
+  const [llNthWeek, setLlNthWeek] = useState<number | null>(null);
+  const [llNthWeekday, setLlNthWeekday] = useState<number | null>(null);
 
   // Auto-save state for low-lift modal
-  const llInitialRef = useRef<{ title: string; notes: string; anchor: string; time: string; freq: string; days: string; assigned: string | undefined } | null>(null);
+  const llInitialRef = useRef<{ title: string; notes: string; anchor: string; time: string; freq: string; days: string; assigned: string | undefined; personal?: boolean; dow?: string; nw?: number | null; nwd?: number | null } | null>(null);
   const llAutoSaveRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [llSaved, setLlSaved] = useState(false);
 
@@ -254,10 +257,20 @@ export default function TasksScreen() {
     setLlCustomDays(String(task.frequency_days));
     setLlAssignedId(task.assigned_member_id ?? undefined);
     setLlIsPersonal(task.is_personal);
+    const taskDow = (task as any).days_of_week ?? null;
+    const taskNw = (task as any).nth_week ?? null;
+    const taskNwd = (task as any).nth_weekday ?? null;
+    setLlDaysOfWeek(taskDow);
+    setLlNthWeek(taskNw);
+    setLlNthWeekday(taskNwd);
     setLlRepeatLabel(
       task.frequency_type === "no_repeat"
         ? "Doesn't Repeat"
-        : getFreqLabel(task.frequency_type, task.frequency_days)
+        : frequencyLabelFromRule(task.frequency_type, task.frequency_days, {
+            daysOfWeek: taskDow,
+            nthWeek: taskNw,
+            nthWeekday: taskNwd,
+          })
     );
     setLlSaved(false);
     llInitialRef.current = {
@@ -265,6 +278,9 @@ export default function TasksScreen() {
       time: (task as any).time_of_day ?? "", freq: task.frequency_type,
       days: String(task.frequency_days), assigned: task.assigned_member_id ?? undefined,
       personal: task.is_personal,
+      dow: JSON.stringify(taskDow ?? []),
+      nw: taskNw,
+      nwd: taskNwd,
     };
   };
 
@@ -280,6 +296,19 @@ export default function TasksScreen() {
     const freqDays = llFreqType === "custom"
       ? parseInt(llCustomDays || "30", 10)
       : frequencyToDays(llFreqType);
+    const hasRule =
+      (llDaysOfWeek && llDaysOfWeek.length > 0) ||
+      (llNthWeek != null && llNthWeekday != null);
+    const anchor = llAnchorDate || toISODateString(new Date());
+    let nextDue = anchor;
+    if (hasRule) {
+      const anchorParts = anchor.split("-").map(Number);
+      const anchorLocal = new Date(anchorParts[0], anchorParts[1] - 1, anchorParts[2]);
+      nextDue = firstOccurrenceOnOrAfter(
+        { daysOfWeek: llDaysOfWeek, nthWeek: llNthWeek, nthWeekday: llNthWeekday },
+        anchorLocal
+      );
+    }
     try {
       await updateRecurring.mutateAsync({
         id: editingLowLift.id,
@@ -287,19 +316,27 @@ export default function TasksScreen() {
         updates: {
           title: llTitle.trim(),
           description: llNotes.trim() || null,
-          anchor_date: llAnchorDate || toISODateString(new Date()),
-          next_due_date: llAnchorDate || toISODateString(new Date()),
+          anchor_date: anchor,
+          next_due_date: nextDue,
           frequency_type: llFreqType,
           frequency_days: freqDays,
           assigned_member_id: llAssignedId ?? null,
           time_of_day: llTimeOfDay.trim() ? normalizeTimeTo12h(llTimeOfDay.trim()) : null,
           is_personal: llIsPersonal,
+          days_of_week: llDaysOfWeek,
+          nth_week: llNthWeek,
+          nth_weekday: llNthWeekday,
         },
       });
       // Update local state to the normalized value so the field shows 12hr
       const normalizedTime = llTimeOfDay.trim() ? normalizeTimeTo12h(llTimeOfDay.trim()) : "";
       if (normalizedTime !== llTimeOfDay) setLlTimeOfDay(normalizedTime);
-      llInitialRef.current = { title: llTitle, notes: llNotes, anchor: llAnchorDate, time: normalizedTime || llTimeOfDay, freq: llFreqType, days: llCustomDays, assigned: llAssignedId, personal: llIsPersonal };
+      llInitialRef.current = {
+        title: llTitle, notes: llNotes, anchor: llAnchorDate,
+        time: normalizedTime || llTimeOfDay, freq: llFreqType, days: llCustomDays,
+        assigned: llAssignedId, personal: llIsPersonal,
+        dow: JSON.stringify(llDaysOfWeek ?? []), nw: llNthWeek, nwd: llNthWeekday,
+      };
       setLlSaved(true);
       setTimeout(() => setLlSaved(false), 2000);
     } catch (e: any) {
@@ -313,12 +350,15 @@ export default function TasksScreen() {
     const init = llInitialRef.current;
     const dirty = llTitle !== init.title || llNotes !== init.notes || llAnchorDate !== init.anchor
       || llTimeOfDay !== init.time || llFreqType !== init.freq || llCustomDays !== init.days
-      || llAssignedId !== init.assigned || llIsPersonal !== init.personal;
+      || llAssignedId !== init.assigned || llIsPersonal !== init.personal
+      || JSON.stringify(llDaysOfWeek ?? []) !== (init.dow ?? "[]")
+      || llNthWeek !== (init.nw ?? null)
+      || llNthWeekday !== (init.nwd ?? null);
     if (!dirty) return;
     if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current);
     llAutoSaveRef.current = setTimeout(() => { doSaveLowLift(); }, 3000);
     return () => { if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current); };
-  }, [llTitle, llNotes, llAnchorDate, llTimeOfDay, llFreqType, llCustomDays, llAssignedId, llIsPersonal]);
+  }, [llTitle, llNotes, llAnchorDate, llTimeOfDay, llFreqType, llCustomDays, llAssignedId, llIsPersonal, llDaysOfWeek, llNthWeek, llNthWeekday]);
 
   const handleDoneLowLift = async () => {
     if (llAutoSaveRef.current) {
@@ -865,6 +905,14 @@ export default function TasksScreen() {
                   setLlFreqType(result.frequencyType);
                   setLlCustomDays(String(result.frequencyDays));
                   setLlRepeatLabel(result.label);
+                  setLlDaysOfWeek(result.daysOfWeek ?? null);
+                  setLlNthWeek(result.nthWeek ?? null);
+                  setLlNthWeekday(result.nthWeekday ?? null);
+                }}
+                initialState={{
+                  daysOfWeek: llDaysOfWeek,
+                  nthWeek: llNthWeek,
+                  nthWeekday: llNthWeekday,
                 }}
               />
             </View>

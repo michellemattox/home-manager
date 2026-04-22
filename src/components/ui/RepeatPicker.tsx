@@ -27,12 +27,22 @@ export interface RepeatResult {
   frequencyDays: number;
   /** Human-readable label for display */
   label: string;
+  daysOfWeek?: number[] | null;
+  nthWeek?: number | null;
+  nthWeekday?: number | null;
+}
+
+export interface RepeatInitialState {
+  daysOfWeek?: number[] | null;
+  nthWeek?: number | null;
+  nthWeekday?: number | null;
 }
 
 interface RepeatPickerProps {
   visible: boolean;
   onClose: () => void;
   onSelect: (result: RepeatResult) => void;
+  initialState?: RepeatInitialState;
 }
 
 function computeDays(option: RepeatOption, state: {
@@ -48,12 +58,17 @@ function computeDays(option: RepeatOption, state: {
     case "weekly":
       return { frequencyType: "weekly", frequencyDays: 7, label: "Weekly" };
     case "day_of_week": {
-      // Multiple days selected — use 7-day cycle (weekly pattern)
-      const names = state.selectedDays
-        .map((sel, i) => (sel ? DAYS_OF_WEEK[i] : null))
-        .filter(Boolean);
+      const selected = state.selectedDays
+        .map((sel, i) => (sel ? i : -1))
+        .filter((i) => i >= 0);
+      const names = selected.map((i) => DAYS_OF_WEEK[i]);
       const label = names.length > 0 ? `Weekly on ${names.join(", ")}` : "Weekly";
-      return { frequencyType: "weekly", frequencyDays: 7, label };
+      return {
+        frequencyType: "weekly",
+        frequencyDays: 7,
+        label,
+        daysOfWeek: selected.length > 0 ? selected : null,
+      };
     }
     case "monthly":
       return { frequencyType: "monthly", frequencyDays: 30, label: "Monthly" };
@@ -64,6 +79,8 @@ function computeDays(option: RepeatOption, state: {
         frequencyType: "monthly",
         frequencyDays: 30,
         label: `Monthly on ${weekLabel} ${dayLabel}`,
+        nthWeek: state.weekOfMonth + 1,
+        nthWeekday: state.dayOfWeekForMonth,
       };
     }
     case "yearly":
@@ -82,7 +99,7 @@ function computeDays(option: RepeatOption, state: {
   }
 }
 
-export function RepeatPickerModal({ visible, onClose, onSelect }: RepeatPickerProps) {
+export function RepeatPickerModal({ visible, onClose, onSelect, initialState }: RepeatPickerProps) {
   const [option, setOption] = useState<RepeatOption | null>(null);
 
   // Day of Week state
@@ -95,6 +112,24 @@ export function RepeatPickerModal({ visible, onClose, onSelect }: RepeatPickerPr
   // Custom state
   const [customNumber, setCustomNumber] = useState("1");
   const [customUnit, setCustomUnit] = useState<typeof CUSTOM_UNITS[number]>("days");
+
+  // Seed from saved rule when the modal opens for an existing task
+  React.useEffect(() => {
+    if (!visible) return;
+    if (initialState?.daysOfWeek && initialState.daysOfWeek.length > 0) {
+      const next = new Array(7).fill(false);
+      initialState.daysOfWeek.forEach((d) => {
+        if (d >= 0 && d < 7) next[d] = true;
+      });
+      setSelectedDays(next);
+      setOption("day_of_week");
+    } else if (initialState?.nthWeek != null && initialState?.nthWeekday != null) {
+      setWeekOfMonth(Math.max(0, Math.min(3, initialState.nthWeek - 1)));
+      setDayOfWeekForMonth(initialState.nthWeekday);
+      setOption("day_of_month");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible]);
 
   const reset = () => {
     setOption(null);

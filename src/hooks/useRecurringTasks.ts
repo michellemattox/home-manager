@@ -106,7 +106,12 @@ export function useCompleteRecurringTask() {
         : calculateNextDueDate(
             task.frequency_type,
             task.frequency_days,
-            new Date(task.next_due_date + "T12:00:00")
+            new Date(task.next_due_date + "T12:00:00"),
+            {
+              daysOfWeek: (task as any).days_of_week ?? null,
+              nthWeek: (task as any).nth_week ?? null,
+              nthWeekday: (task as any).nth_weekday ?? null,
+            }
           );
 
       // Optimistically update cache: remove if no_repeat, advance due date otherwise

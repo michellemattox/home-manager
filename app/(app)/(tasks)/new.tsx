@@ -24,7 +24,7 @@ import { useAddProjectTask } from "@/hooks/useProjectTasks";
 import { useProjects } from "@/hooks/useProjects";
 import { type FrequencyType } from "@/types/app.types";
 import { toISODateString, normalizeTimeTo12h } from "@/utils/dateUtils";
-import { frequencyToDays } from "@/utils/scheduleUtils";
+import { frequencyToDays, firstOccurrenceOnOrAfter } from "@/utils/scheduleUtils";
 import type { ProjectWithOwners } from "@/types/app.types";
 import { parseTaskFromText } from "@/hooks/useParseTask";
 import { RepeatPickerModal, type RepeatResult } from "@/components/ui/RepeatPicker";
@@ -74,6 +74,9 @@ export default function NewTaskScreen() {
   // Repeat picker state
   const [showRepeatPicker, setShowRepeatPicker] = useState(false);
   const [repeatLabel, setRepeatLabel] = useState("Doesn't Repeat");
+  const [ruleDaysOfWeek, setRuleDaysOfWeek] = useState<number[] | null>(null);
+  const [ruleNthWeek, setRuleNthWeek] = useState<number | null>(null);
+  const [ruleNthWeekday, setRuleNthWeekday] = useState<number | null>(null);
 
   // Project Adjacent — project + checklist selection
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -140,6 +143,17 @@ export default function NewTaskScreen() {
           data.frequencyType === "custom"
             ? parseInt(data.customDays ?? "30", 10)
             : frequencyToDays(data.frequencyType);
+        const rule = {
+          daysOfWeek: ruleDaysOfWeek,
+          nthWeek: ruleNthWeek,
+          nthWeekday: ruleNthWeekday,
+        };
+        const hasRule =
+          (ruleDaysOfWeek && ruleDaysOfWeek.length > 0) ||
+          (ruleNthWeek != null && ruleNthWeekday != null);
+        const anchorParts = anchorDate.split("-").map(Number);
+        const anchorLocal = new Date(anchorParts[0], anchorParts[1] - 1, anchorParts[2]);
+        const nextDue = hasRule ? firstOccurrenceOnOrAfter(rule, anchorLocal) : anchorDate;
         await createRecurring.mutateAsync({
           household_id: household.id,
           title: data.title,
@@ -148,11 +162,14 @@ export default function NewTaskScreen() {
           frequency_type: data.frequencyType,
           frequency_days: freqDays,
           anchor_date: anchorDate,
-          next_due_date: anchorDate,
+          next_due_date: nextDue,
           assigned_member_id: data.assignedMemberId ?? null,
           is_active: true,
           time_of_day: data.timeOfDay?.trim() ? normalizeTimeTo12h(data.timeOfDay.trim()) : null,
           is_personal: llIsPersonal,
+          days_of_week: ruleDaysOfWeek,
+          nth_week: ruleNthWeek,
+          nth_weekday: ruleNthWeekday,
         });
       }
       Keyboard.dismiss();
@@ -344,6 +361,14 @@ export default function NewTaskScreen() {
                       onChange(result.frequencyType);
                       llSetValue("customDays", String(result.frequencyDays));
                       setRepeatLabel(result.label);
+                      setRuleDaysOfWeek(result.daysOfWeek ?? null);
+                      setRuleNthWeek(result.nthWeek ?? null);
+                      setRuleNthWeekday(result.nthWeekday ?? null);
+                    }}
+                    initialState={{
+                      daysOfWeek: ruleDaysOfWeek,
+                      nthWeek: ruleNthWeek,
+                      nthWeekday: ruleNthWeekday,
                     }}
                   />
                 </View>
