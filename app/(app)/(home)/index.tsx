@@ -14,7 +14,7 @@ import { useAuthStore } from "@/stores/authStore";
 import { useFilterStore } from "@/stores/filterStore";
 import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
-import { useTasks, useCompleteTask } from "@/hooks/useTasks";
+import { useTasks, useCompleteTask, useCompletedTasks } from "@/hooks/useTasks";
 import { useServiceRecords } from "@/hooks/useServices";
 import { useAllProjectTasks, useCompleteProjectChecklistItem } from "@/hooks/useProjectTasks";
 import { useAllTripTasks, useCompleteTripChecklistItem, useTrips } from "@/hooks/useTrips";
@@ -378,6 +378,7 @@ export default function HomeScreen() {
   const { data: projects, isLoading: loadingProjects } = useProjects(household?.id);
   const { data: tasks, isLoading: loadingTasks } = useRecurringTasks(household?.id);
   const { data: oneOffTasks = [] } = useTasks(household?.id);
+  const { data: completedTasks = [] } = useCompletedTasks(household?.id);
   const { data: serviceRecords, refetch: refetchServices } = useServiceRecords(household?.id);
   const { data: allProjectTasks = [] } = useAllProjectTasks(household?.id);
   const { data: allTripTasks = [] } = useAllTripTasks(household?.id);
@@ -432,10 +433,18 @@ export default function HomeScreen() {
       return m ? [m.id] : null;
     }
     if (e.source_type === "task") {
-      // WoW task entries carry no source_id, so match by title against
-      // the loaded task lists (one-off first, then recurring).
+      // Prefer source_id (newer WoW entries). Older entries saved
+      // source_id: null, so fall back to title matching against active,
+      // completed, and recurring task lists.
+      const byId = e.source_id
+        ? oneOffTasks.find((t) => t.id === e.source_id)
+          ?? completedTasks.find((t) => t.id === e.source_id)
+        : null;
+      if (byId) return byId.assigned_member_id ? [byId.assigned_member_id] : [];
       const one = oneOffTasks.find((t) => t.title === e.title);
       if (one) return one.assigned_member_id ? [one.assigned_member_id] : [];
+      const done = completedTasks.find((t) => t.title === e.title);
+      if (done) return done.assigned_member_id ? [done.assigned_member_id] : [];
       const rec = (tasks ?? []).find((t) => t.title === e.title);
       if (rec) return rec.assigned_member_id ? [rec.assigned_member_id] : [];
       return null;

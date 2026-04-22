@@ -161,7 +161,7 @@ Deno.serve(async (req) => {
           household_id: householdId,
           week_start: weekStart,
           source_type: "task",
-          source_id: null,
+          source_id: (task as any).id,
           source_tab: "tasks",
           title: (task as any).title,
           summary: (task as any).is_completed ? "Task completed this week." : "New task added this week.",
