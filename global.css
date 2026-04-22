@@ -1,3 +1,6 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Web: stop Chrome's native pull-to-refresh so our in-app pull works */
+html, body { overscroll-behavior-y: contain; }

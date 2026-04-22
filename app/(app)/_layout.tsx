@@ -5,6 +5,7 @@ import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useOverdueOrDueTodayCount } from "@/hooks/useRecurringTasks";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useGlobalRealtime } from "@/hooks/useRealtimeInvalidate";
+import { WebPullToRefresh } from "@/components/WebPullToRefresh";
 
 function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
   return (
@@ -52,7 +53,9 @@ export default function AppLayout() {
   useGlobalRealtime(householdId);
 
   return (
-    <Tabs
+    <>
+      <WebPullToRefresh />
+      <Tabs
       initialRouteName="(home)"
       screenOptions={{
         headerShown: false,
@@ -120,5 +123,6 @@ export default function AppLayout() {
       <Tabs.Screen name="(vendors)" options={{ href: null }} />
       <Tabs.Screen name="settings" options={{ href: null }} />
     </Tabs>
+    </>
   );
 }
