@@ -95,17 +95,40 @@ export default function WateringScreen() {
     setShowModal(false);
   }
 
-  // Last watered per plot — whole-garden logs (both ids null, e.g. rain) count for all plots
+  // Significant rain counts as a whole-garden watering even before the
+  // edge-function auto-insert runs — read directly from the weather log.
+  const RAIN_WATERING_MM = 5;
+
+  // Last watered per plot — use the more recent of the plot's own log, any
+  // whole-garden watering entry, and any significant rainfall day.
   const lastWateredByPlot = useMemo(() => {
     const map = new Map<string, string>();
-    const lastWholeGarden = logs.find((l) => l.plot_id === null && l.zone_id === null)?.water_date ?? null;
+    const wholeGardenDates: string[] = [];
+    logs.forEach((l) => {
+      if (l.plot_id === null && l.zone_id === null) wholeGardenDates.push(l.water_date);
+    });
+    weatherLogs.forEach((w) => {
+      if ((w.rainfall_mm ?? 0) >= RAIN_WATERING_MM) wholeGardenDates.push(w.log_date);
+    });
+    const latestWhole = wholeGardenDates.length > 0
+      ? wholeGardenDates.slice().sort().reverse()[0]
+      : null;
+
     plots.forEach((plot) => {
       const plotLog = logs.find((l) => l.plot_id === plot.id);
-      const date = plotLog?.water_date ?? lastWholeGarden;
-      if (date) map.set(plot.id, date);
+      const candidates = [plotLog?.water_date, latestWhole].filter(Boolean) as string[];
+      if (candidates.length > 0) {
+        map.set(plot.id, candidates.slice().sort().reverse()[0]);
+      }
     });
     return map;
-  }, [logs, plots]);
+  }, [logs, plots, weatherLogs]);
+
+  // Today's weather entry (if logged) — used to surface rainfall regardless
+  // of whether it crossed the "counts as watering" threshold.
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayWeather = weatherLogs.find((w) => w.log_date === todayStr) ?? null;
+  const todayRainMm = todayWeather?.rainfall_mm ?? 0;
 
   function daysSince(dateStr: string) {
     return differenceInDays(new Date(), new Date(dateStr + "T12:00:00"));
@@ -210,8 +233,20 @@ export default function WateringScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 16, gap: 16 }}>
 
-          {/* ── Rain coverage status ──────────────────────────────────────── */}
-          {rainCoverageDays > 0 && lastRainLog && (
+          {/* ── Rain status ───────────────────────────────────────────────── */}
+          {todayRainMm > 0 ? (
+            <View className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
+              <Text className="text-sm font-semibold text-sky-900">
+                🌧 {todayRainMm.toFixed(1)}mm of rain today
+              </Text>
+              <Text className="text-xs text-sky-700 mt-1">
+                {todayRainMm >= RAIN_WATERING_MM
+                  ? `Counts as a whole-garden watering${rainCoverageDays > 0 ? ` · ~${rainCoverageDays} more day${rainCoverageDays !== 1 ? "s" : ""} of coverage remaining.` : "."}`
+                  : `Below the ${RAIN_WATERING_MM}mm threshold for a full soak — log manual watering if needed.`}
+                {todayWeather?.temp_high_f ? ` · High ${Math.round(todayWeather.temp_high_f)}°F` : ""}
+              </Text>
+            </View>
+          ) : (rainCoverageDays > 0 && lastRainLog) ? (
             <View className="bg-sky-50 border border-sky-200 rounded-xl px-4 py-3">
               <Text className="text-sm font-semibold text-sky-900">
                 🌧 Rain covering your garden
@@ -222,7 +257,7 @@ export default function WateringScreen() {
                 {" — "}~{rainCoverageDays} more day{rainCoverageDays !== 1 ? "s" : ""} of coverage remaining.
               </Text>
             </View>
-          )}
+          ) : null}
 
           {/* ── Heat advisory ─────────────────────────────────────────────── */}
           {heatStressExtra > 0 && rainCoverageDays === 0 && (

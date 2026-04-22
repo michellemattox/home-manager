@@ -26,6 +26,7 @@ import {
   useGardenWatering,
   useGardenPestLogs,
   useGardenAllHarvests,
+  useGardenWeatherLogs,
 } from "@/hooks/useGarden";
 import { useGardenWeather } from "@/hooks/useGardenWeather";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
@@ -124,6 +125,7 @@ export default function GardenScreen() {
   const { data: seeds = [] } = useGardenSeeds(householdId);
   const { data: journal = [] } = useGardenJournal(householdId);
   const { data: watering = [] } = useGardenWatering(householdId);
+  const { data: weatherLogs = [] } = useGardenWeatherLogs(householdId);
   const { data: pestLogs = [] } = useGardenPestLogs(householdId);
   const { data: allHarvests = [] } = useGardenAllHarvests(householdId);
 
@@ -215,9 +217,19 @@ export default function GardenScreen() {
     ? Math.floor((Date.now() - new Date(lastJournal.created_at).getTime()) / 86400000)
     : null;
 
-  const lastWatering = watering[0];
-  const lastWateringDays = lastWatering
-    ? Math.floor((Date.now() - new Date(lastWatering.water_date ?? lastWatering.created_at).getTime()) / 86400000)
+  // Treat significant rainfall (>=5mm) as a whole-garden watering — the
+  // edge function also writes a rain watering log, but reading the weather
+  // log directly makes the dashboard update without waiting for that insert.
+  const effectiveLastWateredDate: string | null = (() => {
+    const candidates: string[] = [];
+    if (watering[0]?.water_date) candidates.push(watering[0].water_date);
+    weatherLogs.forEach((w: any) => {
+      if ((w.rainfall_mm ?? 0) >= 5) candidates.push(w.log_date);
+    });
+    return candidates.length > 0 ? candidates.slice().sort().reverse()[0] : null;
+  })();
+  const lastWateringDays = effectiveLastWateredDate
+    ? Math.floor((Date.now() - new Date(effectiveLastWateredDate + "T12:00:00").getTime()) / 86400000)
     : null;
 
   const activePests = pestLogs.filter((p: any) => p.status === "active" || p.status === "monitoring").length;
