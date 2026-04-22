@@ -24,7 +24,7 @@ import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
-import { formatDateShort } from "@/utils/dateUtils";
+import { formatDateSlash } from "@/utils/dateUtils";
 import type { Gift, GiftPriority } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 
@@ -213,7 +213,7 @@ function GiftCard({
 
       <View className="flex-row flex-wrap gap-x-3 gap-y-1">
         {gift.gift_date && (
-          <Text className="text-xs text-gray-400">📅 {formatDateShort(gift.gift_date)}</Text>
+          <Text className="text-xs text-gray-400">📅 {formatDateSlash(gift.gift_date)}</Text>
         )}
         {gift.price != null && (
           <Text className="text-xs font-semibold text-gray-600">{formatPrice(gift.price)}</Text>
@@ -620,7 +620,7 @@ export default function GiftsScreen() {
 
       {/* Sort */}
       <View className="px-4 pb-2">
-        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+        <View className="flex-row flex-wrap gap-2">
           {([
             { v: "priority", l: "Priority (High → Low)" },
             { v: "price", l: "Price (High → Low)" },
@@ -632,7 +632,7 @@ export default function GiftsScreen() {
               <TouchableOpacity
                 key={s.v}
                 onPress={() => setSortMode(s.v as SortMode)}
-                className={`px-3 py-1.5 rounded-full border mr-2 ${
+                className={`px-3 py-1.5 rounded-full border ${
                   active ? "bg-gray-900 border-gray-900" : "bg-white border-gray-200"
                 }`}
               >
@@ -646,7 +646,7 @@ export default function GiftsScreen() {
               </TouchableOpacity>
             );
           })}
-        </ScrollView>
+        </View>
       </View>
 
       <ScrollView

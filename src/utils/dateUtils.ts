@@ -13,6 +13,10 @@ export function formatDateShort(dateStr: string): string {
   return format(parseISO(dateStr), "MMM d");
 }
 
+export function formatDateSlash(dateStr: string): string {
+  return format(parseISO(dateStr), "MM/dd/yyyy");
+}
+
 export function formatDateTime(dateStr: string): string {
   return format(parseISO(dateStr), "MMM d, yyyy 'at' h:mm a");
 }
