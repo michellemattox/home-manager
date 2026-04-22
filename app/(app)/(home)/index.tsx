@@ -17,7 +17,9 @@ import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurrin
 import { useTasks, useCompleteTask } from "@/hooks/useTasks";
 import { useServiceRecords } from "@/hooks/useServices";
 import { useAllProjectTasks, useCompleteProjectChecklistItem } from "@/hooks/useProjectTasks";
-import { useAllTripTasks, useCompleteTripChecklistItem } from "@/hooks/useTrips";
+import { useAllTripTasks, useCompleteTripChecklistItem, useTrips } from "@/hooks/useTrips";
+import { useGoals } from "@/hooks/useGoals";
+import { useIdeas } from "@/hooks/useIdeas";
 import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, daysUntilDue, formatDate, formatDateShort, taskBadgeLabel, parseTimeToMinutes } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
 import { showAlert } from "@/lib/alert";
@@ -379,6 +381,9 @@ export default function HomeScreen() {
   const { data: serviceRecords, refetch: refetchServices } = useServiceRecords(household?.id);
   const { data: allProjectTasks = [] } = useAllProjectTasks(household?.id);
   const { data: allTripTasks = [] } = useAllTripTasks(household?.id);
+  const { data: trips = [] } = useTrips(household?.id);
+  const { data: goals = [] } = useGoals(household?.id);
+  const { data: ideas = [] } = useIdeas(household?.id);
   const completeRecurring = useCompleteRecurringTask();
   const completeOneOff = useCompleteTask();
   const completeProjectChecklist = useCompleteProjectChecklistItem();
@@ -402,8 +407,44 @@ export default function HomeScreen() {
 
   // Ordered: idea → task → project → activity → goal
   const WOW_ORDER: Record<string, number> = { idea: 0, task: 1, project: 2, activity: 3, goal: 4 };
+
+  // Resolve a WoW entry to the set of member IDs it belongs to. Returns null
+  // if the owner can't be determined (shared/unassigned — show regardless).
+  const wowEntryMemberIds = (e: WowUpdate): string[] | null => {
+    if (e.source_type === "project" && e.source_id) {
+      const p = (projects ?? []).find((x) => x.id === e.source_id);
+      return (p?.project_owners ?? []).map((po: any) => po.member_id);
+    }
+    if (e.source_type === "activity" && e.source_id) {
+      const t = trips.find((x) => x.id === e.source_id);
+      const assigned = (t as any)?.assigned_to;
+      if (!assigned || assigned === "all") return null;
+      const m = members.find((x) => x.display_name === assigned);
+      return m ? [m.id] : null;
+    }
+    if (e.source_type === "goal" && e.source_id) {
+      const g = goals.find((x) => x.id === e.source_id);
+      return g?.member_id ? [g.member_id] : null;
+    }
+    if (e.source_type === "idea" && e.source_id) {
+      const i = ideas.find((x) => x.id === e.source_id);
+      const m = i ? members.find((x) => x.user_id === (i as any).author_id) : null;
+      return m ? [m.id] : null;
+    }
+    return null; // tasks (source_id null) and unknown → don't filter out
+  };
+
+  const wowMatchesFilter = (e: WowUpdate) => {
+    if (selectedMembers.length === 0) return true;
+    const ownerIds = wowEntryMemberIds(e);
+    if (ownerIds === null) return true; // unresolved → show (includes "all"/family)
+    if (ownerIds.length === 0) return selectedMembers.includes("__unassigned__");
+    return ownerIds.some((id) => selectedMembers.includes(id));
+  };
+
   const visibleWow = wowUpdates
     .filter((e) => !dismissedHashes.has(wowEntryHash(e)))
+    .filter(wowMatchesFilter)
     .sort((a, b) => (WOW_ORDER[a.source_type] ?? 9) - (WOW_ORDER[b.source_type] ?? 9));
 
   const handleGenerateWow = async () => {
