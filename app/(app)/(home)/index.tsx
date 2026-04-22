@@ -431,7 +431,16 @@ export default function HomeScreen() {
       const m = i ? members.find((x) => x.user_id === (i as any).author_id) : null;
       return m ? [m.id] : null;
     }
-    return null; // tasks (source_id null) and unknown → don't filter out
+    if (e.source_type === "task") {
+      // WoW task entries carry no source_id, so match by title against
+      // the loaded task lists (one-off first, then recurring).
+      const one = oneOffTasks.find((t) => t.title === e.title);
+      if (one) return one.assigned_member_id ? [one.assigned_member_id] : [];
+      const rec = (tasks ?? []).find((t) => t.title === e.title);
+      if (rec) return rec.assigned_member_id ? [rec.assigned_member_id] : [];
+      return null;
+    }
+    return null;
   };
 
   const wowMatchesFilter = (e: WowUpdate) => {
