@@ -35,6 +35,7 @@ import {
 } from "@/hooks/useGardenAdvisor";
 import { useHomeRealtime } from "@/hooks/useRealtimeInvalidate";
 import { useSeasonScore } from "@/hooks/useSeasonScore";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 
 function greeting() {
   const hour = new Date().getHours();
@@ -372,22 +373,22 @@ export default function HomeScreen() {
 
   const { memberFilter: selectedMembers, toggleMember } = useFilterStore();
 
-  const { data: projects, isLoading: loadingProjects, refetch: refetchProjects } = useProjects(household?.id);
-  const { data: tasks, isLoading: loadingTasks, refetch: refetchTasks } = useRecurringTasks(household?.id);
-  const { data: oneOffTasks = [], refetch: refetchOneOff } = useTasks(household?.id);
+  const { data: projects, isLoading: loadingProjects } = useProjects(household?.id);
+  const { data: tasks, isLoading: loadingTasks } = useRecurringTasks(household?.id);
+  const { data: oneOffTasks = [] } = useTasks(household?.id);
   const { data: serviceRecords, refetch: refetchServices } = useServiceRecords(household?.id);
-  const { data: allProjectTasks = [], refetch: refetchProjectTasks } = useAllProjectTasks(household?.id);
-  const { data: allTripTasks = [], refetch: refetchTripTasks } = useAllTripTasks(household?.id);
+  const { data: allProjectTasks = [] } = useAllProjectTasks(household?.id);
+  const { data: allTripTasks = [] } = useAllTripTasks(household?.id);
   const completeRecurring = useCompleteRecurringTask();
   const completeOneOff = useCompleteTask();
   const completeProjectChecklist = useCompleteProjectChecklistItem();
   const completeTripChecklist = useCompleteTripChecklistItem();
-  const { data: wowUpdates = [], refetch: refetchWow } = useWowUpdates(household?.id);
+  const { data: wowUpdates = [] } = useWowUpdates(household?.id);
   const generateWow = useGenerateWow();
   const [generatingWow, setGeneratingWow] = useState(false);
 
   // Garden Advisor
-  const { data: advisorRecs = [], refetch: refetchAdvisor } = useGardenAdvisorRecs(household?.id);
+  const { data: advisorRecs = [] } = useGardenAdvisorRecs(household?.id);
   const generateAdvisor = useGenerateGardenAdvisor();
   const dismissRec = useDismissAdvisorRec();
   const acceptRec = useAcceptAdvisorRec();
@@ -487,17 +488,7 @@ export default function HomeScreen() {
   };
 
   const isLoading = loadingProjects || loadingTasks;
-
-  const onRefresh = () => {
-    refetchProjects();
-    refetchTasks();
-    refetchOneOff();
-    refetchServices();
-    refetchProjectTasks();
-    refetchTripTasks();
-    refetchWow();
-    refetchAdvisor();
-  };
+  const { refreshing, onRefresh } = useAppRefresh();
 
   // Member filter — empty array = no filter (show all); "__unassigned__" = unassigned; member IDs = those members
   const matchesMember = (memberId: string | null | undefined) => {
@@ -733,7 +724,7 @@ export default function HomeScreen() {
     <SafeAreaView className="flex-1 bg-[#E4F2E4]" edges={["top"]}>
       <ScrollView
         contentContainerClassName="px-4 pb-8"
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={onRefresh} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* App header */}
         <AppHeader />

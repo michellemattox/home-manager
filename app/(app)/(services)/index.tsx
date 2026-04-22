@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { getYear, parseISO } from "date-fns";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useServiceRecords, useUpdateServiceRecord, useDeleteServiceRecord } from "@/hooks/useServices";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SpendChart } from "@/components/ui/SpendChart";
@@ -94,7 +95,8 @@ export default function ServicesScreen() {
   const router = useRouter();
   const { vendor: initialVendor } = useLocalSearchParams<{ vendor?: string }>();
   const { household } = useHouseholdStore();
-  const { data: records, isLoading, refetch } = useServiceRecords(household?.id);
+  const { data: records, isLoading } = useServiceRecords(household?.id);
+  const { refreshing, onRefresh } = useAppRefresh();
   const updateRecord = useUpdateServiceRecord();
   const deleteRecord = useDeleteServiceRecord();
   const [showChart, setShowChart] = useState(true);
@@ -205,7 +207,7 @@ export default function ServicesScreen() {
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         ListHeaderComponent={
           records && records.length > 0 ? (

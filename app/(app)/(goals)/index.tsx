@@ -13,6 +13,7 @@ import { notificationSuccess } from "@/lib/haptics";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import type { HouseholdMember } from "@/types/app.types";
 import {
   useGoals,
@@ -415,7 +416,8 @@ export default function GoalsScreen() {
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  const { data: goals = [], isLoading, refetch } = useGoals(household?.id);
+  const { data: goals = [], isLoading } = useGoals(household?.id);
+  const { refreshing, onRefresh } = useAppRefresh();
   const createGoal = useCreateGoal();
   const updateGoal = useUpdateGoal();
   const deleteGoal = useDeleteGoal();
@@ -736,7 +738,7 @@ export default function GoalsScreen() {
 
       <ScrollView
         contentContainerClassName="px-4 py-4 pb-12"
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {activeGoals.length === 0 && completedGoals.length === 0 && (
           <View className="items-center py-16">

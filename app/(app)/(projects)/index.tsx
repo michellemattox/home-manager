@@ -17,6 +17,7 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import { useProjects } from "@/hooks/useProjects";
 import { useServiceRecords, useUpdateServiceRecord, useDeleteServiceRecord } from "@/hooks/useServices";
 import { usePreferredVendors, useAddPreferredVendor, useUpdatePreferredVendor, useDeletePreferredVendor } from "@/hooks/usePreferredVendors";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -126,6 +127,7 @@ function ProjectCard({ project }: { project: ProjectWithOwners }) {
 }
 
 function ProjectsTab() {
+  const { refreshing: appRefreshing, onRefresh: appOnRefresh } = useAppRefresh();
   const router = useRouter();
   const { household, members } = useHouseholdStore();
   const { data: projects, isLoading, refetch } = useProjects(household?.id);
@@ -290,7 +292,7 @@ function ProjectsTab() {
         data={filtered}
         keyExtractor={(p) => p.id}
         contentContainerClassName="px-4 pt-3 pb-8"
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        refreshControl={<RefreshControl refreshing={appRefreshing} onRefresh={appOnRefresh} />}
         renderItem={({ item }) => <ProjectCard project={item} />}
         ListEmptyComponent={
           !isLoading ? (
@@ -339,6 +341,7 @@ function ServicesTab({ onGoToVendors }: { onGoToVendors: () => void }) {
   const router = useRouter();
   const { household } = useHouseholdStore();
   const { data: records, isLoading, refetch } = useServiceRecords(household?.id);
+  const { refreshing: appRefreshing, onRefresh: appOnRefresh } = useAppRefresh();
   const updateRecord = useUpdateServiceRecord();
   const deleteRecord = useDeleteServiceRecord();
   const [showChart, setShowChart] = useState(true);
@@ -426,7 +429,7 @@ function ServicesTab({ onGoToVendors }: { onGoToVendors: () => void }) {
         sections={sections}
         keyExtractor={(item) => item.id}
         contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: 32 }}
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        refreshControl={<RefreshControl refreshing={appRefreshing} onRefresh={appOnRefresh} />}
         ListHeaderComponent={
           records && records.length > 0 ? (
             <View className="mb-4">
@@ -591,6 +594,7 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
   const [findTab, setFindTab] = useState<"my" | "find">("my");
   const [selectedType, setSelectedType] = useState<ServiceType | null>(null);
   const { data: preferredVendors, isLoading, refetch } = usePreferredVendors(household?.id);
+  const { refreshing: appRefreshing, onRefresh: appOnRefresh } = useAppRefresh();
   const { data: serviceRecords } = useServiceRecords(household?.id);
   const addVendor = useAddPreferredVendor();
   const updateVendor = useUpdatePreferredVendor();
@@ -697,7 +701,7 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
       </View>
 
       {findTab === "my" ? (
-        <ScrollView contentContainerClassName="px-4 pb-8" refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}>
+        <ScrollView contentContainerClassName="px-4 pb-8" refreshControl={<RefreshControl refreshing={appRefreshing} onRefresh={appOnRefresh} />}>
           {(preferredVendors ?? []).length === 0 && !isLoading ? (
             <EmptyState title="No preferred vendors yet" subtitle="Add vendors you trust for quick access." actionLabel="Add Vendor" onAction={() => openAdd()} icon="⭐" />
           ) : (() => {

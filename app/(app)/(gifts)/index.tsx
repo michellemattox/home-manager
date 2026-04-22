@@ -12,6 +12,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import {
   useGifts,
   useCreateGift,
@@ -276,7 +277,8 @@ export default function GiftsScreen() {
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  const { data: gifts = [], isLoading, refetch } = useGifts(household?.id);
+  const { data: gifts = [], isLoading } = useGifts(household?.id);
+  const { refreshing, onRefresh } = useAppRefresh();
   const createGift = useCreateGift();
   const updateGift = useUpdateGift();
   const markBought = useMarkGiftBought();
@@ -655,7 +657,7 @@ export default function GiftsScreen() {
 
       <ScrollView
         contentContainerClassName="px-4 py-4 pb-12"
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {visibleGifts.length === 0 ? (
           <View className="items-center py-16">

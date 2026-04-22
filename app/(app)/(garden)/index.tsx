@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import {
   useGardenAllHarvests,
 } from "@/hooks/useGarden";
 import { useGardenWeather } from "@/hooks/useGardenWeather";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import type { GardenPlot } from "@/types/app.types";
 
 const PLOT_PRESETS = [
@@ -129,12 +130,7 @@ export default function GardenScreen() {
   const zipCode = household?.zip_code ?? null;
   const { data: weather } = useGardenWeather(zipCode, householdId);
 
-  const [refreshing, setRefreshing] = useState(false);
-  const onRefresh = useCallback(async () => {
-    setRefreshing(true);
-    await refetch();
-    setRefreshing(false);
-  }, [refetch]);
+  const { refreshing, onRefresh } = useAppRefresh();
 
   // Section open/close state (all collapsed by default — tap carrot to expand)
   const [planningOpen, setPlanningOpen] = useState(false);

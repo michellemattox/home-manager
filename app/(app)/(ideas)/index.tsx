@@ -26,6 +26,7 @@ import { useProjects } from "@/hooks/useProjects";
 import { useCreateTrip } from "@/hooks/useTrips";
 import { useCreateRecurringTask } from "@/hooks/useRecurringTasks";
 import { useAddProjectTask } from "@/hooks/useProjectTasks";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { DateInput } from "@/components/ui/DateInput";
 import { showAlert, showConfirm } from "@/lib/alert";
@@ -127,7 +128,8 @@ export default function IdeasScreen() {
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
 
-  const { data: ideas = [], isLoading, refetch } = useIdeas(household?.id);
+  const { data: ideas = [], isLoading } = useIdeas(household?.id);
+  const { refreshing, onRefresh } = useAppRefresh();
   const { data: projects = [] } = useProjects(household?.id);
   const createIdea = useCreateIdea();
   const updateIdea = useUpdateIdea();
@@ -455,7 +457,7 @@ export default function IdeasScreen() {
 
       <ScrollView
         contentContainerClassName="px-4 py-4 pb-12"
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         keyboardShouldPersistTaps="handled"
       >
         {/* Intake form */}

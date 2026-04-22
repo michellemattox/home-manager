@@ -11,6 +11,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { isBefore, parseISO } from "date-fns";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useTrips } from "@/hooks/useTrips";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { formatDateShort } from "@/utils/dateUtils";
@@ -48,7 +49,8 @@ function TripCard({ trip }: { trip: Trip }) {
 export default function TravelScreen() {
   const router = useRouter();
   const { household } = useHouseholdStore();
-  const { data: trips, isLoading, refetch } = useTrips(household?.id);
+  const { data: trips, isLoading } = useTrips(household?.id);
+  const { refreshing, onRefresh } = useAppRefresh();
 
   const now = new Date();
   const upcoming = (trips ?? []).filter(
@@ -86,7 +88,7 @@ export default function TravelScreen() {
         }
         contentContainerClassName="px-4 pb-8"
         refreshControl={
-          <RefreshControl refreshing={isLoading} onRefresh={refetch} />
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
         renderItem={({ item }) => {
           if (item.type === "header") {

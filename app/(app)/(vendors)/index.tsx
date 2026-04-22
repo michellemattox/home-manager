@@ -14,6 +14,7 @@ import * as Linking from "expo-linking";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { usePreferredVendors, useAddPreferredVendor, useUpdatePreferredVendor, useDeletePreferredVendor } from "@/hooks/usePreferredVendors";
 import { useServiceRecords } from "@/hooks/useServices";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -78,7 +79,8 @@ export default function VendorsScreen() {
   const [activeTab, setActiveTab] = useState<TabType>("my");
   const [selectedType, setSelectedType] = useState<ServiceType | null>(null);
 
-  const { data: preferredVendors, isLoading, refetch } = usePreferredVendors(household?.id);
+  const { data: preferredVendors, isLoading } = usePreferredVendors(household?.id);
+  const { refreshing, onRefresh } = useAppRefresh();
   const { data: serviceRecords } = useServiceRecords(household?.id);
   const addVendor = useAddPreferredVendor();
   const updateVendor = useUpdatePreferredVendor();
@@ -221,7 +223,7 @@ export default function VendorsScreen() {
       {activeTab === "my" ? (
         <ScrollView
           contentContainerClassName="px-4 pb-8"
-          refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         >
           {(preferredVendors ?? []).length === 0 && !isLoading ? (
             <EmptyState

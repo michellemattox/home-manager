@@ -99,9 +99,21 @@ export function useCompleteTripChecklistItem() {
 
       return { trip_id: task.trip_id };
     },
+    onMutate: async ({ task }) => {
+      // Optimistically remove from the Home dashboard list so the row disappears instantly
+      const snapshots = qc.getQueriesData<TripTask[]>({ queryKey: ["all_trip_tasks"] });
+      qc.setQueriesData<TripTask[]>({ queryKey: ["all_trip_tasks"] }, (old) =>
+        old ? old.filter((t) => t.id !== task.id) : old
+      );
+      return { snapshots };
+    },
+    onError: (_err, _vars, ctx) => {
+      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
+    },
     onSuccess: ({ trip_id }) => {
       qc.invalidateQueries({ queryKey: ["trip", trip_id] });
       qc.invalidateQueries({ queryKey: ["completed_checklist", "trip", trip_id] });
+      qc.invalidateQueries({ queryKey: ["all_trip_tasks"] });
     },
   });
 }

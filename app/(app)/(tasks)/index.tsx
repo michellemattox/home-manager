@@ -29,6 +29,7 @@ import {
 } from "@/hooks/useProjectTasks";
 import { useAuthStore } from "@/stores/authStore";
 import { useFilterStore } from "@/stores/filterStore";
+import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { Input } from "@/components/ui/Input";
@@ -197,6 +198,7 @@ export default function TasksScreen() {
   const { user } = useAuthStore();
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
+  const { refreshing: appRefreshing, onRefresh: appOnRefresh } = useAppRefresh();
   const { memberFilter: ownerFilter, toggleMember: toggleOwnerFilter } = useFilterStore();
   const [filterDue, setFilterDue] = useState<"overdue" | "due_soon" | null>(null);
 
@@ -754,7 +756,7 @@ export default function TasksScreen() {
 
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-8"
-        refreshControl={<RefreshControl refreshing={isLoading} onRefresh={refetch} />}
+        refreshControl={<RefreshControl refreshing={appRefreshing} onRefresh={appOnRefresh} />}
       >
         {/* ── LOW-LIFT TAB ─────────────────────────────────────────────── */}
         {mode === "low-lift" && (
