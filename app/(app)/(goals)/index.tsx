@@ -237,6 +237,7 @@ function GoalCard({
   onDelete,
   onStatusChange,
   onCompleteGoalPeriod,
+  onMissGoalPeriod,
 }: {
   goal: GoalWithUpdates;
   members: { id: string; display_name: string }[];
@@ -247,6 +248,7 @@ function GoalCard({
   onDelete: (goal: GoalWithUpdates) => void;
   onStatusChange: (goal: GoalWithUpdates, status: Goal["status"]) => void;
   onCompleteGoalPeriod: (goal: GoalWithUpdates) => void;
+  onMissGoalPeriod: (goal: GoalWithUpdates) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
 
@@ -355,12 +357,20 @@ function GoalCard({
 
             {/* Recurring period completion — restarts the goal with new due date */}
             {isRecurring && goal.status === "active" && (
-              <TouchableOpacity
-                onPress={() => onCompleteGoalPeriod(goal)}
-                className="px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200"
-              >
-                <Text className="text-xs font-semibold text-indigo-700">✓ Period Done</Text>
-              </TouchableOpacity>
+              <>
+                <TouchableOpacity
+                  onPress={() => onCompleteGoalPeriod(goal)}
+                  className="px-3 py-1.5 rounded-full bg-indigo-50 border border-indigo-200"
+                >
+                  <Text className="text-xs font-semibold text-indigo-700">✓ Week Achieved</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => onMissGoalPeriod(goal)}
+                  className="px-3 py-1.5 rounded-full bg-rose-50 border border-rose-200"
+                >
+                  <Text className="text-xs font-semibold text-rose-700">Week Missed 😞</Text>
+                </TouchableOpacity>
+              </>
             )}
 
             {/* Goal Completed — permanently closes the goal */}
@@ -654,6 +664,20 @@ export default function GoalsScreen() {
     }
   };
 
+  const handleMissGoalPeriod = async (goal: GoalWithUpdates) => {
+    if (!household || !currentMember) return;
+    try {
+      await completeGoalPeriod.mutateAsync({
+        goal,
+        householdId: household.id,
+        authorId: currentMember.id,
+        missed: true,
+      });
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
   const handleStatusChange = async (goal: GoalWithUpdates, status: Goal["status"]) => {
     if (!household) return;
     try {
@@ -683,6 +707,7 @@ export default function GoalsScreen() {
     onDelete: handleDelete,
     onStatusChange: handleStatusChange,
     onCompleteGoalPeriod: handleCompleteGoalPeriod,
+    onMissGoalPeriod: handleMissGoalPeriod,
   });
 
   return (

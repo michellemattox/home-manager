@@ -5,21 +5,28 @@ import { calculateNextDueDate } from "@/utils/scheduleUtils";
 import { useUndoStore } from "@/stores/undoStore";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
 
-function buildPeriodMessage(frequencyType: string, frequencyDays: number, dueDate: string): string {
+function buildPeriodMessage(
+  frequencyType: string,
+  frequencyDays: number,
+  dueDate: string,
+  missed = false
+): string {
   const date = new Date(dueDate + "T12:00:00");
+  const verb = missed ? "Goal was not achieved" : "Goal achieved";
+  const emoji = missed ? "😞" : "🎉";
   switch (frequencyType) {
     case "daily":
-      return `Goal achieved for ${format(date, "MMMM d, yyyy")}! 🎉`;
+      return `${verb} for ${format(date, "MMMM d, yyyy")}${missed ? "" : "!"} ${emoji}`;
     case "weekly": {
       const start = addDays(date, -6);
-      return `Goal achieved for the week of ${format(start, "MMM d")}–${format(date, "MMM d, yyyy")}! 🎉`;
+      return `${verb} for the week of ${format(start, "MMM d")}–${format(date, "MMM d, yyyy")}${missed ? "" : "!"} ${emoji}`;
     }
     case "monthly":
-      return `Goal achieved for ${format(date, "MMMM yyyy")}! 🎉`;
+      return `${verb} for ${format(date, "MMMM yyyy")}${missed ? "" : "!"} ${emoji}`;
     case "yearly":
-      return `Goal achieved for ${format(date, "yyyy")}! 🎉`;
+      return `${verb} for ${format(date, "yyyy")}${missed ? "" : "!"} ${emoji}`;
     default:
-      return `Goal achieved for the ${frequencyDays}-day period ending ${format(date, "MMM d, yyyy")}! 🎉`;
+      return `${verb} for the ${frequencyDays}-day period ending ${format(date, "MMM d, yyyy")}${missed ? "" : "!"} ${emoji}`;
   }
 }
 
@@ -113,7 +120,9 @@ export function useAddGoalUpdate() {
   });
 }
 
-// Complete one recurring period: auto-insert an update and advance the due_date
+// Complete one recurring period: auto-insert an update and advance the due_date.
+// Pass `missed: true` to record a missed period instead of an achieved one;
+// the due_date still advances either way so the goal moves on to the next cycle.
 export function useCompleteGoalPeriod() {
   const qc = useQueryClient();
   return useMutation({
@@ -121,16 +130,18 @@ export function useCompleteGoalPeriod() {
       goal,
       householdId,
       authorId,
+      missed = false,
     }: {
       goal: Goal;
       householdId: string;
       authorId: string;
+      missed?: boolean;
     }) => {
       const freqType = (goal as any).frequency_type ?? "weekly";
       const freqDays = (goal as any).frequency_days ?? 7;
       const currentDue = goal.due_date ?? new Date().toISOString().split("T")[0];
 
-      const body = buildPeriodMessage(freqType, freqDays, currentDue);
+      const body = buildPeriodMessage(freqType, freqDays, currentDue, missed);
       const nextDue = calculateNextDueDate(freqType, freqDays, new Date(currentDue + "T12:00:00"));
 
       const { error: updateErr } = await supabase
