@@ -598,7 +598,27 @@ export default function HomeScreen() {
     }
   };
 
-  const sortItems = (a: HomeItem, b: HomeItem) => getItemTime(a) - getItemTime(b);
+  // YYYY-MM-DD comparable string. Empty string sorts before any real date,
+  // which is fine — items without a due date shouldn't reach these buckets.
+  const getItemDate = (item: HomeItem): string => {
+    switch (item.kind) {
+      case "recurring": return (item.data as any).next_due_date ?? "";
+      case "oneoff": return (item.data as any).due_date ?? "";
+      case "project": return (item.data as any).due_date ?? "";
+      case "trip": return (item.data as any).due_date ?? "";
+      case "projectCard": return (item.data as any).expected_date ?? "";
+    }
+  };
+
+  // Sort by due date (earliest first), then by time within the same date.
+  // parseTimeToMinutes returns -1 for items with no time, so they bubble
+  // to the top of their date group as Michelle requested.
+  const sortItems = (a: HomeItem, b: HomeItem) => {
+    const da = getItemDate(a);
+    const db = getItemDate(b);
+    if (da !== db) return da < db ? -1 : 1;
+    return getItemTime(a) - getItemTime(b);
+  };
 
   const filteredRecurring = (tasks ?? []).filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
   const filteredOneOff = oneOffTasks.filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
@@ -627,7 +647,7 @@ export default function HomeScreen() {
       (t) => isOverdue(t.due_date!),
       (t) => isOverdue(t.due_date!),
     ),
-  ];
+  ].sort(sortItems);
 
   const dueTodayItems = buildTierItems(
     (t) => isDueToday(t.next_due_date),
@@ -651,7 +671,7 @@ export default function HomeScreen() {
       (t) => !isOverdue(t.due_date!) && !isDueToday(t.due_date!) && !isDueTomorrow(t.due_date!) && isDueSoon(t.due_date!, 7),
       (t) => !isOverdue(t.due_date!) && !isDueToday(t.due_date!) && !isDueTomorrow(t.due_date!) && isDueSoon(t.due_date!, 7),
     ),
-  ];
+  ].sort(sortItems);
 
   // Stats — year-to-date spend (Jan 1 of current year)
   const totalAlerts = overdueItems.length;
