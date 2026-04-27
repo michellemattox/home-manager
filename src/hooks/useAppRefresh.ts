@@ -18,7 +18,13 @@ export function useAppRefresh() {
       return; // reload unmounts everything; no need to clear refreshing
     }
     try {
-      await qc.invalidateQueries();
+      // refetchQueries forces a network call for every mounted query,
+      // bypassing staleTime and the persisted offlineFirst cache. The
+      // returned promise resolves only after the network round-trip
+      // completes, so the spinner stays up until data is actually fresh.
+      await qc.refetchQueries({ type: "active" });
+    } catch (e) {
+      console.error("Pull-to-refresh failed:", e);
     } finally {
       setRefreshing(false);
     }

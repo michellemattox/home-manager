@@ -1,31 +1,34 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Platform } from "react-native";
-import { useAppRefresh } from "@/hooks/useAppRefresh";
 
-// Web-only pull-to-refresh overlay. React Native's RefreshControl does not
-// work as a PWA gesture on Android Chrome, so we wire our own at the
-// document level: find the nearest scrollable ancestor of the touch, and
-// when it's already scrolled to the top and the user drags down far
-// enough, trigger an app-wide refresh.
+// Web-only pull-to-refresh. React Native's RefreshControl doesn't fire
+// touch gestures on Android Chrome / PWA, so we listen at the document
+// level, detect a top-of-scroll pull, and hard-reload the PWA with a
+// cache-busting query param to guarantee a fresh HTML + JS bundle.
 export function WebPullToRefresh() {
-  const { refreshing, onRefresh } = useAppRefresh();
   const [pullY, setPullY] = useState(0);
+  const [refreshing, setRefreshing] = useState(false);
   const pullYRef = useRef(0);
   const startYRef = useRef<number | null>(null);
-  const scrollElRef = useRef<HTMLElement | null>(null);
+
+  const TRIGGER = 60;   // pullY pixels to cross (~120px finger travel)
+  const MAX = 140;
 
   useEffect(() => {
     if (Platform.OS !== "web") return;
 
-    const TRIGGER = 70;
-    const MAX = 120;
+    const getPageScrollTop = () =>
+      window.scrollY ||
+      document.documentElement.scrollTop ||
+      document.body.scrollTop ||
+      0;
 
     const findScrollable = (el: EventTarget | null): HTMLElement | null => {
       let node = el as HTMLElement | null;
-      while (node && node !== document.body) {
+      while (node && node !== document.body && node !== document.documentElement) {
         const style = window.getComputedStyle(node);
-        const overflowY = style.overflowY;
-        if ((overflowY === "auto" || overflowY === "scroll") && node.scrollHeight > node.clientHeight) {
+        const o = style.overflowY;
+        if ((o === "auto" || o === "scroll") && node.scrollHeight > node.clientHeight) {
           return node;
         }
         node = node.parentElement;
@@ -41,12 +44,8 @@ export function WebPullToRefresh() {
     const onStart = (e: TouchEvent) => {
       if (e.touches.length !== 1) return;
       const sc = findScrollable(e.target);
-      scrollElRef.current = sc;
-      if (sc && sc.scrollTop <= 0) {
-        startYRef.current = e.touches[0].clientY;
-      } else {
-        startYRef.current = null;
-      }
+      const atTop = sc ? sc.scrollTop <= 0 : getPageScrollTop() <= 0;
+      startYRef.current = atTop ? e.touches[0].clientY : null;
     };
 
     const onMove = (e: TouchEvent) => {
@@ -60,11 +59,24 @@ export function WebPullToRefresh() {
       }
     };
 
+    const doRefresh = () => {
+      setRefreshing(true);
+      // Cache-bust so Chrome reliably fetches the latest HTML + bundle
+      // hash. location.reload() can reuse bfcache / disk cache on PWAs.
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.set("_r", String(Date.now()));
+        window.location.replace(url.toString());
+      } catch {
+        window.location.reload();
+      }
+    };
+
     const onEnd = () => {
-      const triggered = startYRef.current != null && pullYRef.current > TRIGGER;
+      const triggered = startYRef.current != null && pullYRef.current >= TRIGGER;
       startYRef.current = null;
       setPull(0);
-      if (triggered) onRefresh();
+      if (triggered) doRefresh();
     };
 
     window.addEventListener("touchstart", onStart, { passive: true });
@@ -77,13 +89,14 @@ export function WebPullToRefresh() {
       window.removeEventListener("touchend", onEnd);
       window.removeEventListener("touchcancel", onEnd);
     };
-  }, [onRefresh]);
+  }, []);
 
   if (Platform.OS !== "web") return null;
 
+  const readyToRelease = pullY >= TRIGGER;
   const visible = refreshing || pullY > 4;
   const translate = refreshing ? 40 : pullY;
-  const progress = Math.min(pullY / 70, 1);
+  const progress = Math.min(pullY / TRIGGER, 1);
 
   return (
     <div
@@ -102,14 +115,17 @@ export function WebPullToRefresh() {
       <div
         style={{
           position: "absolute",
-          top: -40,
+          top: -44,
           transform: `translateY(${translate}px)`,
-          transition: refreshing ? "transform 0.2s ease-out" : startYRef.current == null ? "transform 0.2s ease-out" : "none",
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          background: "white",
-          boxShadow: "0 2px 6px rgba(0,0,0,0.15)",
+          transition:
+            refreshing || startYRef.current == null
+              ? "transform 0.25s ease-out"
+              : "none",
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          background: readyToRelease ? "#16a34a" : "white",
+          boxShadow: "0 2px 8px rgba(0,0,0,0.18)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -118,13 +134,14 @@ export function WebPullToRefresh() {
       >
         <div
           style={{
-            width: 18,
-            height: 18,
-            borderRadius: 9,
-            border: "2px solid #e5e7eb",
-            borderTopColor: "#16a34a",
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            border: "2.5px solid " + (readyToRelease ? "rgba(255,255,255,0.4)" : "#e5e7eb"),
+            borderTopColor: readyToRelease ? "white" : "#16a34a",
             animation: refreshing ? "wptr-spin 0.8s linear infinite" : "none",
             transform: refreshing ? "none" : `rotate(${progress * 360}deg)`,
+            transition: refreshing ? "none" : "transform 0.05s linear",
           }}
         />
       </div>

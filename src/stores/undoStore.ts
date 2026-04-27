@@ -9,7 +9,7 @@ type UndoEntry = {
 
 type UndoState = {
   pending: UndoEntry | null;
-  /** Optimistically remove item from UI, then defer the real DB delete by 5s. */
+  /** Optimistically remove item from UI, then defer the real DB delete by 2s. */
   schedule: (opts: {
     label: string;
     restore: () => void;
@@ -34,7 +34,7 @@ export const useUndoStore = create<UndoState>((set, get) => ({
 
     const timeoutId = setTimeout(() => {
       get().flush();
-    }, 5000);
+    }, 2000);
 
     set({ pending: { label, restore, execute, timeoutId } });
   },

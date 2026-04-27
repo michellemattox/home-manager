@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { View, Text, TouchableOpacity } from "react-native";
 import { useUndoStore } from "@/stores/undoStore";
 
-const DURATION = 5000;
+const DURATION = 2000;
 
 export function UndoToast() {
   const pending = useUndoStore((s) => s.pending);
