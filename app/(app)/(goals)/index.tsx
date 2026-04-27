@@ -24,6 +24,8 @@ import {
   useEditGoalUpdate,
   useCompleteGoalPeriod,
   useDeleteGoalUpdate,
+  useDeleteGoalPeriodUpdate,
+  PERIOD_UPDATE_RE,
 } from "@/hooks/useGoals";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -435,6 +437,7 @@ export default function GoalsScreen() {
   const editUpdate = useEditGoalUpdate();
   const completeGoalPeriod = useCompleteGoalPeriod();
   const deleteUpdate = useDeleteGoalUpdate();
+  const deletePeriodUpdate = useDeleteGoalPeriodUpdate();
 
   // Celebration animation
   const celebrateScale = useRef(new Animated.Value(1)).current;
@@ -632,6 +635,42 @@ export default function GoalsScreen() {
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleDeleteEditingUpdate = () => {
+    if (!editingGoalUpdate || !household) return;
+    const update = editingGoalUpdate;
+    const goal = (goals ?? []).find((g) => g.id === update.goal_id);
+    const isPeriodUpdate = PERIOD_UPDATE_RE.test(update.body ?? "");
+
+    if (isPeriodUpdate && goal) {
+      // Period update — delete and roll the goal back to that cycle so the
+      // user can re-mark it. No undo toast: rollback is the recovery path.
+      showConfirm(
+        "Delete this period update?",
+        "The goal's due date will roll back to this cycle so you can re-mark it as Achieved or Missed.",
+        async () => {
+          try {
+            await deletePeriodUpdate.mutateAsync({
+              update,
+              goal,
+              householdId: household.id,
+            });
+            setEditingGoalUpdate(null);
+            setEditGoalUpdateBody("");
+          } catch (e: any) {
+            showAlert("Error", e.message);
+          }
+        },
+        true
+      );
+      return;
+    }
+
+    // Regular update — use the existing 2-second undo flow.
+    deleteUpdate.mutate({ id: update.id, householdId: household.id });
+    setEditingGoalUpdate(null);
+    setEditGoalUpdateBody("");
   };
 
   const handleSaveEditGoalUpdate = async () => {
@@ -873,6 +912,9 @@ export default function GoalsScreen() {
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Update</Text>
+            <TouchableOpacity onPress={handleDeleteEditingUpdate} className="mr-4">
+              <Text className="text-red-600 text-base font-semibold">Delete</Text>
+            </TouchableOpacity>
             <TouchableOpacity onPress={handleSaveEditGoalUpdate} disabled={!editGoalUpdateBody.trim() || editUpdate.isPending}>
               <Text className={`text-base font-semibold ${editGoalUpdateBody.trim() ? "text-blue-600" : "text-gray-300"}`}>
                 {editUpdate.isPending ? "Saving…" : "Save"}
