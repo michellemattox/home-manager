@@ -29,22 +29,15 @@ import { useAddProjectTask } from "@/hooks/useProjectTasks";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { DateInput } from "@/components/ui/DateInput";
+import { RepeatPickerModal } from "@/components/ui/RepeatPicker";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateShort } from "@/utils/dateUtils";
 import { toISODateString } from "@/utils/dateUtils";
-import { frequencyToDays } from "@/utils/scheduleUtils";
+import { firstOccurrenceOnOrAfter } from "@/utils/scheduleUtils";
 import type { Idea, ProjectWithOwners, FrequencyType } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 
 type TaskMode = "low-lift" | "project-adjacent";
-
-const FREQUENCIES: { label: string; value: FrequencyType }[] = [
-  { label: "Daily", value: "daily" },
-  { label: "Weekly", value: "weekly" },
-  { label: "Monthly", value: "monthly" },
-  { label: "Yearly", value: "yearly" },
-  { label: "Custom", value: "custom" },
-];
 
 function IdeaCard({
   idea,
@@ -160,8 +153,13 @@ export default function IdeasScreen() {
   const [taskMode, setTaskMode] = useState<TaskMode>("low-lift");
 
   // Low-Lift fields
-  const [llFrequency, setLlFrequency] = useState<FrequencyType>("monthly");
-  const [llCustomDays, setLlCustomDays] = useState("");
+  const [llFrequency, setLlFrequency] = useState<FrequencyType>("no_repeat");
+  const [llFrequencyDays, setLlFrequencyDays] = useState<number>(0);
+  const [llRepeatLabel, setLlRepeatLabel] = useState<string>("Doesn't Repeat");
+  const [llShowRepeatPicker, setLlShowRepeatPicker] = useState(false);
+  const [llDaysOfWeek, setLlDaysOfWeek] = useState<number[] | null>(null);
+  const [llNthWeek, setLlNthWeek] = useState<number | null>(null);
+  const [llNthWeekday, setLlNthWeekday] = useState<number | null>(null);
   const [llAnchorDate, setLlAnchorDate] = useState(toISODateString(new Date()));
   const [llAssignedId, setLlAssignedId] = useState<string | null>(null);
 
@@ -197,8 +195,13 @@ export default function IdeasScreen() {
   const openTaskModal = (idea: Idea) => {
     setTaskModalIdea(idea);
     setTaskMode("low-lift");
-    setLlFrequency("monthly");
-    setLlCustomDays("");
+    setLlFrequency("no_repeat");
+    setLlFrequencyDays(0);
+    setLlRepeatLabel("Doesn't Repeat");
+    setLlShowRepeatPicker(false);
+    setLlDaysOfWeek(null);
+    setLlNthWeek(null);
+    setLlNthWeekday(null);
     setLlAnchorDate(toISODateString(new Date()));
     setLlAssignedId(null);
     setPaSelectedProjectId(null);
@@ -216,9 +219,21 @@ export default function IdeasScreen() {
       if (taskMode === "low-lift") {
         const today = toISODateString(new Date());
         const anchorDate = llAnchorDate || today;
-        const freqDays = llFrequency === "custom"
-          ? parseInt(llCustomDays || "30", 10)
-          : frequencyToDays(llFrequency);
+        // For "no_repeat" tasks freq days don't matter — the recurring_tasks table
+        // stores them but they're never advanced. Use 0 to make this explicit.
+        const freqDays = llFrequency === "no_repeat" ? 0 : (llFrequencyDays || 30);
+        const hasRule =
+          (llDaysOfWeek && llDaysOfWeek.length > 0) ||
+          (llNthWeek != null && llNthWeekday != null);
+        let nextDue = anchorDate;
+        if (hasRule) {
+          const anchorParts = anchorDate.split("-").map(Number);
+          const anchorLocal = new Date(anchorParts[0], anchorParts[1] - 1, anchorParts[2]);
+          nextDue = firstOccurrenceOnOrAfter(
+            { daysOfWeek: llDaysOfWeek, nthWeek: llNthWeek, nthWeekday: llNthWeekday },
+            anchorLocal,
+          );
+        }
         const rt = await createRecurring.mutateAsync({
           household_id: household.id,
           title,
@@ -227,12 +242,15 @@ export default function IdeasScreen() {
           frequency_type: llFrequency,
           frequency_days: freqDays,
           anchor_date: anchorDate,
-          next_due_date: anchorDate,
+          next_due_date: nextDue,
           assigned_member_id: llAssignedId,
           is_active: true,
           time_of_day: null,
           is_personal: false,
-        });
+          days_of_week: llDaysOfWeek,
+          nth_week: llNthWeek,
+          nth_weekday: llNthWeekday,
+        } as any);
         convertedId = rt.id;
       } else {
         if (paSelectedProjectId) {
@@ -596,32 +614,62 @@ export default function IdeasScreen() {
                 />
 
                 <Text className="text-sm font-medium text-gray-700 mb-2">Frequency</Text>
-                <View className="flex-row flex-wrap gap-2 mb-4">
-                  {FREQUENCIES.map((f) => (
+                <View className="mb-4">
+                  <View className="flex-row gap-2 mb-2">
                     <TouchableOpacity
-                      key={f.value}
-                      onPress={() => setLlFrequency(f.value)}
+                      onPress={() => {
+                        setLlFrequency("no_repeat" as FrequencyType);
+                        setLlFrequencyDays(0);
+                        setLlRepeatLabel("Doesn't Repeat");
+                        setLlDaysOfWeek(null);
+                        setLlNthWeek(null);
+                        setLlNthWeekday(null);
+                      }}
                       className={`px-4 py-2 rounded-xl border ${
-                        llFrequency === f.value ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                        llFrequency === "no_repeat" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
                       }`}
                     >
-                      <Text className={`font-medium text-sm ${llFrequency === f.value ? "text-white" : "text-gray-700"}`}>
-                        {f.label}
+                      <Text className={`font-medium ${llFrequency === "no_repeat" ? "text-white" : "text-gray-700"}`}>
+                        Doesn't Repeat
                       </Text>
                     </TouchableOpacity>
-                  ))}
-                </View>
-
-                {llFrequency === "custom" && (
-                  <TextInput
-                    className="bg-white border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 mb-4"
-                    value={llCustomDays}
-                    onChangeText={setLlCustomDays}
-                    placeholder="Every how many days? e.g. 45"
-                    placeholderTextColor="#9ca3af"
-                    keyboardType="number-pad"
+                    <TouchableOpacity
+                      onPress={() => setLlShowRepeatPicker(true)}
+                      className={`px-4 py-2 rounded-xl border ${
+                        llFrequency !== "no_repeat" ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                      }`}
+                    >
+                      <Text className={`font-medium ${llFrequency !== "no_repeat" ? "text-white" : "text-gray-700"}`}>
+                        Repeat
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  {llFrequency !== "no_repeat" && (
+                    <TouchableOpacity
+                      onPress={() => setLlShowRepeatPicker(true)}
+                      className="bg-blue-50 border border-blue-200 rounded-xl px-4 py-2"
+                    >
+                      <Text className="text-blue-700 text-sm font-medium">{llRepeatLabel}</Text>
+                    </TouchableOpacity>
+                  )}
+                  <RepeatPickerModal
+                    visible={llShowRepeatPicker}
+                    onClose={() => setLlShowRepeatPicker(false)}
+                    onSelect={(result) => {
+                      setLlFrequency(result.frequencyType);
+                      setLlFrequencyDays(result.frequencyDays);
+                      setLlRepeatLabel(result.label);
+                      setLlDaysOfWeek(result.daysOfWeek ?? null);
+                      setLlNthWeek(result.nthWeek ?? null);
+                      setLlNthWeekday(result.nthWeekday ?? null);
+                    }}
+                    initialState={{
+                      daysOfWeek: llDaysOfWeek,
+                      nthWeek: llNthWeek,
+                      nthWeekday: llNthWeekday,
+                    }}
                   />
-                )}
+                </View>
 
                 <Text className="text-sm font-medium text-gray-700 mb-2">Assign To (optional)</Text>
                 <View className="flex-row flex-wrap gap-2 mb-6">

@@ -73,7 +73,7 @@ export default function SettingsScreen() {
     (async () => {
       const { data, error } = await supabase
         .from("notification_preferences" as any)
-        .select("overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency")
+        .select("overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, notify_member_ids")
         .eq("member_id", currentMember.id)
         .maybeSingle();
       if (!error && data) {
@@ -81,6 +81,8 @@ export default function SettingsScreen() {
         setDueSoonEnabled((data as any).due_soon_enabled);
         setReminderHour((data as any).reminder_hour);
         setReminderFrequency((data as any).reminder_frequency);
+        const ids = (data as any).notify_member_ids;
+        if (Array.isArray(ids) && ids.length > 0) setNotifyMemberIds(ids);
       } else if (!error && !data) {
         // No prefs row yet — create one with current defaults so the digest cron works
         await supabase.from("notification_preferences" as any).upsert({
@@ -90,6 +92,7 @@ export default function SettingsScreen() {
           due_soon_enabled: dueSoonEnabled,
           reminder_hour: reminderHour,
           reminder_frequency: reminderFrequency,
+          notify_member_ids: notifyMemberIds,
           updated_at: new Date().toISOString(),
         }, { onConflict: "member_id" });
       }
@@ -109,6 +112,7 @@ export default function SettingsScreen() {
         due_soon_enabled: dueSoonEnabled,
         reminder_hour: reminderHour,
         reminder_frequency: reminderFrequency,
+        notify_member_ids: notifyMemberIds,
         updated_at: new Date().toISOString(),
       }, { onConflict: "member_id" });
       if (error) {
@@ -119,7 +123,7 @@ export default function SettingsScreen() {
       }
     }, 3000);
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
-  }, [overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency, currentMember?.id, household?.id]);
+  }, [overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency, notifyMemberIds, currentMember?.id, household?.id]);
 
   const [testReminderLoading, setTestReminderLoading] = useState(false);
   const handleTestReminder = useCallback(async () => {

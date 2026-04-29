@@ -17,6 +17,9 @@ const supabase = createClient(supabaseUrl, supabaseServiceKey);
 interface ReminderItem {
   title: string;
   dueDate: string;
+  /** "overdue" | "today" | "tomorrow" — set from dueDate vs today */
+  bucket: "overdue" | "today" | "tomorrow";
+  /** Back-compat: legacy callers expect overdue boolean */
   overdue: boolean;
   timeOfDay?: string | null;
   source: "Task" | "Project" | "Checklist" | "Activity" | "Goal" | "Garden" | "Service";
@@ -27,6 +30,20 @@ interface ReminderItem {
 
 function getTodayPT(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
+}
+
+/** YYYY-MM-DD for tomorrow in Pacific Time. Pure date math — no UTC drift. */
+function getTomorrowPT(today: string): string {
+  const [y, m, d] = today.split("-").map(Number);
+  const next = new Date(Date.UTC(y, m - 1, d + 1));
+  return `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}-${String(next.getUTCDate()).padStart(2, "0")}`;
+}
+
+function bucketFor(dateStr: string, today: string, tomorrow: string): "overdue" | "today" | "tomorrow" | null {
+  if (dateStr < today) return "overdue";
+  if (dateStr === today) return "today";
+  if (dateStr === tomorrow) return "tomorrow";
+  return null;
 }
 
 /** Sort items by date ascending, then by time (no-time first) */
@@ -73,40 +90,48 @@ function formatDateCompact(dateStr: string): string {
 
 async function fetchAllItems(householdId: string, today: string): Promise<ReminderItem[]> {
   const items: ReminderItem[] = [];
+  const tomorrow = getTomorrowPT(today);
 
-  // 1. Recurring tasks — due today or overdue
+  // 1. Recurring tasks — due tomorrow or earlier
   const { data: recurringTasks } = await supabase
     .from("recurring_tasks")
-    .select("id, title, next_due_date, household_id, assigned_member_id, time_of_day")
+    .select("id, title, next_due_date, household_id, assigned_member_id, time_of_day, is_personal")
     .eq("is_active", true)
     .eq("household_id", householdId)
-    .lte("next_due_date", today);
+    .lte("next_due_date", tomorrow);
 
   for (const t of recurringTasks ?? []) {
+    const b = bucketFor(t.next_due_date, today, tomorrow);
+    if (!b) continue;
     items.push({
       title: t.title,
       dueDate: t.next_due_date,
-      overdue: t.next_due_date < today,
+      bucket: b,
+      overdue: b === "overdue",
       timeOfDay: (t as any).time_of_day ?? null,
       source: "Task",
       _assignedMemberId: t.assigned_member_id,
+      _isPersonal: (t as any).is_personal,
     } as any);
   }
 
-  // 2. One-off tasks — due today or overdue, not completed
+  // 2. One-off tasks — due tomorrow or earlier, not completed
   const { data: oneOffTasks } = await supabase
     .from("tasks")
     .select("id, title, due_date, due_time, assigned_member_id, is_personal, household_id")
     .eq("household_id", householdId)
     .eq("is_completed", false)
     .not("due_date", "is", null)
-    .lte("due_date", today);
+    .lte("due_date", tomorrow);
 
   for (const t of oneOffTasks ?? []) {
+    const b = bucketFor(t.due_date!, today, tomorrow);
+    if (!b) continue;
     items.push({
       title: t.title,
       dueDate: t.due_date!,
-      overdue: t.due_date! < today,
+      bucket: b,
+      overdue: b === "overdue",
       timeOfDay: t.due_time ?? null,
       source: "Task",
       _assignedMemberId: t.assigned_member_id,
@@ -114,14 +139,14 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
     } as any);
   }
 
-  // 3. Projects with expected_date due today or overdue (not completed/finished)
+  // 3. Projects with expected_date due tomorrow or earlier (not completed/finished)
   const { data: projects } = await supabase
     .from("projects")
     .select("id, title, expected_date, household_id")
     .eq("household_id", householdId)
     .not("status", "in", '("completed","finished")')
     .not("expected_date", "is", null)
-    .lte("expected_date", today);
+    .lte("expected_date", tomorrow);
 
   // Get project owners for assignment matching
   const projectIds = (projects ?? []).map((p) => p.id);
@@ -138,16 +163,19 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
   }
 
   for (const p of projects ?? []) {
+    const b = bucketFor(p.expected_date!, today, tomorrow);
+    if (!b) continue;
     items.push({
       title: p.title,
       dueDate: p.expected_date!,
-      overdue: p.expected_date! < today,
+      bucket: b,
+      overdue: b === "overdue",
       source: "Project",
       _ownerMemberIds: projectOwnerMap[p.id] ?? [],
     } as any);
   }
 
-  // 4. Project checklist items — uncompleted with due date today or overdue
+  // 4. Project checklist items — uncompleted with due date tomorrow or earlier
   if (projectIds.length) {
     const { data: projectTasks } = await supabase
       .from("project_tasks")
@@ -155,17 +183,20 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
       .in("project_id", projectIds)
       .eq("is_completed", false)
       .not("due_date", "is", null)
-      .lte("due_date", today);
+      .lte("due_date", tomorrow);
 
     // Get parent project titles
     const projectTitleMap: Record<string, string> = {};
     for (const p of projects ?? []) projectTitleMap[p.id] = p.title;
 
     for (const t of projectTasks ?? []) {
+      const b = bucketFor(t.due_date!, today, tomorrow);
+      if (!b) continue;
       items.push({
         title: t.title,
         dueDate: t.due_date!,
-        overdue: t.due_date! < today,
+        bucket: b,
+        overdue: b === "overdue",
         source: "Checklist",
         parentName: projectTitleMap[t.project_id] ?? "Project",
         _assignedMemberId: t.assigned_member_id,
@@ -173,27 +204,30 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
     }
   }
 
-  // 5. Trips (Activities) — departure_date today or overdue
+  // 5. Trips (Activities) — departure_date tomorrow or earlier
   const { data: trips } = await supabase
     .from("trips")
     .select("id, title, departure_date, return_date, assigned_to, household_id")
     .eq("household_id", householdId)
-    .lte("departure_date", today);
+    .lte("departure_date", tomorrow);
 
-  // Only include trips that haven't passed their return date by more than a day
+  // Only include trips that haven't passed their return date
   const activeTrips = (trips ?? []).filter((t) => t.return_date >= today || t.departure_date >= today);
 
   for (const t of activeTrips) {
+    const b = bucketFor(t.departure_date, today, tomorrow);
+    if (!b) continue;
     items.push({
       title: t.title,
       dueDate: t.departure_date,
-      overdue: t.departure_date < today,
+      bucket: b,
+      overdue: b === "overdue",
       source: "Activity",
       _assignedMemberId: t.assigned_to,
     } as any);
   }
 
-  // 6. Trip checklist items — uncompleted with due date today or overdue
+  // 6. Trip checklist items — uncompleted with due date tomorrow or earlier
   const tripIds = (trips ?? []).map((t) => t.id);
   if (tripIds.length) {
     const { data: tripTasks } = await supabase
@@ -202,16 +236,19 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
       .in("trip_id", tripIds)
       .eq("is_completed", false)
       .not("due_date", "is", null)
-      .lte("due_date", today);
+      .lte("due_date", tomorrow);
 
     const tripTitleMap: Record<string, string> = {};
     for (const t of trips ?? []) tripTitleMap[t.id] = t.title;
 
     for (const t of tripTasks ?? []) {
+      const b = bucketFor(t.due_date!, today, tomorrow);
+      if (!b) continue;
       items.push({
         title: t.title,
         dueDate: t.due_date!,
-        overdue: t.due_date! < today,
+        bucket: b,
+        overdue: b === "overdue",
         source: "Checklist",
         parentName: tripTitleMap[t.trip_id] ?? "Activity",
         _assignedMemberId: t.assigned_member_id,
@@ -219,20 +256,23 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
     }
   }
 
-  // 7. Goals — active with due date today or overdue
+  // 7. Goals — active with due date tomorrow or earlier
   const { data: goals } = await supabase
     .from("goals")
     .select("id, title, due_date, member_id, user_type, household_id")
     .eq("household_id", householdId)
     .eq("status", "active")
     .not("due_date", "is", null)
-    .lte("due_date", today);
+    .lte("due_date", tomorrow);
 
   for (const g of goals ?? []) {
+    const b = bucketFor(g.due_date!, today, tomorrow);
+    if (!b) continue;
     items.push({
       title: g.title,
       dueDate: g.due_date!,
-      overdue: g.due_date! < today,
+      bucket: b,
+      overdue: b === "overdue",
       source: "Goal",
       _assignedMemberId: g.member_id,
       _isFamily: g.user_type === "family",
@@ -257,10 +297,13 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
     .lte("observation_date", today);
 
   for (const p of pestLogs ?? []) {
+    const b = bucketFor(p.observation_date, today, tomorrow);
+    if (!b) continue;
     items.push({
       title: `${p.log_type === "pest" ? "🐛" : p.log_type === "disease" ? "🦠" : "⚠️"} ${p.name}`,
       dueDate: p.observation_date,
-      overdue: p.observation_date < today,
+      bucket: b,
+      overdue: b === "overdue",
       source: "Garden",
       _isFamily: true,
     } as any);
@@ -278,14 +321,17 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
     const days = s.frequency === "monthly" ? 30 : s.frequency === "quarterly" ? 90 : s.frequency === "bi-annually" ? 180 : 365;
     const nextDue = new Date(new Date(s.service_date).getTime() + days * 86400000);
     const nextDueStr = nextDue.toISOString().split("T")[0];
-    if (nextDueStr > today) continue; // not yet due
+    if (nextDueStr > tomorrow) continue; // not yet due
     // Only include if overdue by up to 14 days
     const daysOverdue = Math.ceil((new Date(today).getTime() - nextDue.getTime()) / 86400000);
     if (daysOverdue > 14) continue;
+    const b = bucketFor(nextDueStr, today, tomorrow);
+    if (!b) continue;
     items.push({
       title: `${s.service_type} (${s.vendor_name})`,
       dueDate: nextDueStr,
-      overdue: nextDueStr < today,
+      bucket: b,
+      overdue: b === "overdue",
       source: "Service",
       _isFamily: true,
     } as any);
@@ -294,20 +340,42 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
   return items;
 }
 
-/** Filter items to those relevant for a specific member */
-function filterItemsForMember(items: any[], memberId: string): ReminderItem[] {
+/**
+ * Filter items to those relevant for a specific member, honoring their
+ * `notify_member_ids` preference. Semantics:
+ *   - Personal tasks (is_personal=true) are ONLY visible to the assigned member.
+ *   - notify_member_ids = ["all"] (or empty) → include items regardless of assignee.
+ *   - notify_member_ids = [...memberIds] → include items assigned to one of those
+ *     members, plus items that are unassigned/family-wide. Items assigned to
+ *     other specific members are excluded.
+ */
+function filterItemsForMember(items: any[], memberId: string, notifyMemberIds: string[]): ReminderItem[] {
+  const showAll =
+    !Array.isArray(notifyMemberIds) ||
+    notifyMemberIds.length === 0 ||
+    notifyMemberIds.includes("all");
+
   return items.filter((item) => {
-    // Personal tasks: only the assigned member
-    if (item._isPersonal && item._assignedMemberId && item._assignedMemberId !== memberId) return false;
-    // Assigned to a specific member
-    if (item._assignedMemberId && item._assignedMemberId !== memberId) return false;
-    // Project owners check
-    if (item._ownerMemberIds && item._ownerMemberIds.length > 0 && !item._ownerMemberIds.includes(memberId)) return false;
-    // Family/unassigned items: include for everyone
-    return true;
+    // Personal tasks: only the assigned member ever sees them.
+    if (item._isPersonal) {
+      return item._assignedMemberId === memberId;
+    }
+
+    if (showAll) return true;
+
+    // Project with explicit owners: include if any owner is in the watch list.
+    if (item._ownerMemberIds && item._ownerMemberIds.length > 0) {
+      return item._ownerMemberIds.some((id: string) => notifyMemberIds.includes(id));
+    }
+
+    // Unassigned / family-wide items always pass the filter.
+    if (!item._assignedMemberId) return true;
+
+    return notifyMemberIds.includes(item._assignedMemberId);
   }).map((item) => ({
     title: item.title,
     dueDate: item.dueDate,
+    bucket: item.bucket,
     overdue: item.overdue,
     timeOfDay: item.timeOfDay ?? null,
     source: item.source,
@@ -349,8 +417,9 @@ function sendDigestEmail(
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long", month: "long", day: "numeric",
   });
-  const overdueItems = sortItems(items.filter((i) => i.overdue));
-  const dueItems = sortItems(items.filter((i) => !i.overdue));
+  const overdueItems = sortItems(items.filter((i) => i.bucket === "overdue"));
+  const todayItems = sortItems(items.filter((i) => i.bucket === "today"));
+  const tomorrowItems = sortItems(items.filter((i) => i.bucket === "tomorrow"));
 
   const renderItem = (i: ReminderItem) => {
     const color = SOURCE_COLORS[i.source] ?? "#6b7280";
@@ -408,10 +477,16 @@ function sendDigestEmail(
     <ul style="margin:0;padding-left:18px;">${overdueItems.map(renderItem).join("")}</ul>
   </div>` : ""}
 
-  ${dueItems.length > 0 ? `
+  ${todayItems.length > 0 ? `
   <div style="background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
-    <p style="color:#d97706;font-weight:700;margin:0 0 10px;">📋 Due Today (${dueItems.length})</p>
-    <ul style="margin:0;padding-left:18px;">${dueItems.map(renderItem).join("")}</ul>
+    <p style="color:#d97706;font-weight:700;margin:0 0 10px;">📋 Due Today (${todayItems.length})</p>
+    <ul style="margin:0;padding-left:18px;">${todayItems.map(renderItem).join("")}</ul>
+  </div>` : ""}
+
+  ${tomorrowItems.length > 0 ? `
+  <div style="background:#fefce8;border:1px solid #fef08a;border-radius:10px;padding:14px 16px;margin-bottom:16px;">
+    <p style="color:#ca8a04;font-weight:700;margin:0 0 10px;">🗓 Due Tomorrow (${tomorrowItems.length})</p>
+    <ul style="margin:0;padding-left:18px;">${tomorrowItems.map(renderItem).join("")}</ul>
   </div>` : ""}
 
   <!-- Legend -->
@@ -476,8 +551,8 @@ async function generateSmartPushMessage(
 
   if (!ANTHROPIC_API_KEY) return fallback;
 
-  const overdue = items.filter((i) => i.overdue);
-  const due = items.filter((i) => !i.overdue);
+  const overdue = items.filter((i) => i.bucket === "overdue");
+  const due = items.filter((i) => i.bucket !== "overdue");
 
   // Group by source for context
   const sourceSummary = Object.entries(
@@ -573,8 +648,25 @@ Deno.serve(async (req) => {
         );
       }
 
+      // Load this member's notify_member_ids preference (defaults to ["all"])
+      const { data: testPrefs } = await supabase
+        .from("notification_preferences")
+        .select("notify_member_ids, overdue_enabled, due_soon_enabled")
+        .eq("member_id", testMember.id)
+        .maybeSingle();
+      const testNotifyIds: string[] = Array.isArray((testPrefs as any)?.notify_member_ids)
+        ? (testPrefs as any).notify_member_ids
+        : ["all"];
+
       const allItems = await fetchAllItems(testMember.household_id, today);
-      const memberItems = filterItemsForMember(allItems, testMember.id);
+      let memberItems = filterItemsForMember(allItems, testMember.id, testNotifyIds);
+      if (testPrefs) {
+        memberItems = memberItems.filter((item) => {
+          if (item.bucket === "overdue" && !(testPrefs as any).overdue_enabled) return false;
+          if (item.bucket !== "overdue" && !(testPrefs as any).due_soon_enabled) return false;
+          return true;
+        });
+      }
       const sorted = sortItems(memberItems);
 
       const firstName = testMember.display_name?.split(" ")[0] ?? "there";
@@ -627,7 +719,7 @@ Deno.serve(async (req) => {
     // 1. Load ALL notification preferences
     const { data: allPrefs } = await supabase
       .from("notification_preferences")
-      .select("member_id, household_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, last_digest_sent_at");
+      .select("member_id, household_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, last_digest_sent_at, notify_member_ids");
 
     if (!allPrefs?.length) {
       return new Response(JSON.stringify({ sent: 0, message: "No members have notification preferences" }), {
@@ -690,14 +782,17 @@ Deno.serve(async (req) => {
       if (!email) { skipped++; continue; }
 
       const allItems = itemsByHousehold[member.household_id] ?? [];
-      let memberItems = filterItemsForMember(allItems, member.id);
-
-      // Apply overdue/due-soon preferences
       const prefs = prefsByMemberId[member.id];
+      const notifyIds: string[] = Array.isArray((prefs as any)?.notify_member_ids)
+        ? (prefs as any).notify_member_ids
+        : ["all"];
+      let memberItems = filterItemsForMember(allItems, member.id, notifyIds);
+
+      // Apply overdue/due-soon preferences (due_soon covers today + tomorrow)
       if (prefs) {
         memberItems = memberItems.filter((item) => {
-          if (item.overdue && !prefs.overdue_enabled) return false;
-          if (!item.overdue && !prefs.due_soon_enabled) return false;
+          if (item.bucket === "overdue" && !prefs.overdue_enabled) return false;
+          if (item.bucket !== "overdue" && !prefs.due_soon_enabled) return false;
           return true;
         });
       }
