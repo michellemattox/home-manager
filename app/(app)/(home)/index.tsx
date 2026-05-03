@@ -66,6 +66,45 @@ function SectionHeader({ title, count, onSeeAll, raw }: { title: string; count?:
   );
 }
 
+// Collapsible section header with chevron toggle. Defaults to collapsed so the
+// Home screen stays tidy; tapping the row (or the chevron) expands the list.
+function CollapsibleSection({
+  title,
+  count,
+  expanded,
+  onToggle,
+  children,
+}: {
+  title: string;
+  count: number;
+  expanded: boolean;
+  onToggle: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <>
+      <TouchableOpacity
+        onPress={onToggle}
+        activeOpacity={0.7}
+        className="flex-row items-center justify-between mb-2 mt-4"
+      >
+        <View className="flex-row items-center gap-2">
+          <Text className="text-sm font-bold text-gray-700 tracking-wide uppercase">{title}</Text>
+          {count > 0 && (
+            <View className="bg-red-500 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
+              <Text className="text-white text-xs font-bold">{count}</Text>
+            </View>
+          )}
+        </View>
+        <Text className="text-gray-500 text-base font-bold" style={{ width: 18, textAlign: "center" }}>
+          {expanded ? "˅" : "›"}
+        </Text>
+      </TouchableOpacity>
+      {expanded && children}
+    </>
+  );
+}
+
 function OverdueProjectCard({ project, onPress }: { project: ProjectWithOwners; onPress: () => void }) {
   const daysOverdue = project.expected_date
     ? Math.abs(daysUntilDue(project.expected_date))
@@ -742,6 +781,17 @@ export default function HomeScreen() {
   const hasDueTomorrow = dueTomorrowItems.length > 0;
   const hasUpcoming = dueSoonItems.length > 0;
 
+  // Collapsible state for the four due-date buckets. Default collapsed so
+  // the Home screen stays tidy; user taps the chevron to expand.
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({
+    overdue: false,
+    today: false,
+    tomorrow: false,
+    soon: false,
+  });
+  const toggleSection = (key: string) =>
+    setExpandedSections((s) => ({ ...s, [key]: !s[key] }));
+
   const renderHomeItem = (item: HomeItem, index: number) => {
     switch (item.kind) {
       case "projectCard": {
@@ -886,34 +936,50 @@ export default function HomeScreen() {
 
         {/* Needs Attention (Overdue) */}
         {hasAlerts && (
-          <>
-            <SectionHeader title="Needs Attention" count={totalAlerts} />
+          <CollapsibleSection
+            title="Needs Attention"
+            count={totalAlerts}
+            expanded={expandedSections.overdue}
+            onToggle={() => toggleSection("overdue")}
+          >
             {overdueItems.map(renderHomeItem)}
-          </>
+          </CollapsibleSection>
         )}
 
         {/* Due Today */}
         {hasDueToday && (
-          <>
-            <SectionHeader title="Due Today" />
+          <CollapsibleSection
+            title="Due Today"
+            count={dueTodayItems.length}
+            expanded={expandedSections.today}
+            onToggle={() => toggleSection("today")}
+          >
             {dueTodayItems.map(renderHomeItem)}
-          </>
+          </CollapsibleSection>
         )}
 
         {/* Due Tomorrow */}
         {hasDueTomorrow && (
-          <>
-            <SectionHeader title="Due Tomorrow" />
+          <CollapsibleSection
+            title="Due Tomorrow"
+            count={dueTomorrowItems.length}
+            expanded={expandedSections.tomorrow}
+            onToggle={() => toggleSection("tomorrow")}
+          >
             {dueTomorrowItems.map(renderHomeItem)}
-          </>
+          </CollapsibleSection>
         )}
 
         {/* Coming Up (Due Soon) */}
         {hasUpcoming && (
-          <>
-            <SectionHeader title="Coming Up" />
+          <CollapsibleSection
+            title="Coming Up"
+            count={dueSoonItems.length}
+            expanded={expandedSections.soon}
+            onToggle={() => toggleSection("soon")}
+          >
             {dueSoonItems.map(renderHomeItem)}
-          </>
+          </CollapsibleSection>
         )}
 
         {/* WoW Updates */}

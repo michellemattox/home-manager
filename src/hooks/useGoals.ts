@@ -2,6 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { format, addDays, addWeeks, addMonths, addYears } from "date-fns";
 import { calculateNextDueDate } from "@/utils/scheduleUtils";
+import { laterOfTodayOrDate } from "@/utils/dateUtils";
 import { useUndoStore } from "@/stores/undoStore";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
 
@@ -165,7 +166,9 @@ export function useCompleteGoalPeriod() {
       const currentDue = goal.due_date ?? new Date().toISOString().split("T")[0];
 
       const body = buildPeriodMessage(freqType, freqDays, currentDue, missed);
-      const nextDue = calculateNextDueDate(freqType, freqDays, new Date(currentDue + "T12:00:00"));
+      // Overdue period? Advance from today so the next cycle starts from
+      // when the user actually marked it, not from the missed due date.
+      const nextDue = calculateNextDueDate(freqType, freqDays, laterOfTodayOrDate(currentDue));
 
       const { error: updateErr } = await supabase
         .from("goal_updates")

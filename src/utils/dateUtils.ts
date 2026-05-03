@@ -1,8 +1,23 @@
 import { format, parseISO, differenceInDays } from "date-fns";
 
 // Returns today's date string (YYYY-MM-DD) in Pacific Time (Seattle/US West Coast)
-function getTodayPT(): string {
+export function getTodayPT(): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "America/Los_Angeles" }).format(new Date());
+}
+
+// Today as a Date anchored to noon, used as a `fromDate` for date-fns math.
+// Noon avoids any DST/midnight edge cases when adding days/weeks/months.
+export function getTodayPTNoon(): Date {
+  return new Date(getTodayPT() + "T12:00:00");
+}
+
+// Pick the later of `dateStr` and today (PT) as a Date. Used when advancing
+// the next due date of a recurring item: if the item is overdue at completion
+// time, the new cycle should start from today, not from the missed due date.
+export function laterOfTodayOrDate(dateStr: string): Date {
+  const today = getTodayPT();
+  const anchor = dateStr > today ? dateStr : today;
+  return new Date(anchor + "T12:00:00");
 }
 
 export function formatDate(dateStr: string): string {

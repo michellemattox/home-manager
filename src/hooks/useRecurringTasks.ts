@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { calculateNextDueDate } from "@/utils/scheduleUtils";
-import { isOverdue, isDueToday } from "@/utils/dateUtils";
+import { isOverdue, isDueToday, laterOfTodayOrDate } from "@/utils/dateUtils";
 import { useUndoStore } from "@/stores/undoStore";
 import { useTasks } from "@/hooks/useTasks";
 import { useFilterStore } from "@/stores/filterStore";
@@ -101,12 +101,15 @@ export function useCompleteRecurringTask() {
       const index = items?.findIndex((t) => t.id === task.id) ?? -1;
 
       const isNoRepeat = task.frequency_type === "no_repeat";
+      // If the task is overdue at completion time, advance from today instead
+      // of from the missed due date — otherwise a 2-day repeat completed 1 day
+      // late would land tomorrow instead of two days from now.
       const newDueDate = isNoRepeat
         ? task.next_due_date
         : calculateNextDueDate(
             task.frequency_type,
             task.frequency_days,
-            new Date(task.next_due_date + "T12:00:00"),
+            laterOfTodayOrDate(task.next_due_date),
             {
               daysOfWeek: (task as any).days_of_week ?? null,
               nthWeek: (task as any).nth_week ?? null,
