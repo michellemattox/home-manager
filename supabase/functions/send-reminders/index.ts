@@ -350,10 +350,16 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
  *     other specific members are excluded.
  */
 function filterItemsForMember(items: any[], memberId: string, notifyMemberIds: string[]): ReminderItem[] {
+  const explicitIds = Array.isArray(notifyMemberIds)
+    ? notifyMemberIds.filter((id) => id !== "all")
+    : [];
+  // "all" only means "show everything" when it's the sole selection. If specific
+  // member IDs are also selected, those narrow the filter (family-wide items
+  // still pass via the !_assignedMemberId branch below).
   const showAll =
     !Array.isArray(notifyMemberIds) ||
     notifyMemberIds.length === 0 ||
-    notifyMemberIds.includes("all");
+    (notifyMemberIds.includes("all") && explicitIds.length === 0);
 
   return items.filter((item) => {
     // Personal tasks: only the assigned member ever sees them.
@@ -363,15 +369,25 @@ function filterItemsForMember(items: any[], memberId: string, notifyMemberIds: s
 
     if (showAll) return true;
 
-    // Project with explicit owners: include if any owner is in the watch list.
+    // Family / shared items (goals with user_type=family, garden pest logs,
+    // service records) always go to every member's digest regardless of which
+    // specific members they are watching.
+    if (item._isFamily) return true;
+
+    // Project with explicit owners: include if any owner is in the watch list,
+    // OR if the project has no owners (treat as unassigned).
     if (item._ownerMemberIds && item._ownerMemberIds.length > 0) {
-      return item._ownerMemberIds.some((id: string) => notifyMemberIds.includes(id));
+      return item._ownerMemberIds.some((id: string) => explicitIds.includes(id));
     }
 
-    // Unassigned / family-wide items always pass the filter.
-    if (!item._assignedMemberId) return true;
+    // Trips store the literal string "all" when assigned to the whole household
+    // (see app/(app)/(activity)/new.tsx). Treat that as unassigned.
+    const assignedId = item._assignedMemberId === "all" ? null : item._assignedMemberId;
 
-    return notifyMemberIds.includes(item._assignedMemberId);
+    // Unassigned items always pass the filter.
+    if (!assignedId) return true;
+
+    return explicitIds.includes(assignedId);
   }).map((item) => ({
     title: item.title,
     dueDate: item.dueDate,
