@@ -608,8 +608,19 @@ export default function HomeScreen() {
   const overdueProjects = filteredProjects.filter(
     (p) => p.expected_date && isOverdue(p.expected_date)
   );
+  const dueTodayProjects = filteredProjects.filter(
+    (p) => p.expected_date && isDueToday(p.expected_date)
+  );
+  const dueTomorrowProjects = filteredProjects.filter(
+    (p) => p.expected_date && isDueTomorrow(p.expected_date)
+  );
   const dueSoonProjects = filteredProjects.filter(
-    (p) => p.expected_date && !isOverdue(p.expected_date) && isDueSoon(p.expected_date, 14)
+    (p) =>
+      p.expected_date &&
+      !isOverdue(p.expected_date) &&
+      !isDueToday(p.expected_date) &&
+      !isDueTomorrow(p.expected_date) &&
+      isDueSoon(p.expected_date, 14)
   );
 
   // Personal task visibility — only show is_personal=true to the assigned person
@@ -688,19 +699,25 @@ export default function HomeScreen() {
     ),
   ].sort(sortItems);
 
-  const dueTodayItems = buildTierItems(
-    (t) => isDueToday(t.next_due_date),
-    (t) => !!t.due_date && isDueToday(t.due_date),
-    (t) => isDueToday(t.due_date!),
-    (t) => isDueToday(t.due_date!),
-  );
+  const dueTodayItems = [
+    ...dueTodayProjects.map((p): HomeItem => ({ kind: "projectCard", data: p })),
+    ...buildTierItems(
+      (t) => isDueToday(t.next_due_date),
+      (t) => !!t.due_date && isDueToday(t.due_date),
+      (t) => isDueToday(t.due_date!),
+      (t) => isDueToday(t.due_date!),
+    ),
+  ].sort(sortItems);
 
-  const dueTomorrowItems = buildTierItems(
-    (t) => isDueTomorrow(t.next_due_date),
-    (t) => !!t.due_date && isDueTomorrow(t.due_date),
-    (t) => isDueTomorrow(t.due_date!),
-    (t) => isDueTomorrow(t.due_date!),
-  );
+  const dueTomorrowItems = [
+    ...dueTomorrowProjects.map((p): HomeItem => ({ kind: "projectCard", data: p })),
+    ...buildTierItems(
+      (t) => isDueTomorrow(t.next_due_date),
+      (t) => !!t.due_date && isDueTomorrow(t.due_date),
+      (t) => isDueTomorrow(t.due_date!),
+      (t) => isDueTomorrow(t.due_date!),
+    ),
+  ].sort(sortItems);
 
   const dueSoonItems = [
     ...dueSoonProjects.map((p): HomeItem => ({ kind: "projectCard", data: p })),

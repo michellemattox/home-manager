@@ -139,35 +139,37 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
     } as any);
   }
 
-  // 3. Projects with expected_date due tomorrow or earlier (not completed/finished)
-  const { data: projects } = await supabase
+  // 3. All active household projects. We need the full set (not just those with
+  //    an imminent expected_date) so that section 4 below can pull in checklist
+  //    items belonging to projects whose top-level expected_date is in the
+  //    future or null.
+  const { data: allActiveProjects } = await supabase
     .from("projects")
     .select("id, title, expected_date, household_id")
     .eq("household_id", householdId)
-    .not("status", "in", '("completed","finished")')
-    .not("expected_date", "is", null)
-    .lte("expected_date", tomorrow);
+    .not("status", "in", '("completed","finished")');
 
-  // Get project owners for assignment matching
-  const projectIds = (projects ?? []).map((p) => p.id);
+  const allProjectIds = (allActiveProjects ?? []).map((p) => p.id);
   let projectOwnerMap: Record<string, string[]> = {};
-  if (projectIds.length) {
+  if (allProjectIds.length) {
     const { data: owners } = await supabase
       .from("project_owners")
       .select("project_id, member_id")
-      .in("project_id", projectIds);
+      .in("project_id", allProjectIds);
     for (const o of owners ?? []) {
       if (!projectOwnerMap[o.project_id]) projectOwnerMap[o.project_id] = [];
       projectOwnerMap[o.project_id].push(o.member_id);
     }
   }
 
-  for (const p of projects ?? []) {
-    const b = bucketFor(p.expected_date!, today, tomorrow);
+  // Top-level project cards: only those with expected_date in [overdue..tomorrow].
+  for (const p of allActiveProjects ?? []) {
+    if (!p.expected_date) continue;
+    const b = bucketFor(p.expected_date, today, tomorrow);
     if (!b) continue;
     items.push({
       title: p.title,
-      dueDate: p.expected_date!,
+      dueDate: p.expected_date,
       bucket: b,
       overdue: b === "overdue",
       source: "Project",
@@ -175,19 +177,19 @@ async function fetchAllItems(householdId: string, today: string): Promise<Remind
     } as any);
   }
 
-  // 4. Project checklist items — uncompleted with due date tomorrow or earlier
-  if (projectIds.length) {
+  // 4. Project checklist items — uncompleted with due date tomorrow or earlier,
+  //    across ALL active projects (independent of project expected_date).
+  if (allProjectIds.length) {
     const { data: projectTasks } = await supabase
       .from("project_tasks")
       .select("id, title, due_date, assigned_member_id, project_id, checklist_name")
-      .in("project_id", projectIds)
+      .in("project_id", allProjectIds)
       .eq("is_completed", false)
       .not("due_date", "is", null)
       .lte("due_date", tomorrow);
 
-    // Get parent project titles
     const projectTitleMap: Record<string, string> = {};
-    for (const p of projects ?? []) projectTitleMap[p.id] = p.title;
+    for (const p of allActiveProjects ?? []) projectTitleMap[p.id] = p.title;
 
     for (const t of projectTasks ?? []) {
       const b = bucketFor(t.due_date!, today, tomorrow);
