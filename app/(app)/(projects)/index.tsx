@@ -15,6 +15,7 @@ import { getYear, parseISO } from "date-fns";
 import * as Linking from "expo-linking";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useProjects } from "@/hooks/useProjects";
+import { useAllProjectTasks } from "@/hooks/useProjectTasks";
 import { useServiceRecords, useUpdateServiceRecord, useDeleteServiceRecord } from "@/hooks/useServices";
 import { usePreferredVendors, useAddPreferredVendor, useUpdatePreferredVendor, useDeletePreferredVendor } from "@/hooks/usePreferredVendors";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
@@ -26,6 +27,8 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatarGroup } from "@/components/ui/MemberAvatar";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { matchesQuery } from "@/utils/searchUtils";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { buildGoogleMapsUrl, buildYelpUrl, getServiceTypeKeyword } from "@/lib/vendorLinks";
 import { formatDate, formatDateTime, isOverdue, isDueSoon, dueTier } from "@/utils/dateUtils";
@@ -131,10 +134,26 @@ function ProjectsTab() {
   const router = useRouter();
   const { household, members } = useHouseholdStore();
   const { data: projects, isLoading, refetch } = useProjects(household?.id);
+  // Used to search inside project checklist item titles (the index hook only loads
+  // ids/checklist names — not titles).
+  const { data: allProjectTasks = [] } = useAllProjectTasks(household?.id);
   const [showFinished, setShowFinished] = useState(false);
   const [filterPriority, setFilterPriority] = useState<ProjectPriority | null>(null);
   const [filterDue, setFilterDue] = useState<DueFilter>(null);
   const [filterOwner, setFilterOwner] = useState<string[]>([]);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const projectIdsMatchingTaskSearch = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+    const set = new Set<string>();
+    for (const t of allProjectTasks) {
+      if (matchesQuery(q, t.title, (t as any).notes, t.checklist_name)) {
+        set.add((t as any).project_id);
+      }
+    }
+    return set;
+  }, [allProjectTasks, searchQuery]);
 
   const openCount = (projects ?? []).filter((p) => OPEN_STATUSES.includes(p.status as ProjectStatus)).length;
   const finishedCount = (projects ?? []).filter((p) => p.status === "finished" || p.status === "completed").length;
@@ -157,13 +176,28 @@ function ProjectsTab() {
       if (owners.length === 0) return filterOwner.includes("__unassigned__");
       return owners.some((id: string) => filterOwner.includes(id));
     });
+    if (searchQuery.trim()) {
+      list = list.filter((p) => {
+        const ownerNames = (p.project_owners ?? [])
+          .map((po: any) => members.find((m) => m.id === po.member_id)?.display_name)
+          .filter(Boolean)
+          .join(" ");
+        const updateBodies = (p.project_updates ?? [])
+          .map((u: any) => u.body)
+          .join(" \n ");
+        if (matchesQuery(searchQuery, p.title, p.description, p.category, p.notes, p.contractor_name, p.status, p.priority, p.expected_date, ownerNames, updateBodies)) {
+          return true;
+        }
+        return projectIdsMatchingTaskSearch?.has(p.id) ?? false;
+      });
+    }
     return [...list].sort((a, b) => {
       if (!a.expected_date && !b.expected_date) return 0;
       if (!a.expected_date) return 1;
       if (!b.expected_date) return -1;
       return new Date(a.expected_date).getTime() - new Date(b.expected_date).getTime();
     });
-  }, [projects, showFinished, filterPriority, filterDue, filterOwner]);
+  }, [projects, showFinished, filterPriority, filterDue, filterOwner, searchQuery, members, projectIdsMatchingTaskSearch]);
 
   return (
     <>
@@ -179,6 +213,14 @@ function ProjectsTab() {
         >
           <Text className="text-white text-sm font-semibold">+ New</Text>
         </TouchableOpacity>
+      </View>
+
+      <View className="px-4 pb-1">
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search projects..."
+        />
       </View>
 
       {/* Filter panel */}

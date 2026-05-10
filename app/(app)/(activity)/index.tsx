@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -10,10 +10,12 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { isBefore, parseISO } from "date-fns";
 import { useHouseholdStore } from "@/stores/householdStore";
-import { useTrips } from "@/hooks/useTrips";
+import { useTrips, useAllTripTasks } from "@/hooks/useTrips";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { matchesQuery } from "@/utils/searchUtils";
 import { formatDateShort } from "@/utils/dateUtils";
 import type { Trip } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
@@ -59,14 +61,35 @@ export default function ActivityScreen() {
   const router = useRouter();
   const { household } = useHouseholdStore();
   const { data: trips, isLoading } = useTrips(household?.id);
+  const { data: allTripTasks = [] } = useAllTripTasks(household?.id);
   const { refreshing, onRefresh } = useAppRefresh();
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // Set of trip_ids that have at least one matching checklist item
+  const tripIdsMatchingChecklist = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+    const set = new Set<string>();
+    for (const t of allTripTasks) {
+      if (matchesQuery(q, t.title, t.checklist_name)) {
+        set.add(t.trip_id);
+      }
+    }
+    return set;
+  }, [allTripTasks, searchQuery]);
+
+  const tripMatches = (t: Trip) => {
+    if (!searchQuery.trim()) return true;
+    if (matchesQuery(searchQuery, t.title, t.destination, (t as any).notes)) return true;
+    return tripIdsMatchingChecklist?.has(t.id) ?? false;
+  };
 
   const now = new Date();
   const upcoming = (trips ?? [])
-    .filter((t) => !isBefore(parseISO(t.return_date), now))
+    .filter((t) => !isBefore(parseISO(t.return_date), now) && tripMatches(t))
     .sort((a, b) => parseISO(a.departure_date).getTime() - parseISO(b.departure_date).getTime());
   const past = (trips ?? [])
-    .filter((t) => isBefore(parseISO(t.return_date), now))
+    .filter((t) => isBefore(parseISO(t.return_date), now) && tripMatches(t))
     .sort((a, b) => parseISO(b.departure_date).getTime() - parseISO(a.departure_date).getTime());
 
   return (
@@ -80,6 +103,14 @@ export default function ActivityScreen() {
         >
           <Text className="text-white text-sm font-semibold">+ New</Text>
         </TouchableOpacity>
+      </View>
+
+      <View className="px-4 pb-2">
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search activities..."
+        />
       </View>
 
       <FlatList

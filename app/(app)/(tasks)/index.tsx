@@ -41,6 +41,8 @@ import { frequencyLabel as getFreqLabel, frequencyToDays, frequencyLabelFromRule
 import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { RepeatPickerModal } from "@/components/ui/RepeatPicker";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { matchesQuery } from "@/utils/searchUtils";
 
 type TaskMode = "low-lift" | "project-adjacent";
 
@@ -201,6 +203,7 @@ export default function TasksScreen() {
   const { refreshing: appRefreshing, onRefresh: appOnRefresh } = useAppRefresh();
   const { memberFilter: ownerFilter, toggleMember: toggleOwnerFilter } = useFilterStore();
   const [filterDue, setFilterDue] = useState<"overdue" | "due_soon" | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
@@ -622,12 +625,16 @@ export default function TasksScreen() {
     return assignedMemberId === currentMember?.id;
   };
 
-  // Apply owner + due filter + personal task visibility
+  const assigneeName = (memberId: string | null | undefined) =>
+    memberId ? members.find((m) => m.id === memberId)?.display_name : null;
+
+  // Apply owner + due filter + personal task visibility + search
   const visibleRecurring = recurringTasks.filter((t) => {
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
     if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !isOverdue(t.next_due_date)) return false;
     if (filterDue === "due_soon" && !isDueSoon(t.next_due_date)) return false;
+    if (!matchesQuery(searchQuery, t.title, t.description, assigneeName(t.assigned_member_id), getFreqLabel(t.frequency_type, t.frequency_days), t.next_due_date, (t as any).time_of_day)) return false;
     return true;
   });
 
@@ -637,6 +644,7 @@ export default function TasksScreen() {
     if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
     if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
+    if (!matchesQuery(searchQuery, t.title, (t as any).notes, (t as any).project_title, t.checklist_name, assigneeName(t.assigned_member_id), t.due_date)) return false;
     return true;
   });
 
@@ -645,6 +653,7 @@ export default function TasksScreen() {
     if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
     if (filterDue === "due_soon" && !(t.due_date && isDueSoon(t.due_date))) return false;
+    if (!matchesQuery(searchQuery, t.title, t.notes, assigneeName(t.assigned_member_id), t.due_date)) return false;
     return true;
   });
 
@@ -684,6 +693,14 @@ export default function TasksScreen() {
         >
           <Text className="text-white text-sm font-semibold">+ New</Text>
         </TouchableOpacity>
+      </View>
+
+      <View className="px-4 pb-1">
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search tasks..."
+        />
       </View>
 
       {/* Tab toggle — Low-Lift left/default */}

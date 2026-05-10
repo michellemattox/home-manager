@@ -30,6 +30,8 @@ import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { DateInput } from "@/components/ui/DateInput";
 import { RepeatPickerModal } from "@/components/ui/RepeatPicker";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { matchesQuery } from "@/utils/searchUtils";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateShort } from "@/utils/dateUtils";
 import { toISODateString } from "@/utils/dateUtils";
@@ -148,6 +150,15 @@ export default function IdeasScreen() {
   // Collapsed waitlist
   const [showWaitlisted, setShowWaitlisted] = useState(false);
 
+  // Search query (cleared when this screen unmounts)
+  const [searchQuery, setSearchQuery] = useState("");
+  const ideaMatches = (i: Idea) => {
+    const authorName = i.author_id
+      ? members.find((m) => m.id === i.author_id)?.display_name
+      : undefined;
+    return matchesQuery(searchQuery, i.subject, i.body, i.description, authorName);
+  };
+
   // ── Task conversion modal ──────────────────────────────────────────────────
   const [taskModalIdea, setTaskModalIdea] = useState<Idea | null>(null);
   const [taskMode, setTaskMode] = useState<TaskMode>("low-lift");
@@ -169,8 +180,8 @@ export default function IdeasScreen() {
   const [paDueDate, setPaDueDate] = useState("");
   const [paAssignedId, setPaAssignedId] = useState<string | null>(null);
 
-  const activeIdeas = ideas.filter((i) => i.status === "new");
-  const waitlistedIdeas = ideas.filter((i) => i.status === "waitlisted");
+  const activeIdeas = ideas.filter((i) => i.status === "new" && ideaMatches(i));
+  const waitlistedIdeas = ideas.filter((i) => i.status === "waitlisted" && ideaMatches(i));
 
   const handleSaveIdea = async () => {
     if (!subject.trim()) return;
@@ -470,7 +481,12 @@ export default function IdeasScreen() {
       <AppHeader compact />
       <View className="px-4 py-3">
         <Text className="text-xl font-bold text-gray-900 mb-1">Ideas</Text>
-        <Text className="text-xs text-gray-400">Capture an idea, then move it where it belongs.</Text>
+        <Text className="text-xs text-gray-400 mb-2">Capture an idea, then move it where it belongs.</Text>
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search ideas..."
+        />
       </View>
 
       <ScrollView

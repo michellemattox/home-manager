@@ -24,6 +24,8 @@ import {
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { DateInput } from "@/components/ui/DateInput";
+import { SearchBar } from "@/components/ui/SearchBar";
+import { matchesQuery } from "@/utils/searchUtils";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateSlash } from "@/utils/dateUtils";
 import type { Gift, GiftPriority } from "@/types/app.types";
@@ -288,6 +290,7 @@ export default function GiftsScreen() {
   // Filter / sort state
   const [recipientFilter, setRecipientFilter] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("priority");
+  const [searchQuery, setSearchQuery] = useState("");
 
   // New gift modal
   const [showNewModal, setShowNewModal] = useState(false);
@@ -339,14 +342,35 @@ export default function GiftsScreen() {
       .reduce((sum, g) => sum + Number(g.price), 0);
   }, [gifts, currentMember]);
 
-  // Apply recipient filter (HOME_LIST_ID matches gifts with null recipient)
+  // Apply recipient filter (HOME_LIST_ID matches gifts with null recipient) + search
   const visibleGifts = useMemo(() => {
-    const base =
+    let base =
       recipientFilter === HOME_LIST_ID
         ? gifts.filter((g) => g.recipient_member_id == null)
         : recipientFilter
         ? gifts.filter((g) => g.recipient_member_id === recipientFilter)
         : gifts;
+    if (searchQuery.trim()) {
+      base = base.filter((g) => {
+        const recipientName = g.recipient_member_id == null
+          ? "Home"
+          : members.find((m) => m.id === g.recipient_member_id)?.display_name;
+        const buyerName = g.bought_by_member_id
+          ? members.find((m) => m.id === g.bought_by_member_id)?.display_name
+          : null;
+        return matchesQuery(
+          searchQuery,
+          g.name,
+          g.store,
+          g.color_material,
+          g.size,
+          g.priority,
+          g.price,
+          recipientName,
+          buyerName,
+        );
+      });
+    }
     const sorted = [...base];
     if (sortMode === "priority") {
       sorted.sort((a, b) => {
@@ -380,7 +404,7 @@ export default function GiftsScreen() {
       });
     }
     return sorted;
-  }, [gifts, recipientFilter, sortMode]);
+  }, [gifts, recipientFilter, sortMode, searchQuery, members]);
 
   // Build store → [{ gift, recipientId }] index for cross-list hints.
   // Groups all household gifts by normalized store name.
@@ -538,6 +562,14 @@ export default function GiftsScreen() {
         >
           <Text className="text-white text-sm font-semibold">+ New</Text>
         </TouchableOpacity>
+      </View>
+
+      <View className="px-4 pb-1">
+        <SearchBar
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+          placeholder="Search gifts..."
+        />
       </View>
 
       {/* Running total + clear */}
