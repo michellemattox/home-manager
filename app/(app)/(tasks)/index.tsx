@@ -203,6 +203,8 @@ export default function TasksScreen() {
   const { refreshing: appRefreshing, onRefresh: appOnRefresh } = useAppRefresh();
   const { memberFilter: ownerFilter, toggleMember: toggleOwnerFilter } = useFilterStore();
   const [filterDue, setFilterDue] = useState<"overdue" | "due_soon" | null>(null);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const taskActiveFilterCount = (ownerFilter.length > 0 ? 1 : 0) + (filterDue ? 1 : 0);
   const [searchQuery, setSearchQuery] = useState("");
 
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -361,7 +363,7 @@ export default function TasksScreen() {
       || llNthWeekday !== (init.nwd ?? null);
     if (!dirty) return;
     if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current);
-    llAutoSaveRef.current = setTimeout(() => { doSaveLowLift(); }, 3000);
+    llAutoSaveRef.current = setTimeout(() => { doSaveLowLift(); }, 1000);
     return () => { if (llAutoSaveRef.current) clearTimeout(llAutoSaveRef.current); };
   }, [llTitle, llNotes, llAnchorDate, llTimeOfDay, llFreqType, llCustomDays, llAssignedId, llIsPersonal, llDaysOfWeek, llNthWeek, llNthWeekday]);
 
@@ -479,7 +481,7 @@ export default function TasksScreen() {
     const dirty = paTitle !== init.title || paNotes !== init.notes || paDueDate !== init.due || paAssignedId !== init.assigned;
     if (!dirty) return;
     if (paAutoSaveRef.current) clearTimeout(paAutoSaveRef.current);
-    paAutoSaveRef.current = setTimeout(() => { doSavePA(); }, 3000);
+    paAutoSaveRef.current = setTimeout(() => { doSavePA(); }, 1000);
     return () => { if (paAutoSaveRef.current) clearTimeout(paAutoSaveRef.current); };
   }, [paTitle, paNotes, paDueDate, paAssignedId]);
 
@@ -546,7 +548,7 @@ export default function TasksScreen() {
     const dirty = stTitle !== init.title || stNotes !== init.notes || stDueDate !== init.due || stAssignedId !== init.assigned || stIsPersonal !== init.personal;
     if (!dirty) return;
     if (stAutoSaveRef.current) clearTimeout(stAutoSaveRef.current);
-    stAutoSaveRef.current = setTimeout(() => { doSaveStandalone(); }, 3000);
+    stAutoSaveRef.current = setTimeout(() => { doSaveStandalone(); }, 1000);
     return () => { if (stAutoSaveRef.current) clearTimeout(stAutoSaveRef.current); };
   }, [stTitle, stNotes, stDueDate, stAssignedId, stIsPersonal]);
 
@@ -718,7 +720,23 @@ export default function TasksScreen() {
         ))}
       </View>
 
-      {/* Filter panel */}
+      {/* Filters button + collapsible panel */}
+      <View className="px-4 pt-2">
+        <TouchableOpacity
+          onPress={() => setFiltersOpen((v) => !v)}
+          className="flex-row items-center self-start gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-300"
+        >
+          <Text className="text-xs font-semibold text-gray-700">Filters</Text>
+          {taskActiveFilterCount > 0 && (
+            <View className="bg-blue-600 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
+              <Text className="text-white text-[10px] font-bold">{taskActiveFilterCount}</Text>
+            </View>
+          )}
+          <Text className="text-gray-500 text-xs">{filtersOpen ? "˅" : "›"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {filtersOpen && (
       <View className="px-4 pt-2 pb-3">
         {/* Assign To row */}
         <View className="flex-row items-center mb-2">
@@ -770,6 +788,7 @@ export default function TasksScreen() {
           </View>
         </View>
       </View>
+      )}
 
       <ScrollView
         contentContainerClassName="px-4 pt-4 pb-8"

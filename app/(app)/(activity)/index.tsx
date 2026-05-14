@@ -10,6 +10,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { isBefore, parseISO } from "date-fns";
 import { useHouseholdStore } from "@/stores/householdStore";
+import { useFilterStore } from "@/stores/filterStore";
 import { useTrips, useAllTripTasks } from "@/hooks/useTrips";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
@@ -59,11 +60,14 @@ function ActivityCard({ trip }: { trip: Trip }) {
 
 export default function ActivityScreen() {
   const router = useRouter();
-  const { household } = useHouseholdStore();
+  const { household, members } = useHouseholdStore();
   const { data: trips, isLoading } = useTrips(household?.id);
   const { data: allTripTasks = [] } = useAllTripTasks(household?.id);
   const { refreshing, onRefresh } = useAppRefresh();
   const [searchQuery, setSearchQuery] = useState("");
+  const { memberFilter, toggleMember } = useFilterStore();
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activityActiveFilterCount = memberFilter.length > 0 ? 1 : 0;
 
   // Set of trip_ids that have at least one matching checklist item
   const tripIdsMatchingChecklist = useMemo(() => {
@@ -79,6 +83,12 @@ export default function ActivityScreen() {
   }, [allTripTasks, searchQuery]);
 
   const tripMatches = (t: Trip) => {
+    // Member filter: include if assigned to a selected member, or marked "all" (household-wide).
+    if (memberFilter.length > 0) {
+      const assigned = (t as any).assigned_to as string | null;
+      const ok = assigned === "all" || (assigned && memberFilter.includes(assigned));
+      if (!ok) return false;
+    }
     if (!searchQuery.trim()) return true;
     if (matchesQuery(searchQuery, t.title, t.destination, (t as any).notes)) return true;
     return tripIdsMatchingChecklist?.has(t.id) ?? false;
@@ -112,6 +122,44 @@ export default function ActivityScreen() {
           placeholder="Search activities..."
         />
       </View>
+
+      {/* Filters button + collapsible panel */}
+      <View className="px-4 pt-1">
+        <TouchableOpacity
+          onPress={() => setFiltersOpen((v) => !v)}
+          className="flex-row items-center self-start gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-300"
+        >
+          <Text className="text-xs font-semibold text-gray-700">Filters</Text>
+          {activityActiveFilterCount > 0 && (
+            <View className="bg-blue-600 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
+              <Text className="text-white text-[10px] font-bold">{activityActiveFilterCount}</Text>
+            </View>
+          )}
+          <Text className="text-gray-500 text-xs">{filtersOpen ? "˅" : "›"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {filtersOpen && (
+        <View className="px-4 pt-2 pb-3">
+          <View className="flex-row items-center">
+            <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wide" style={{ width: 72 }}>Member</Text>
+            <View className="flex-row flex-wrap gap-2">
+              {members.map((m) => {
+                const active = memberFilter.includes(m.id);
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    onPress={() => toggleMember(m.id)}
+                    className={`px-3 py-1 rounded-full border ${active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-300"}`}
+                  >
+                    <Text className={`text-xs font-semibold ${active ? "text-white" : "text-gray-600"}`}>{m.display_name}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+          </View>
+        </View>
+      )}
 
       <FlatList
         data={[

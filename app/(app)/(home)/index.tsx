@@ -27,6 +27,7 @@ import { supabase } from "@/lib/supabase";
 import { notificationSuccess } from "@/lib/haptics";
 import type { ProjectWithOwners, RecurringTask, Task, ProjectTask, TripTask } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
+import { WeeklyBusinessReview } from "@/components/WeeklyBusinessReview";
 import { useWowUpdates, useGenerateWow, type WowUpdate } from "@/hooks/useWowUpdates";
 import {
   useGardenAdvisorRecs,
@@ -950,6 +951,9 @@ export default function HomeScreen() {
             <Text className="text-xs font-semibold text-gray-700">Garden</Text>
           </TouchableOpacity>
         </View>
+
+        {/* Weekly Business Review (Monday 4pm PT snapshot) */}
+        <WeeklyBusinessReview />
 
         {/* Needs Attention (Overdue) */}
         {hasAlerts && (

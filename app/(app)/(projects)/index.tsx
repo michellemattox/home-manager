@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useCallback, useMemo, useState } from "react";
 import {
   View,
   Text,
@@ -9,7 +9,7 @@ import {
   ScrollView,
   Modal,
 } from "react-native";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { getYear, parseISO } from "date-fns";
 import * as Linking from "expo-linking";
@@ -134,14 +134,24 @@ function ProjectsTab() {
   const router = useRouter();
   const { household, members } = useHouseholdStore();
   const { data: projects, isLoading, refetch } = useProjects(household?.id);
-  // Used to search inside project checklist item titles (the index hook only loads
-  // ids/checklist names — not titles).
+  // Refetch when the screen regains focus (returning from edit screen)
+  useFocusEffect(
+    useCallback(() => {
+      refetch();
+    }, [refetch])
+  );
   const { data: allProjectTasks = [] } = useAllProjectTasks(household?.id);
   const [showFinished, setShowFinished] = useState(false);
   const [filterPriority, setFilterPriority] = useState<ProjectPriority | null>(null);
   const [filterDue, setFilterDue] = useState<DueFilter>(null);
   const [filterOwner, setFilterOwner] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const activeFilterCount =
+    (filterPriority ? 1 : 0) +
+    (filterDue ? 1 : 0) +
+    (filterOwner.length > 0 ? 1 : 0) +
+    (showFinished ? 1 : 0);
 
   const projectIdsMatchingTaskSearch = useMemo(() => {
     const q = searchQuery.trim();
@@ -223,7 +233,23 @@ function ProjectsTab() {
         />
       </View>
 
-      {/* Filter panel */}
+      {/* Filters button + collapsible panel */}
+      <View className="px-4 pt-2">
+        <TouchableOpacity
+          onPress={() => setFiltersOpen((v) => !v)}
+          className="flex-row items-center self-start gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-300"
+        >
+          <Text className="text-xs font-semibold text-gray-700">Filters</Text>
+          {activeFilterCount > 0 && (
+            <View className="bg-blue-600 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
+              <Text className="text-white text-[10px] font-bold">{activeFilterCount}</Text>
+            </View>
+          )}
+          <Text className="text-gray-500 text-xs">{filtersOpen ? "˅" : "›"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {filtersOpen && (
       <View className="px-4 pt-2 pb-3">
         {/* Status row */}
         <View className="flex-row items-center mb-2">
@@ -329,6 +355,7 @@ function ProjectsTab() {
           </>
         )}
       </View>
+      )}
 
       <FlatList
         data={filtered}
@@ -337,7 +364,7 @@ function ProjectsTab() {
         refreshControl={<RefreshControl refreshing={appRefreshing} onRefresh={appOnRefresh} />}
         renderItem={({ item }) => <ProjectCard project={item} />}
         ListEmptyComponent={
-          !isLoading ? (
+          !isLoading && projects !== undefined ? (
             <EmptyState
               title={showFinished ? "No finished projects" : "No open projects"}
               subtitle={showFinished ? "Projects marked Finished appear here." : "Add a project to start tracking."}

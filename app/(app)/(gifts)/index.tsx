@@ -291,6 +291,8 @@ export default function GiftsScreen() {
   const [recipientFilter, setRecipientFilter] = useState<string | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("priority");
   const [searchQuery, setSearchQuery] = useState("");
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const giftActiveFilterCount = (recipientFilter !== null ? 1 : 0) + (sortMode !== "priority" ? 1 : 0);
 
   // New gift modal
   const [showNewModal, setShowNewModal] = useState(false);
@@ -594,6 +596,23 @@ export default function GiftsScreen() {
         </View>
       )}
 
+      {/* Filters button */}
+      <View className="px-4 pt-2">
+        <TouchableOpacity
+          onPress={() => setFiltersOpen((v) => !v)}
+          className="flex-row items-center self-start gap-2 px-3 py-1.5 rounded-full bg-white border border-gray-300"
+        >
+          <Text className="text-xs font-semibold text-gray-700">Filters</Text>
+          {giftActiveFilterCount > 0 && (
+            <View className="bg-blue-600 rounded-full min-w-[18px] h-[18px] items-center justify-center px-1">
+              <Text className="text-white text-[10px] font-bold">{giftActiveFilterCount}</Text>
+            </View>
+          )}
+          <Text className="text-gray-500 text-xs">{filtersOpen ? "˅" : "›"}</Text>
+        </TouchableOpacity>
+      </View>
+
+      {filtersOpen && (<>
       {/* Recipient filter */}
       <View className="px-4 py-2">
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -686,6 +705,7 @@ export default function GiftsScreen() {
           })}
         </View>
       </View>
+      </>)}
 
       <ScrollView
         contentContainerClassName="px-4 py-4 pb-12"

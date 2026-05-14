@@ -99,14 +99,14 @@ export function useAddProjectUpdate() {
       const { data, error } = await supabase
         .from("project_updates")
         .insert(update)
-        .select()
+        .select("*, projects!inner(household_id)")
         .single();
       if (error) throw error;
-      return data as ProjectUpdate;
+      return data as ProjectUpdate & { projects: { household_id: string } };
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["project", data.project_id] });
-      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["projects", data.projects.household_id] });
     },
   });
 }
@@ -127,14 +127,14 @@ export function useEditProjectUpdate() {
         .from("project_updates")
         .update({ body })
         .eq("id", id)
-        .select()
+        .select("*, projects!inner(household_id)")
         .single();
       if (error) throw error;
-      return data as ProjectUpdate;
+      return data as ProjectUpdate & { projects: { household_id: string } };
     },
     onSuccess: (data) => {
       qc.invalidateQueries({ queryKey: ["project", data.project_id] });
-      qc.invalidateQueries({ queryKey: ["projects"] });
+      qc.invalidateQueries({ queryKey: ["projects", data.projects.household_id] });
     },
   });
 }

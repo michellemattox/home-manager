@@ -355,7 +355,7 @@ export default function ProjectDetailScreen() {
     const current = JSON.stringify({ title: editTitle, desc: editDescription, priority: editPriority, category: editCategory, due: editDueDate, notes: editNotes });
     if (current === projEditInitialRef.current) return;
     if (projEditAutoSaveRef.current) clearTimeout(projEditAutoSaveRef.current);
-    projEditAutoSaveRef.current = setTimeout(() => { handleSaveEditProject(); }, 3000);
+    projEditAutoSaveRef.current = setTimeout(() => { handleSaveEditProject(); }, 1000);
     return () => { if (projEditAutoSaveRef.current) clearTimeout(projEditAutoSaveRef.current); };
   }, [editTitle, editDescription, editPriority, editCategory, editDueDate, editNotes, editBudget, editTotalCost, editUsesVendor, editSelectedVendorId, editOtherVendorName, editFrequency]);
 
