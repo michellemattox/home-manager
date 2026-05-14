@@ -195,7 +195,7 @@ function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress
 
 export default function TasksScreen() {
   const router = useRouter();
-  const { openTaskId, focus: focusTaskId, kind: focusKind } = useLocalSearchParams<{ openTaskId?: string; focus?: string; kind?: string }>();
+  const { openTaskId, openStandaloneId, focus: focusTaskId, kind: focusKind } = useLocalSearchParams<{ openTaskId?: string; openStandaloneId?: string; focus?: string; kind?: string }>();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
 
@@ -298,6 +298,15 @@ export default function TasksScreen() {
     if (task) openLowLiftEdit(task);
   }, [openTaskId, recurringTasks]);
 
+  useEffect(() => {
+    if (!openStandaloneId || standaloneTasks.length === 0) return;
+    const task = standaloneTasks.find((t) => t.id === openStandaloneId);
+    if (task) {
+      setMode("low-lift");
+      openStandaloneEdit(task);
+    }
+  }, [openStandaloneId, standaloneTasks]);
+
   // Deep-link from WBR: ?focus={id}&kind={recurring|task}
   useEffect(() => {
     if (!focusTaskId) return;
@@ -310,7 +319,7 @@ export default function TasksScreen() {
     } else if (focusKind === "task") {
       const t = standaloneTasks.find((st) => st.id === focusTaskId);
       if (t) {
-        setMode("project-adjacent");
+        setMode("low-lift");
         openStandaloneEdit(t);
       }
     }
@@ -815,16 +824,39 @@ export default function TasksScreen() {
         {/* ── LOW-LIFT TAB ─────────────────────────────────────────────── */}
         {mode === "low-lift" && (
           <>
-            {sortedRecurring.map((task) => (
-              <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} onComplete={() => handleCardCompleteLowLift(task)} />
-            ))}
+            {sortedRecurring.length > 0 && (
+              <>
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">
+                  Recurring
+                </Text>
+                {sortedRecurring.map((task) => (
+                  <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} onComplete={() => handleCardCompleteLowLift(task)} />
+                ))}
+              </>
+            )}
 
-            {visibleRecurring.length === 0 && (
+            {sortedStandalone.length > 0 && (
+              <>
+                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 mt-2">
+                  One-Off
+                </Text>
+                {sortedStandalone.map((task) => (
+                  <StandaloneTaskCard
+                    key={task.id}
+                    task={task}
+                    onPress={() => openStandaloneEdit(task)}
+                    onComplete={() => handleCardCompleteStandalone(task)}
+                  />
+                ))}
+              </>
+            )}
+
+            {visibleRecurring.length === 0 && visibleStandalone.length === 0 && (
               <View className="items-center py-12">
                 <Text className="text-4xl mb-3">🔄</Text>
                 <Text className="text-base font-semibold text-gray-700">No low-lift tasks</Text>
                 <Text className="text-sm text-gray-400 mt-1 text-center">
-                  Recurring tasks you can knock out quickly.
+                  Recurring and one-off tasks you can knock out quickly.
                 </Text>
               </View>
             )}
@@ -851,23 +883,7 @@ export default function TasksScreen() {
               </>
             )}
 
-            {sortedStandalone.length > 0 && (
-              <>
-                <Text className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 mt-2">
-                  Standalone
-                </Text>
-                {sortedStandalone.map((task) => (
-                  <StandaloneTaskCard
-                    key={task.id}
-                    task={task}
-                    onPress={() => openStandaloneEdit(task)}
-                    onComplete={() => handleCardCompleteStandalone(task)}
-                  />
-                ))}
-              </>
-            )}
-
-            {visibleProjectTasks.length === 0 && visibleStandalone.length === 0 && (
+            {visibleProjectTasks.length === 0 && (
               <View className="items-center py-12">
                 <Text className="text-4xl mb-3">📋</Text>
                 <Text className="text-base font-semibold text-gray-700">No project adjacent tasks</Text>

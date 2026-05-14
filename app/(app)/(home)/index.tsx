@@ -185,22 +185,28 @@ function RecurringTaskRow({
 
 function OneOffTaskRow({
   task,
+  onPress,
   onComplete,
-}: { task: Task; onComplete: () => void }) {
+}: { task: Task; onPress: () => void; onComplete: () => void }) {
   const style = task.due_date ? tierStyle(task.due_date) : TIER_STYLES.default;
   return (
-    <View className={`border rounded-xl p-3 mb-2 flex-row items-center ${style.bg}`}>
-      <View className="flex-1 mr-2">
-        <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
-        <Text className="text-[10px] text-gray-400 mt-0.5 uppercase font-semibold">Task</Text>
-        {task.due_date && (
-          <Text className={`text-xs mt-0.5 ${style.dateColor}`}>{taskBadgeLabel(task.due_date)}</Text>
-        )}
+    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${style.bg}`}>
+      <View className="flex-row items-center">
+        <View className="flex-1 mr-2">
+          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
+          <Text className="text-[10px] text-gray-400 mt-0.5 uppercase font-semibold">Task</Text>
+          {task.due_date && (
+            <Text className={`text-xs mt-0.5 ${style.dateColor}`}>{taskBadgeLabel(task.due_date)}</Text>
+          )}
+        </View>
+        <TouchableOpacity
+          onPress={(e) => { e.stopPropagation(); onComplete(); }}
+          className="bg-green-100 rounded-lg px-3 py-1.5"
+        >
+          <Text className="text-green-700 text-xs font-semibold">Done</Text>
+        </TouchableOpacity>
       </View>
-      <TouchableOpacity onPress={onComplete} className="bg-green-100 rounded-lg px-3 py-1.5">
-        <Text className="text-green-700 text-xs font-semibold">Done</Text>
-      </TouchableOpacity>
-    </View>
+    </TouchableOpacity>
   );
 }
 
@@ -834,7 +840,14 @@ export default function HomeScreen() {
       }
       case "oneoff": {
         const t = item.data;
-        return <OneOffTaskRow key={`oo-${t.id}-${index}`} task={t} onComplete={() => handleCompleteOneOff(t)} />;
+        return (
+          <OneOffTaskRow
+            key={`oo-${t.id}-${index}`}
+            task={t}
+            onPress={() => router.push(`/(app)/(tasks)?openStandaloneId=${t.id}`)}
+            onComplete={() => handleCompleteOneOff(t)}
+          />
+        );
       }
       case "project": {
         const t = item.data;
