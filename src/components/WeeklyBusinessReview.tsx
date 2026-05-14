@@ -25,7 +25,7 @@ function Bucket({
   bg,
   count,
   children,
-  defaultOpen = true,
+  defaultOpen = false,
 }: {
   title: string;
   icon: string;
