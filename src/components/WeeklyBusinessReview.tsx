@@ -6,20 +6,71 @@ import { useLatestWBR, useGenerateWBR } from "@/hooks/useWeeklyBusinessReview";
 import { formatDate, formatDateShort } from "@/utils/dateUtils";
 import { Card } from "@/components/ui/Card";
 
+// Bucket colors match each tab's SafeAreaView background.
+const BUCKET_BG = {
+  ideas: "#FBFCCF",
+  tasks: "#F6EDFF",
+  projects: "#EBFAFC",
+  activity: "#FADCDF",
+} as const;
+
 function memberName(members: any[], id: string | null): string {
   if (!id) return "Unassigned";
   return members.find((m) => m.id === id)?.display_name ?? "—";
 }
 
-function SubHeader({ children, count }: { children: React.ReactNode; count: number }) {
+function Bucket({
+  title,
+  icon,
+  bg,
+  count,
+  children,
+  defaultOpen = true,
+}: {
+  title: string;
+  icon: string;
+  bg: string;
+  count: number;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
   return (
-    <View className="flex-row items-center gap-2 mt-3 mb-1">
-      <Text className="text-xs font-bold uppercase tracking-wide text-gray-500">{children}</Text>
-      <View className="bg-gray-200 rounded-full px-2">
+    <View style={{ backgroundColor: bg }} className="rounded-lg overflow-hidden">
+      <TouchableOpacity
+        onPress={() => setOpen((v) => !v)}
+        activeOpacity={0.7}
+        className="flex-row items-center justify-between px-3 py-2"
+      >
+        <View className="flex-row items-center gap-2 flex-1">
+          <Text className="text-sm">{icon}</Text>
+          <Text className="text-sm font-bold uppercase tracking-wide text-gray-800">{title}</Text>
+          <View className="bg-white/70 rounded-full px-2">
+            <Text className="text-xs text-gray-800 font-semibold">{count}</Text>
+          </View>
+        </View>
+        <Text className="text-gray-700 text-base font-bold ml-2" style={{ width: 18, textAlign: "center" }}>
+          {open ? "˅" : "›"}
+        </Text>
+      </TouchableOpacity>
+      {open && <View className="px-3 pb-2">{children}</View>}
+    </View>
+  );
+}
+
+function SubGroup({ children, count }: { children: React.ReactNode; count: number }) {
+  return (
+    <View className="flex-row items-center gap-2 mt-2 mb-1">
+      <Text className="text-xs font-bold uppercase tracking-wide text-gray-600">{children}</Text>
+      <View className="bg-white/70 rounded-full px-2">
         <Text className="text-xs text-gray-700 font-semibold">{count}</Text>
       </View>
     </View>
   );
+}
+
+function Divider() {
+  return <View className="h-px bg-gray-600 my-3" />;
 }
 
 export function WeeklyBusinessReview() {
@@ -87,143 +138,163 @@ export function WeeklyBusinessReview() {
 
       {expanded && (
         <View className="mt-2">
-          {/* Ideas */}
-          <SubHeader count={s.ideas.length}>💡 New Ideas (past 2 weeks)</SubHeader>
-          {s.ideas.length === 0 ? (
-            <Text className="text-xs text-gray-400 italic">No new ideas</Text>
-          ) : (
-            s.ideas.map((idea) => (
-              <TouchableOpacity
-                key={idea.id}
-                onPress={() => router.push("/(app)/(ideas)")}
-                className="py-1.5 border-b border-gray-50"
-              >
-                <Text className="text-sm text-gray-800" numberOfLines={1}>{idea.subject || idea.body || "Untitled idea"}</Text>
-                <Text className="text-xs text-gray-400 mt-0.5">
-                  {memberName(members, idea.author_id)} · {formatDateShort(idea.created_at)}
-                </Text>
-              </TouchableOpacity>
-            ))
-          )}
-
-          {/* Tasks */}
-          <SubHeader count={s.tasks.length}>🔔 Tasks (overdue + next 7 days)</SubHeader>
-          {s.tasks.length === 0 ? (
-            <Text className="text-xs text-gray-400 italic">No upcoming tasks</Text>
-          ) : (
-            s.tasks.map((task) => {
-              const bucketColor =
-                task.bucket === "overdue" ? "text-red-500"
-                : task.bucket === "due_today" ? "text-orange-500"
-                : "text-gray-500";
-              return (
+          {/* IDEAS bucket */}
+          <Bucket title="New Ideas (past 2 weeks)" icon="💡" bg={BUCKET_BG.ideas} count={s.ideas.length}>
+            {s.ideas.length === 0 ? (
+              <Text className="text-xs text-gray-500 italic">No new ideas</Text>
+            ) : (
+              s.ideas.map((idea) => (
                 <TouchableOpacity
-                  key={`${task.source}:${task.id}`}
-                  onPress={() => router.push("/(app)/(tasks)")}
-                  className="py-1.5 border-b border-gray-50"
+                  key={idea.id}
+                  onPress={() => router.push({ pathname: "/(app)/(ideas)", params: { focus: idea.id } })}
+                  className="py-1.5 border-b border-black/10"
                 >
-                  <Text className="text-sm text-gray-800" numberOfLines={1}>{task.title}</Text>
-                  <View className="flex-row items-center gap-2 mt-0.5">
-                    <Text className={`text-xs font-semibold ${bucketColor}`}>
-                      {task.bucket === "overdue" ? "Overdue" : task.bucket === "due_today" ? "Today" : formatDateShort(task.due_date)}
+                  <Text className="text-sm text-gray-900" numberOfLines={1}>{idea.subject || idea.body || "Untitled idea"}</Text>
+                  <Text className="text-xs text-gray-600 mt-0.5">
+                    {memberName(members, idea.author_id)} · {formatDateShort(idea.created_at)}
+                  </Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </Bucket>
+
+          <Divider />
+
+          {/* TASKS bucket */}
+          <Bucket title="Tasks (overdue + next 7 days)" icon="🔔" bg={BUCKET_BG.tasks} count={s.tasks.length}>
+            {s.tasks.length === 0 ? (
+              <Text className="text-xs text-gray-500 italic">No upcoming tasks</Text>
+            ) : (
+              s.tasks.map((task) => {
+                const bucketColor =
+                  task.bucket === "overdue" ? "text-red-600"
+                  : task.bucket === "due_today" ? "text-orange-600"
+                  : "text-gray-700";
+                return (
+                  <TouchableOpacity
+                    key={`${task.source}:${task.id}`}
+                    onPress={() => router.push({ pathname: "/(app)/(tasks)", params: { focus: task.id, kind: task.source } })}
+                    className="py-1.5 border-b border-black/10"
+                  >
+                    <Text className="text-sm text-gray-900" numberOfLines={1}>{task.title}</Text>
+                    <View className="flex-row items-center gap-2 mt-0.5">
+                      <Text className={`text-xs font-semibold ${bucketColor}`}>
+                        {task.bucket === "overdue" ? "Overdue" : task.bucket === "due_today" ? "Today" : formatDateShort(task.due_date)}
+                      </Text>
+                      {task.time_of_day && (
+                        <Text className="text-xs text-gray-600">{task.time_of_day}</Text>
+                      )}
+                      <Text className="text-xs text-gray-600">· {memberName(members, task.assigned_member_id)}</Text>
+                    </View>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </Bucket>
+
+          <Divider />
+
+          {/* PROJECTS bucket (contains upcoming + project tasks + recent updates) */}
+          <Bucket
+            title="Projects (next 30 days)"
+            icon="🏗️"
+            bg={BUCKET_BG.projects}
+            count={s.projects_upcoming.length + s.project_tasks.length + s.projects_with_recent_updates.length}
+          >
+            {s.projects_upcoming.length === 0 && s.project_tasks.length === 0 && s.projects_with_recent_updates.length === 0 ? (
+              <Text className="text-xs text-gray-500 italic">No project activity</Text>
+            ) : (
+              <>
+                {s.projects_upcoming.length > 0 && (
+                  <>
+                    <SubGroup count={s.projects_upcoming.length}>Upcoming</SubGroup>
+                    {s.projects_upcoming.map((p) => (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
+                        className="py-1.5 border-b border-black/10"
+                      >
+                        <Text className="text-sm text-gray-900" numberOfLines={1}>{p.title}</Text>
+                        <Text className="text-xs text-gray-600 mt-0.5">
+                          Due {formatDateShort(p.expected_date)} · {p.owner_ids.map((id) => memberName(members, id)).join(", ") || "Unassigned"}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+
+                {s.project_tasks.length > 0 && (
+                  <>
+                    <SubGroup count={s.project_tasks.length}>Project tasks with due dates</SubGroup>
+                    {s.project_tasks.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => router.push({ pathname: `/(app)/(projects)/${t.project_id}`, params: { taskId: t.id } })}
+                        className="py-1.5 border-b border-black/10"
+                      >
+                        <Text className="text-sm text-gray-900" numberOfLines={1}>{t.title}</Text>
+                        <Text className="text-xs text-gray-600 mt-0.5">
+                          {t.project_title} · Due {formatDateShort(t.due_date)} · {memberName(members, t.assigned_member_id)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+
+                {s.projects_with_recent_updates.length > 0 && (
+                  <>
+                    <SubGroup count={s.projects_with_recent_updates.length}>Recently updated</SubGroup>
+                    {s.projects_with_recent_updates.map((p) => (
+                      <TouchableOpacity
+                        key={p.id}
+                        onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
+                        className="py-1.5 border-b border-black/10"
+                      >
+                        <Text className="text-sm text-gray-900" numberOfLines={1}>{p.title}</Text>
+                        <Text className="text-xs text-gray-700 mt-0.5" numberOfLines={2}>{p.latest_update_body}</Text>
+                        <Text className="text-xs text-gray-600 mt-0.5">
+                          {memberName(members, p.latest_update_author_id)} · {formatDateShort(p.latest_update_at)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+              </>
+            )}
+          </Bucket>
+
+          <Divider />
+
+          {/* ACTIVITY bucket */}
+          <Bucket title="Activity (next 90 days)" icon="✈️" bg={BUCKET_BG.activity} count={s.activities.length}>
+            {s.activities.length === 0 ? (
+              <Text className="text-xs text-gray-500 italic">No upcoming activities</Text>
+            ) : (
+              s.activities.map((a) => {
+                const ownerLabel = a.assigned_to === "all"
+                  ? "Household"
+                  : a.assigned_to
+                    ? memberName(members, a.assigned_to)
+                    : "Unassigned";
+                return (
+                  <TouchableOpacity
+                    key={a.id}
+                    onPress={() => router.push(`/(app)/(activity)/${a.id}`)}
+                    className="py-1.5 border-b border-black/10"
+                  >
+                    <Text className="text-sm text-gray-900" numberOfLines={1}>
+                      {a.title}{a.destination && a.destination !== a.title ? ` · ${a.destination}` : ""}
                     </Text>
-                    {task.time_of_day && (
-                      <Text className="text-xs text-gray-400">{task.time_of_day}</Text>
-                    )}
-                    <Text className="text-xs text-gray-400">· {memberName(members, task.assigned_member_id)}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })
-          )}
-
-          {/* Projects upcoming */}
-          <SubHeader count={s.projects_upcoming.length}>🏗️ Projects (next 30 days)</SubHeader>
-          {s.projects_upcoming.length === 0 ? (
-            <Text className="text-xs text-gray-400 italic">No projects due in the next 30 days</Text>
-          ) : (
-            s.projects_upcoming.map((p) => (
-              <TouchableOpacity
-                key={p.id}
-                onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
-                className="py-1.5 border-b border-gray-50"
-              >
-                <Text className="text-sm text-gray-800" numberOfLines={1}>{p.title}</Text>
-                <Text className="text-xs text-gray-400 mt-0.5">
-                  Due {formatDateShort(p.expected_date)} · {p.owner_ids.map((id) => memberName(members, id)).join(", ") || "Unassigned"}
-                </Text>
-              </TouchableOpacity>
-            ))
-          )}
-
-          {/* Project tasks with pending due dates */}
-          {s.project_tasks.length > 0 && (
-            <>
-              <SubHeader count={s.project_tasks.length}>↳ Project tasks with due dates</SubHeader>
-              {s.project_tasks.map((t) => (
-                <TouchableOpacity
-                  key={t.id}
-                  onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
-                  className="py-1.5 border-b border-gray-50"
-                >
-                  <Text className="text-sm text-gray-800" numberOfLines={1}>{t.title}</Text>
-                  <Text className="text-xs text-gray-400 mt-0.5">
-                    {t.project_title} · Due {formatDateShort(t.due_date)} · {memberName(members, t.assigned_member_id)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </>
-          )}
-
-          {/* Projects with recent updates */}
-          {s.projects_with_recent_updates.length > 0 && (
-            <>
-              <SubHeader count={s.projects_with_recent_updates.length}>↳ Recently updated projects</SubHeader>
-              {s.projects_with_recent_updates.map((p) => (
-                <TouchableOpacity
-                  key={p.id}
-                  onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
-                  className="py-1.5 border-b border-gray-50"
-                >
-                  <Text className="text-sm text-gray-800" numberOfLines={1}>{p.title}</Text>
-                  <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={2}>{p.latest_update_body}</Text>
-                  <Text className="text-xs text-gray-400 mt-0.5">
-                    {memberName(members, p.latest_update_author_id)} · {formatDateShort(p.latest_update_at)}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </>
-          )}
-
-          {/* Activities */}
-          <SubHeader count={s.activities.length}>✈️ Activity (next 90 days)</SubHeader>
-          {s.activities.length === 0 ? (
-            <Text className="text-xs text-gray-400 italic">No upcoming activities</Text>
-          ) : (
-            s.activities.map((a) => {
-              const ownerLabel = a.assigned_to === "all"
-                ? "Household"
-                : a.assigned_to
-                  ? memberName(members, a.assigned_to)
-                  : "Unassigned";
-              return (
-                <TouchableOpacity
-                  key={a.id}
-                  onPress={() => router.push("/(app)/(activity)")}
-                  className="py-1.5 border-b border-gray-50"
-                >
-                  <Text className="text-sm text-gray-800" numberOfLines={1}>
-                    {a.title}{a.destination && a.destination !== a.title ? ` · ${a.destination}` : ""}
-                  </Text>
-                  <Text className="text-xs text-gray-400 mt-0.5">
-                    {formatDateShort(a.departure_date)}
-                    {a.return_date ? ` → ${formatDateShort(a.return_date)}` : ""}
-                    {" · "}{ownerLabel}
-                  </Text>
-                </TouchableOpacity>
-              );
-            })
-          )}
+                    <Text className="text-xs text-gray-600 mt-0.5">
+                      {formatDateShort(a.departure_date)}
+                      {a.return_date ? ` → ${formatDateShort(a.return_date)}` : ""}
+                      {" · "}{ownerLabel}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </Bucket>
 
           <View className="flex-row items-center justify-between mt-3 pt-2 border-t border-gray-100">
             <Text className="text-[10px] text-gray-400">

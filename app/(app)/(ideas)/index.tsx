@@ -9,7 +9,7 @@ import {
   RefreshControl,
   Modal,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
@@ -120,6 +120,7 @@ function IdeaCard({
 
 export default function IdeasScreen() {
   const router = useRouter();
+  const { focus: focusIdeaId } = useLocalSearchParams<{ focus?: string }>();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -438,6 +439,13 @@ export default function IdeasScreen() {
     setEditSubject(initialSubject);
     setEditDescription(initialDescription);
   };
+
+  // Deep-link: open the inline edit for the focused idea (from the WBR).
+  useEffect(() => {
+    if (!focusIdeaId || ideas.length === 0) return;
+    const target = ideas.find((i) => i.id === focusIdeaId);
+    if (target) startEdit(target);
+  }, [focusIdeaId, ideas]);
 
   const saveEdit = async (_idea: Idea) => {
     if (!editSubject.trim()) return;

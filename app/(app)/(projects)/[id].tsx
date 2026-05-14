@@ -110,7 +110,7 @@ function BudgetRow({ budget, total }: { budget: number; total: number }) {
 }
 
 export default function ProjectDetailScreen() {
-  const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
+  const { id, from, taskId: focusTaskId } = useLocalSearchParams<{ id: string; from?: string; taskId?: string }>();
   const router = useRouter();
   const fromWow = from === "wow";
   const { data: project, isLoading, refetch } = useProject(id);
@@ -465,6 +465,15 @@ export default function ProjectDetailScreen() {
       setAddItemChecklist(null);
     } catch (e: any) { showAlert("Error", e.message); }
   };
+
+  // Deep-link from WBR: ?taskId={id} auto-opens that project task's edit modal.
+  useEffect(() => {
+    if (!focusTaskId || !project) return;
+    const tasks = (project as any).project_tasks ?? [];
+    const target = tasks.find((t: ProjectTask) => t.id === focusTaskId);
+    if (target) openEditItem(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusTaskId, project?.id]);
 
   const openEditItem = (task: ProjectTask) => {
     setEditingItem(task);

@@ -195,7 +195,7 @@ function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress
 
 export default function TasksScreen() {
   const router = useRouter();
-  const { openTaskId } = useLocalSearchParams<{ openTaskId?: string }>();
+  const { openTaskId, focus: focusTaskId, kind: focusKind } = useLocalSearchParams<{ openTaskId?: string; focus?: string; kind?: string }>();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
 
@@ -297,6 +297,24 @@ export default function TasksScreen() {
     const task = recurringTasks.find((t) => t.id === openTaskId);
     if (task) openLowLiftEdit(task);
   }, [openTaskId, recurringTasks]);
+
+  // Deep-link from WBR: ?focus={id}&kind={recurring|task}
+  useEffect(() => {
+    if (!focusTaskId) return;
+    if (focusKind === "recurring") {
+      const t = recurringTasks.find((rt) => rt.id === focusTaskId);
+      if (t) {
+        setMode("low-lift");
+        openLowLiftEdit(t);
+      }
+    } else if (focusKind === "task") {
+      const t = standaloneTasks.find((st) => st.id === focusTaskId);
+      if (t) {
+        setMode("project-adjacent");
+        openStandaloneEdit(t);
+      }
+    }
+  }, [focusTaskId, focusKind, recurringTasks, standaloneTasks]);
 
   const doSaveLowLift = async () => {
     if (!editingLowLift || !llTitle.trim() || !household) return;
