@@ -18,7 +18,8 @@ import { Button } from "@/components/ui/Button";
 import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
-import { useCreateProject } from "@/hooks/useProjects";
+import { useCreateProject, useUpdateProject } from "@/hooks/useProjects";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import { usePreferredVendors } from "@/hooks/usePreferredVendors";
 import { supabase } from "@/lib/supabase";
 import { displayToCents } from "@/utils/currencyUtils";
@@ -66,6 +67,7 @@ export default function NewProjectScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const createProject = useCreateProject();
+  const updateProject = useUpdateProject();
   const { data: vendors = [] } = usePreferredVendors(household?.id);
 
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -74,10 +76,12 @@ export default function NewProjectScreen() {
   const [selectedVendorId, setSelectedVendorId] = useState<string | null>(null);
   const [otherVendorName, setOtherVendorName] = useState("");
   const [frequency, setFrequency] = useState<string | null>(null);
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -93,6 +97,53 @@ export default function NewProjectScreen() {
     },
   });
 
+  // Watch all form values for autosave.
+  const wTitle = watch("title");
+  const wDescription = watch("description");
+  const wStatus = watch("status");
+  const wPriority = watch("priority");
+  const wDueDate = watch("dueDate");
+  const wEstimatedCost = watch("estimatedCost");
+  const wTotalCost = watch("totalCost");
+  const wNotes = watch("notes");
+  const wCategory = watch("category");
+
+  // Auto-save: create draft once title is non-empty, then update as user types.
+  useAutoSave({
+    enabled: !!household && !!currentMember,
+    value: { wTitle, wDescription, wStatus, wPriority, wDueDate, wEstimatedCost, wTotalCost, wNotes, wCategory, usesVendor, selectedVendorId, otherVendorName, frequency, draftId },
+    initialValue: { wTitle: prefillTitle ?? "", wDescription: undefined as string | undefined, wStatus: "planned" as ProjectStatus, wPriority: "medium" as ProjectPriority, wDueDate: "" as string | undefined, wEstimatedCost: "" as string | undefined, wTotalCost: "" as string | undefined, wNotes: "" as string | undefined, wCategory: undefined as string | undefined, usesVendor: null as boolean | null, selectedVendorId: null as string | null, otherVendorName: "", frequency: null as string | null, draftId: null as string | null },
+    canSave: (v) => (v.wTitle ?? "").trim().length > 0,
+    onSave: async (v) => {
+      if (!household || !currentMember) return;
+      const isOther = v.selectedVendorId === "__other__";
+      const payload = {
+        title: (v.wTitle ?? "").trim(),
+        description: v.wDescription ?? null,
+        status: v.wStatus,
+        priority: v.wPriority,
+        expected_date: v.wDueDate || null,
+        category: v.wCategory ?? null,
+        estimated_cost_cents: v.wEstimatedCost?.trim() ? displayToCents(v.wEstimatedCost) : 0,
+        total_cost_cents: v.wTotalCost?.trim() ? displayToCents(v.wTotalCost) : 0,
+        notes: v.wNotes?.trim() || null,
+        uses_vendor: v.usesVendor === true,
+        primary_vendor_id: isOther ? null : v.selectedVendorId,
+        contractor_name: isOther ? v.otherVendorName.trim() || null : null,
+        frequency: v.frequency,
+      } as const;
+      if (v.draftId) {
+        await updateProject.mutateAsync({ id: v.draftId, updates: payload });
+      } else {
+        const created = await createProject.mutateAsync({
+          project: { household_id: household.id, ...payload, created_by: currentMember.id } as any,
+          ownerIds: currentMember ? [currentMember.id] : [],
+        });
+        setDraftId((created as any).id);
+      }
+    },
+  });
+
   const onSubmit = async (data: FormData) => {
     if (!household || !currentMember) return;
 
@@ -103,26 +154,35 @@ export default function NewProjectScreen() {
     const isOtherVendor = selectedVendorId === "__other__";
 
     try {
-      const project = await createProject.mutateAsync({
-        project: {
-          household_id: household.id,
-          title: data.title,
-          description: data.description ?? null,
-          status: data.status,
-          priority: data.priority,
-          expected_date: data.dueDate || null,
-          category: data.category ?? null,
-          estimated_cost_cents: estimatedCents,
-          total_cost_cents: totalCents,
-          notes: data.notes?.trim() || null,
-          created_by: currentMember.id,
-          uses_vendor: usesVendor === true,
-          primary_vendor_id: isOtherVendor ? null : selectedVendorId,
-          contractor_name: isOtherVendor ? otherVendorName.trim() || null : null,
-          frequency: frequency,
-        },
-        ownerIds: data.ownerIds,
-      });
+      const projectPayload = {
+        title: data.title,
+        description: data.description ?? null,
+        status: data.status,
+        priority: data.priority,
+        expected_date: data.dueDate || null,
+        category: data.category ?? null,
+        estimated_cost_cents: estimatedCents,
+        total_cost_cents: totalCents,
+        notes: data.notes?.trim() || null,
+        uses_vendor: usesVendor === true,
+        primary_vendor_id: isOtherVendor ? null : selectedVendorId,
+        contractor_name: isOtherVendor ? otherVendorName.trim() || null : null,
+        frequency: frequency,
+      } as const;
+      let project: { id: string };
+      if (draftId) {
+        const updated = await updateProject.mutateAsync({ id: draftId, updates: projectPayload as any });
+        project = updated as any;
+      } else {
+        project = await createProject.mutateAsync({
+          project: {
+            household_id: household.id,
+            ...projectPayload,
+            created_by: currentMember.id,
+          },
+          ownerIds: data.ownerIds,
+        });
+      }
 
       // Auto-create preferred vendor record when "Other" name is entered
       let resolvedVendorId = isOtherVendor ? null : selectedVendorId;

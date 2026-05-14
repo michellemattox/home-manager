@@ -100,7 +100,7 @@ export default function SettingsScreen() {
     })();
   }, [currentMember?.id]);
 
-  // Auto-save to DB whenever prefs change (3s debounce, only after initial load)
+  // Auto-save to DB whenever prefs change (1s debounce, only after initial load)
   useEffect(() => {
     if (!currentMember || !household || !prefsLoadedRef.current) return;
     if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
@@ -121,7 +121,7 @@ export default function SettingsScreen() {
         setSavedIndicator(true);
         setTimeout(() => setSavedIndicator(false), 2000);
       }
-    }, 3000);
+    }, 1000);
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
   }, [overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency, notifyMemberIds, currentMember?.id, household?.id]);
 

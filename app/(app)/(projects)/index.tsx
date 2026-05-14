@@ -1,4 +1,5 @@
-import React, { useCallback, useMemo, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   View,
   Text,
@@ -421,34 +422,59 @@ function ServicesTab({ onGoToVendors }: { onGoToVendors: () => void }) {
   const [editDate, setEditDate] = useState("");
   const [editCost, setEditCost] = useState("");
   const [editNotes, setEditNotes] = useState("");
+  const editRecordInitialRef = useRef({ vendor: "", serviceType: "Other", date: "", cost: "", notes: "" });
+
+  const editRecordAutosave = useAutoSave({
+    enabled: !!editingRecord,
+    value: { vendor: editVendor, serviceType: editServiceType, date: editDate, cost: editCost, notes: editNotes },
+    initialValue: editRecordInitialRef.current,
+    canSave: (v) => v.vendor.trim().length > 0,
+    onSave: async (v) => {
+      if (!editingRecord) return;
+      await updateRecord.mutateAsync({
+        id: editingRecord.id,
+        householdId: editingRecord.household_id,
+        updates: {
+          vendor_name: v.vendor.trim(),
+          service_type: v.serviceType,
+          service_date: v.date,
+          cost_cents: displayToCents(v.cost),
+          notes: v.notes.trim() || null,
+        },
+      });
+    },
+  });
 
   const openEdit = (record: ServiceRecord) => {
+    const initial = {
+      vendor: record.vendor_name,
+      serviceType: record.service_type,
+      date: record.service_date,
+      cost: (record.cost_cents / 100).toFixed(2),
+      notes: record.notes ?? "",
+    };
+    editRecordInitialRef.current = initial;
     setEditingRecord(record);
-    setEditVendor(record.vendor_name);
-    setEditServiceType(record.service_type);
-    setEditDate(record.service_date);
-    setEditCost((record.cost_cents / 100).toFixed(2));
-    setEditNotes(record.notes ?? "");
+    setEditVendor(initial.vendor);
+    setEditServiceType(initial.serviceType);
+    setEditDate(initial.date);
+    setEditCost(initial.cost);
+    setEditNotes(initial.notes);
   };
 
   const handleSaveEdit = async () => {
     if (!editingRecord || !editVendor.trim()) return;
     try {
-      await updateRecord.mutateAsync({
-        id: editingRecord.id,
-        householdId: editingRecord.household_id,
-        updates: {
-          vendor_name: editVendor.trim(),
-          service_type: editServiceType,
-          service_date: editDate,
-          cost_cents: displayToCents(editCost),
-          notes: editNotes.trim() || null,
-        },
-      });
+      await editRecordAutosave.flush();
       setEditingRecord(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleCloseEdit = async () => {
+    try { await editRecordAutosave.flush(); } catch (_) {}
+    setEditingRecord(null);
   };
 
   const sections = useMemo(() => {
@@ -675,35 +701,74 @@ function VendorsTab({ onBack }: { onBack: () => void }) {
   const [modalPhone, setModalPhone] = useState("");
   const [modalNotes, setModalNotes] = useState("");
   const [modalRating, setModalRating] = useState<number | null>(null);
+  const [vendorDraftId, setVendorDraftId] = useState<string | null>(null);
+  const vendorInitialRef = useRef({ name: "", serviceType: "Other", phone: "", notes: "", rating: null as number | null });
+
+  // Auto-save: creates a draft once name is non-empty (for adds), updates the row for edits.
+  const vendorAutosave = useAutoSave({
+    enabled: showModal && !!household,
+    value: { name: modalName, serviceType: modalServiceType, phone: modalPhone, notes: modalNotes, rating: modalRating, draftId: vendorDraftId, editingId: editingVendor?.id ?? null },
+    initialValue: { ...vendorInitialRef.current, draftId: null as string | null, editingId: null as string | null },
+    canSave: (v) => v.name.trim().length > 0,
+    onSave: async (v) => {
+      if (!household) return;
+      const updates = {
+        name: v.name.trim(),
+        service_type: v.serviceType || null,
+        phone: v.phone.trim() || null,
+        notes: v.notes.trim() || null,
+        rating: v.rating,
+      };
+      const targetId = v.editingId ?? v.draftId;
+      if (targetId) {
+        await updateVendor.mutateAsync({ id: targetId, householdId: household.id, updates });
+      } else {
+        const created = await addVendor.mutateAsync({ household_id: household.id, ...updates });
+        setVendorDraftId((created as any).id);
+      }
+    },
+  });
 
   const openAdd = (prefillName?: string, prefillType?: string) => {
+    const initial = { name: prefillName ?? "", serviceType: prefillType ?? "Other", phone: "", notes: "", rating: null as number | null };
+    vendorInitialRef.current = initial;
     setEditingVendor(null);
-    setModalName(prefillName ?? "");
-    setModalServiceType(prefillType ?? "Other");
-    setModalPhone("");
-    setModalNotes("");
-    setModalRating(null);
+    setVendorDraftId(null);
+    setModalName(initial.name);
+    setModalServiceType(initial.serviceType);
+    setModalPhone(initial.phone);
+    setModalNotes(initial.notes);
+    setModalRating(initial.rating);
     setShowModal(true);
   };
   const openEdit = (vendor: PreferredVendor) => {
+    const initial = {
+      name: vendor.name,
+      serviceType: vendor.service_type ?? "Other",
+      phone: vendor.phone ?? "",
+      notes: vendor.notes ?? "",
+      rating: vendor.rating ?? null,
+    };
+    vendorInitialRef.current = initial;
     setEditingVendor(vendor);
-    setModalName(vendor.name);
-    setModalServiceType(vendor.service_type ?? "Other");
-    setModalPhone(vendor.phone ?? "");
-    setModalNotes(vendor.notes ?? "");
-    setModalRating(vendor.rating ?? null);
+    setVendorDraftId(null);
+    setModalName(initial.name);
+    setModalServiceType(initial.serviceType);
+    setModalPhone(initial.phone);
+    setModalNotes(initial.notes);
+    setModalRating(initial.rating);
     setShowModal(true);
   };
   const handleSave = async () => {
     if (!modalName.trim() || !household) return;
     try {
-      if (editingVendor) {
-        await updateVendor.mutateAsync({ id: editingVendor.id, householdId: household.id, updates: { name: modalName.trim(), service_type: modalServiceType || null, phone: modalPhone.trim() || null, notes: modalNotes.trim() || null, rating: modalRating } });
-      } else {
-        await addVendor.mutateAsync({ household_id: household.id, name: modalName.trim(), service_type: modalServiceType || null, phone: modalPhone.trim() || null, notes: modalNotes.trim() || null, rating: modalRating });
-      }
+      await vendorAutosave.flush();
       setShowModal(false);
     } catch (e: any) { showAlert("Error", e.message); }
+  };
+  const handleCloseVendor = async () => {
+    try { await vendorAutosave.flush(); } catch (_) {}
+    setShowModal(false);
   };
   const handleDelete = () => {
     if (!editingVendor || !household) return;

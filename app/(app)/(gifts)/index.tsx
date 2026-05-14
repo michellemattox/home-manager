@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useRef, useState, useMemo } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   View,
   Text,
@@ -305,6 +306,44 @@ export default function GiftsScreen() {
   const [newColor, setNewColor] = useState("");
   const [newSize, setNewSize] = useState("");
   const [newLink, setNewLink] = useState("");
+  const [newGiftDraftId, setNewGiftDraftId] = useState<string | null>(null);
+
+  // Auto-save: create draft once name is non-empty, then update that row as user edits.
+  const newGiftAutosave = useAutoSave({
+    enabled: showNewModal && !!household && !!currentMember,
+    value: { newName, newDate, newPriority, newRecipient, newStore, newPrice, newColor, newSize, newLink, newGiftDraftId },
+    initialValue: { newName: "", newDate: "", newPriority: null as GiftPriority | null, newRecipient: null as string | null, newStore: "", newPrice: "", newColor: "", newSize: "", newLink: "", newGiftDraftId: null as string | null },
+    canSave: (v) => (v.newName.trim().length > 0) && !!household && !!currentMember,
+    onSave: async (v) => {
+      if (!household || !currentMember) return;
+      const recipientId = v.newRecipient === HOME_LIST_ID ? null : (v.newRecipient ?? currentMember.id);
+      const payload = {
+        name: v.newName.trim() || null,
+        gift_date: v.newDate || null,
+        priority: v.newPriority,
+        store: v.newStore.trim() || null,
+        price: v.newPrice.trim() ? Number(v.newPrice) : null,
+        color_material: v.newColor.trim() || null,
+        size: v.newSize.trim() || null,
+        link: v.newLink.trim() ? normalizeUrl(v.newLink) : null,
+      } as const;
+      if (v.newGiftDraftId) {
+        await updateGift.mutateAsync({
+          id: v.newGiftDraftId,
+          householdId: household.id,
+          updates: { ...payload, recipient_member_id: recipientId } as any,
+        });
+      } else {
+        const created = await createGift.mutateAsync({
+          household_id: household.id,
+          recipient_member_id: recipientId,
+          added_by_member_id: currentMember.id,
+          ...payload,
+        });
+        setNewGiftDraftId((created as any).id);
+      }
+    },
+  });
 
   // Edit modal
   const [editingGift, setEditingGift] = useState<Gift | null>(null);
@@ -316,6 +355,31 @@ export default function GiftsScreen() {
   const [editColor, setEditColor] = useState("");
   const [editSize, setEditSize] = useState("");
   const [editLink, setEditLink] = useState("");
+  const giftEditInitialRef = useRef({ name: "", date: "", priority: null as GiftPriority | null, store: "", price: "", color: "", size: "", link: "" });
+
+  const giftEditAutosave = useAutoSave({
+    enabled: !!editingGift && !!household,
+    value: { name: editName, date: editDate, priority: editPriority, store: editStore, price: editPrice, color: editColor, size: editSize, link: editLink },
+    initialValue: giftEditInitialRef.current,
+    canSave: (_v) => true,
+    onSave: async (v) => {
+      if (!editingGift || !household) return;
+      await updateGift.mutateAsync({
+        id: editingGift.id,
+        householdId: household.id,
+        updates: {
+          name: v.name.trim() || null,
+          gift_date: v.date || null,
+          priority: v.priority,
+          store: v.store.trim() || null,
+          price: v.price.trim() ? Number(v.price) : null,
+          color_material: v.color.trim() || null,
+          size: v.size.trim() || null,
+          link: v.link.trim() ? normalizeUrl(v.link) : null,
+        },
+      });
+    },
+  });
 
   const resetNewForm = () => {
     setNewName("");
@@ -327,6 +391,7 @@ export default function GiftsScreen() {
     setNewColor("");
     setNewSize("");
     setNewLink("");
+    setNewGiftDraftId(null);
   };
 
   // Running total for current user (what they've spent across all recipients,
@@ -453,25 +518,8 @@ export default function GiftsScreen() {
 
   const handleCreate = async () => {
     if (!household || !currentMember) return;
-    // newRecipient: string member id, HOME_LIST_ID, or null (defaults to self).
-    const recipientId =
-      newRecipient === HOME_LIST_ID
-        ? null
-        : newRecipient ?? currentMember.id;
     try {
-      await createGift.mutateAsync({
-        household_id: household.id,
-        recipient_member_id: recipientId,
-        added_by_member_id: currentMember.id,
-        name: newName.trim() || null,
-        gift_date: newDate || null,
-        priority: newPriority,
-        store: newStore.trim() || null,
-        price: newPrice.trim() ? Number(newPrice) : null,
-        color_material: newColor.trim() || null,
-        size: newSize.trim() || null,
-        link: newLink.trim() ? normalizeUrl(newLink) : null,
-      });
+      await newGiftAutosave.flush();
       setShowNewModal(false);
       resetNewForm();
     } catch (e: any) {
@@ -479,39 +527,48 @@ export default function GiftsScreen() {
     }
   };
 
+  const handleCloseNew = async () => {
+    try { await newGiftAutosave.flush(); } catch (_) {}
+    setShowNewModal(false);
+    resetNewForm();
+  };
+
   const openEdit = (gift: Gift) => {
+    const initial = {
+      name: gift.name ?? "",
+      date: gift.gift_date ?? "",
+      priority: gift.priority,
+      store: gift.store ?? "",
+      price: gift.price != null ? String(gift.price) : "",
+      color: gift.color_material ?? "",
+      size: gift.size ?? "",
+      link: gift.link ?? "",
+    };
+    giftEditInitialRef.current = initial;
     setEditingGift(gift);
-    setEditName(gift.name ?? "");
-    setEditDate(gift.gift_date ?? "");
-    setEditPriority(gift.priority);
-    setEditStore(gift.store ?? "");
-    setEditPrice(gift.price != null ? String(gift.price) : "");
-    setEditColor(gift.color_material ?? "");
-    setEditSize(gift.size ?? "");
-    setEditLink(gift.link ?? "");
+    setEditName(initial.name);
+    setEditDate(initial.date);
+    setEditPriority(initial.priority);
+    setEditStore(initial.store);
+    setEditPrice(initial.price);
+    setEditColor(initial.color);
+    setEditSize(initial.size);
+    setEditLink(initial.link);
   };
 
   const handleSaveEdit = async () => {
     if (!editingGift || !household) return;
     try {
-      await updateGift.mutateAsync({
-        id: editingGift.id,
-        householdId: household.id,
-        updates: {
-          name: editName.trim() || null,
-          gift_date: editDate || null,
-          priority: editPriority,
-          store: editStore.trim() || null,
-          price: editPrice.trim() ? Number(editPrice) : null,
-          color_material: editColor.trim() || null,
-          size: editSize.trim() || null,
-          link: editLink.trim() ? normalizeUrl(editLink) : null,
-        },
-      });
+      await giftEditAutosave.flush();
       setEditingGift(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleCloseEdit = async () => {
+    try { await giftEditAutosave.flush(); } catch (_) {}
+    setEditingGift(null);
   };
 
   const handleMarkBought = async (gift: Gift, bought: boolean) => {

@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   View,
   Text,
@@ -141,11 +142,56 @@ export default function IdeasScreen() {
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [selectedAuthorId, setSelectedAuthorId] = useState<string | undefined>(currentMember?.id);
+  const [draftIdeaId, setDraftIdeaId] = useState<string | null>(null);
+
+  // Auto-save the intake form: create a draft once the subject is non-empty,
+  // then keep updating that same row as the user types.
+  const intakeAutosave = useAutoSave({
+    enabled: !!household && !!currentMember,
+    value: { subject, description, authorId: selectedAuthorId ?? currentMember?.id ?? null, draftIdeaId },
+    initialValue: { subject: "", description: "", authorId: currentMember?.id ?? null, draftIdeaId: null as string | null },
+    canSave: (v) => v.subject.trim().length > 0 && !!v.authorId,
+    onSave: async (v) => {
+      if (!household || !v.authorId) return;
+      if (v.draftIdeaId) {
+        await updateIdea.mutateAsync({
+          id: v.draftIdeaId,
+          householdId: household.id,
+          updates: { subject: v.subject.trim(), description: v.description.trim() || null },
+        });
+      } else {
+        const created = await createIdea.mutateAsync({
+          householdId: household.id,
+          subject: v.subject.trim(),
+          description: v.description.trim() || undefined,
+          authorId: v.authorId,
+        });
+        setDraftIdeaId(created.id);
+      }
+    },
+  });
 
   // Edit state
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editSubject, setEditSubject] = useState("");
   const [editDescription, setEditDescription] = useState("");
+  const editInitialRef = useRef({ subject: "", description: "" });
+
+  // Auto-save inline idea edits.
+  const editAutosave = useAutoSave({
+    enabled: !!editingId && !!household,
+    value: { subject: editSubject, description: editDescription },
+    initialValue: editInitialRef.current,
+    canSave: (v) => v.subject.trim().length > 0,
+    onSave: async (v) => {
+      if (!household || !editingId) return;
+      await updateIdea.mutateAsync({
+        id: editingId,
+        householdId: household.id,
+        updates: { subject: v.subject.trim(), description: v.description.trim() || null },
+      });
+    },
+  });
 
   // Collapsed waitlist
   const [showWaitlisted, setShowWaitlisted] = useState(false);
@@ -190,14 +236,12 @@ export default function IdeasScreen() {
       return;
     }
     try {
-      await createIdea.mutateAsync({
-        householdId: household.id,
-        subject: subject.trim(),
-        description: description.trim() || undefined,
-        authorId: selectedAuthorId ?? currentMember.id,
-      });
+      // Commit any pending autosave (which may have already created/updated the draft).
+      await intakeAutosave.flush();
+      // Clear the form so the next idea starts fresh.
       setSubject("");
       setDescription("");
+      setDraftIdeaId(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
@@ -387,23 +431,29 @@ export default function IdeasScreen() {
   };
 
   const startEdit = (idea: Idea) => {
+    const initialSubject = idea.subject ?? idea.body ?? "";
+    const initialDescription = idea.description ?? "";
+    editInitialRef.current = { subject: initialSubject, description: initialDescription };
     setEditingId(idea.id);
-    setEditSubject(idea.subject ?? idea.body ?? "");
-    setEditDescription(idea.description ?? "");
+    setEditSubject(initialSubject);
+    setEditDescription(initialDescription);
   };
 
-  const saveEdit = async (idea: Idea) => {
-    if (!household || !editSubject.trim()) return;
+  const saveEdit = async (_idea: Idea) => {
+    if (!editSubject.trim()) return;
     try {
-      await updateIdea.mutateAsync({
-        id: idea.id,
-        householdId: household.id,
-        updates: { subject: editSubject.trim(), description: editDescription.trim() || null },
-      });
+      await editAutosave.flush();
       setEditingId(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const closeEdit = async () => {
+    try {
+      await editAutosave.flush();
+    } catch (_) {}
+    setEditingId(null);
   };
 
   const renderIdea = (idea: Idea) => {
@@ -438,10 +488,10 @@ export default function IdeasScreen() {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => setEditingId(null)}
+              onPress={closeEdit}
               className="flex-1 py-2 rounded-xl border border-gray-200 items-center"
             >
-              <Text className="text-sm text-gray-600">Cancel</Text>
+              <Text className="text-sm text-gray-600">Close</Text>
             </TouchableOpacity>
           </View>
         </Card>

@@ -1,4 +1,5 @@
-import React, { useMemo, useState, useCallback } from "react";
+import React, { useMemo, useRef, useState, useCallback } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   View,
   Text,
@@ -109,36 +110,62 @@ export default function ServicesScreen() {
   const [editCost, setEditCost] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editFrequency, setEditFrequency] = useState<ServiceFrequency | null>(null);
+  const editRecordInitialRef = useRef({ vendor: "", serviceType: "Other", date: "", cost: "", notes: "", frequency: null as ServiceFrequency | null });
+
+  const editRecordAutosave = useAutoSave({
+    enabled: !!editingRecord,
+    value: { vendor: editVendor, serviceType: editServiceType, date: editDate, cost: editCost, notes: editNotes, frequency: editFrequency },
+    initialValue: editRecordInitialRef.current,
+    canSave: (v) => v.vendor.trim().length > 0,
+    onSave: async (v) => {
+      if (!editingRecord) return;
+      await updateRecord.mutateAsync({
+        id: editingRecord.id,
+        householdId: editingRecord.household_id,
+        updates: {
+          vendor_name: v.vendor.trim(),
+          service_type: v.serviceType,
+          service_date: v.date,
+          cost_cents: displayToCents(v.cost),
+          notes: v.notes.trim() || null,
+          frequency: v.frequency ?? null,
+        },
+      });
+    },
+  });
 
   const openEdit = (record: ServiceRecord) => {
+    const initial = {
+      vendor: record.vendor_name,
+      serviceType: record.service_type,
+      date: record.service_date,
+      cost: (record.cost_cents / 100).toFixed(2),
+      notes: record.notes ?? "",
+      frequency: (record.frequency as ServiceFrequency) ?? null,
+    };
+    editRecordInitialRef.current = initial;
     setEditingRecord(record);
-    setEditVendor(record.vendor_name);
-    setEditServiceType(record.service_type);
-    setEditDate(record.service_date);
-    setEditCost((record.cost_cents / 100).toFixed(2));
-    setEditNotes(record.notes ?? "");
-    setEditFrequency((record.frequency as ServiceFrequency) ?? null);
+    setEditVendor(initial.vendor);
+    setEditServiceType(initial.serviceType);
+    setEditDate(initial.date);
+    setEditCost(initial.cost);
+    setEditNotes(initial.notes);
+    setEditFrequency(initial.frequency);
   };
 
   const handleSaveEdit = async () => {
     if (!editingRecord || !editVendor.trim()) return;
     try {
-      await updateRecord.mutateAsync({
-        id: editingRecord.id,
-        householdId: editingRecord.household_id,
-        updates: {
-          vendor_name: editVendor.trim(),
-          service_type: editServiceType,
-          service_date: editDate,
-          cost_cents: displayToCents(editCost),
-          notes: editNotes.trim() || null,
-          frequency: editFrequency ?? null,
-        },
-      });
+      await editRecordAutosave.flush();
       setEditingRecord(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleCloseEdit = async () => {
+    try { await editRecordAutosave.flush(); } catch (_) {}
+    setEditingRecord(null);
   };
 
   const sections = useMemo(() => {

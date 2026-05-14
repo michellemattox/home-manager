@@ -35,6 +35,7 @@ import { formatDateShort, formatDateTime, isOverdue } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays } from "@/utils/scheduleUtils";
 import type { Goal, GoalUpdate, GoalWithUpdates } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
+import { useAutoSave } from "@/hooks/useAutoSave";
 
 type UserTypeFilter = "all" | "family" | "individual";
 
@@ -468,6 +469,44 @@ export default function GoalsScreen() {
   const [newIsRecurring, setNewIsRecurring] = useState(false);
   const [newFreqType, setNewFreqType] = useState("weekly");
   const [newFreqDays, setNewFreqDays] = useState("7");
+  const [newGoalDraftId, setNewGoalDraftId] = useState<string | null>(null);
+
+  // Auto-save: create draft once title is non-empty, then update that row as user edits.
+  const newGoalAutosave = useAutoSave({
+    enabled: showNewModal && !!household && !!currentMember,
+    value: { newTitle, newDescription, newUserType, newMemberId, newDueDate, newReminder, newIsRecurring, newFreqType, newFreqDays, newGoalDraftId },
+    initialValue: { newTitle: "", newDescription: "", newUserType: "family" as const, newMemberId: currentMember?.id ?? null, newDueDate: "", newReminder: null as Goal["reminder_frequency"], newIsRecurring: false, newFreqType: "weekly", newFreqDays: "7", newGoalDraftId: null as string | null },
+    canSave: (v) => v.newTitle.trim().length > 0,
+    onSave: async (v) => {
+      if (!household || !currentMember) return;
+      const payload = {
+        title: v.newTitle.trim(),
+        description: v.newDescription.trim() || null,
+        user_type: v.newUserType,
+        member_id: v.newUserType === "individual" ? (v.newMemberId ?? currentMember.id) : null,
+        due_date: v.newDueDate || null,
+        reminder_frequency: v.newReminder,
+        is_recurring: v.newIsRecurring,
+        frequency_type: v.newIsRecurring ? (v.newFreqType as any) : null,
+        frequency_days: v.newIsRecurring ? parseInt(v.newFreqDays || "7", 10) : 1,
+      } as const;
+      if (v.newGoalDraftId) {
+        await updateGoal.mutateAsync({
+          id: v.newGoalDraftId,
+          householdId: household.id,
+          updates: payload as any,
+        });
+      } else {
+        const created = await createGoal.mutateAsync({
+          household_id: household.id,
+          ...payload,
+          status: "active",
+          created_by: currentMember.id,
+        });
+        setNewGoalDraftId((created as any).id);
+      }
+    },
+  });
 
   // Edit goal modal
   const [editingGoal, setEditingGoal] = useState<GoalWithUpdates | null>(null);
@@ -522,25 +561,14 @@ export default function GoalsScreen() {
     setNewTitle(""); setNewDescription(""); setNewUserType("family");
     setNewMemberId(currentMember?.id ?? null); setNewDueDate(""); setNewReminder(null);
     setNewIsRecurring(false); setNewFreqType("weekly"); setNewFreqDays("7");
+    setNewGoalDraftId(null);
   };
 
   const handleCreateGoal = async () => {
     if (!newTitle.trim() || !household || !currentMember) return;
     try {
-      await createGoal.mutateAsync({
-        household_id: household.id,
-        title: newTitle.trim(),
-        description: newDescription.trim() || null,
-        user_type: newUserType,
-        member_id: newUserType === "individual" ? (newMemberId ?? currentMember.id) : null,
-        due_date: newDueDate || null,
-        reminder_frequency: newReminder,
-        status: "active",
-        created_by: currentMember.id,
-        is_recurring: newIsRecurring,
-        frequency_type: newIsRecurring ? (newFreqType as any) : null,
-        frequency_days: newIsRecurring ? (parseInt(newFreqDays || "7", 10)) : 1,
-      });
+      // Autosave may have already created/updated the goal — just flush and close.
+      await newGoalAutosave.flush();
       setShowNewModal(false);
       resetNewForm();
     } catch (e: any) {
@@ -608,7 +636,7 @@ export default function GoalsScreen() {
       || editIsRecurring !== init.isRecurring || editFreqType !== init.freqType || editFreqDays !== init.freqDays;
     if (!dirty) return;
     if (goalAutoSaveRef.current) clearTimeout(goalAutoSaveRef.current);
-    goalAutoSaveRef.current = setTimeout(() => { doSaveGoalEdit(); }, 3000);
+    goalAutoSaveRef.current = setTimeout(() => { doSaveGoalEdit(); }, 1000);
     return () => { if (goalAutoSaveRef.current) clearTimeout(goalAutoSaveRef.current); };
   }, [editTitle, editDescription, editUserType, editMemberId, editDueDate, editReminder, editIsRecurring, editFreqType, editFreqDays]);
 

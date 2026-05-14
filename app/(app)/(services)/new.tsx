@@ -1,4 +1,6 @@
 import React, { useState } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
+import { useUpdateServiceRecord } from "@/hooks/useServices";
 import {
   View,
   Text,
@@ -42,9 +44,11 @@ export default function NewServiceScreen() {
   const router = useRouter();
   const { household } = useHouseholdStore();
   const createRecord = useCreateServiceRecord();
+  const updateRecord = useUpdateServiceRecord();
   const { data: preferredVendors } = usePreferredVendors(household?.id);
 
   const [frequency, setFrequency] = useState<ServiceFrequency | null>(null);
+  const [draftId, setDraftId] = useState<string | null>(null);
 
   const {
     control,
@@ -58,20 +62,61 @@ export default function NewServiceScreen() {
   });
 
   const vendorName = watch("vendorName");
+  const serviceType = watch("serviceType");
+  const serviceDate = watch("serviceDate");
+  const cost = watch("cost");
+  const notes = watch("notes");
+
+  // Auto-save: create draft once vendor name is non-empty, then update as user types.
+  const autosave = useAutoSave({
+    enabled: !!household,
+    value: { vendorName, serviceType, serviceDate, cost, notes, frequency, draftId },
+    initialValue: { vendorName: "", serviceType: "Other", serviceDate: "", cost: "", notes: "" as string | undefined, frequency: null as ServiceFrequency | null, draftId: null as string | null },
+    canSave: (v) => (v.vendorName ?? "").trim().length > 0,
+    onSave: async (v) => {
+      if (!household) return;
+      const payload = {
+        vendor_name: (v.vendorName ?? "").trim(),
+        service_type: v.serviceType ?? "Other",
+        service_date: v.serviceDate || new Date().toISOString().slice(0, 10),
+        cost_cents: v.cost ? displayToCents(v.cost) : 0,
+        notes: v.notes?.trim() || null,
+        frequency: v.frequency ?? null,
+      };
+      if (v.draftId) {
+        await updateRecord.mutateAsync({ id: v.draftId, householdId: household.id, updates: payload });
+      } else {
+        const created = await createRecord.mutateAsync({
+          household_id: household.id,
+          ...payload,
+          receipt_url: null,
+        });
+        setDraftId((created as any).id);
+      }
+    },
+  });
 
   const onSubmit = async (data: FormData) => {
     if (!household) return;
     try {
-      await createRecord.mutateAsync({
-        household_id: household.id,
+      const payload = {
         vendor_name: data.vendorName,
         service_type: data.serviceType,
         service_date: data.serviceDate,
         cost_cents: displayToCents(data.cost),
         notes: data.notes ?? null,
-        receipt_url: null,
         frequency: frequency ?? null,
-      });
+      };
+      if (draftId) {
+        // Draft already exists from autosave — finalize with the validated values.
+        await updateRecord.mutateAsync({ id: draftId, householdId: household.id, updates: payload });
+      } else {
+        await createRecord.mutateAsync({
+          household_id: household.id,
+          ...payload,
+          receipt_url: null,
+        });
+      }
       router.back();
     } catch (e: any) {
       showAlert("Error", e.message);

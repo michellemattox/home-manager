@@ -18,7 +18,8 @@ import { RichTextEditor } from "@/components/ui/RichTextEditor";
 import { showAlert } from "@/lib/alert";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
-import { useCreateTrip } from "@/hooks/useTrips";
+import { useCreateTrip, useUpdateTrip } from "@/hooks/useTrips";
+import { useAutoSave } from "@/hooks/useAutoSave";
 
 const schema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -35,12 +36,15 @@ export default function NewActivityScreen() {
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const createTrip = useCreateTrip();
+  const updateTrip = useUpdateTrip();
   const currentMember = members.find((m) => m.user_id === user?.id);
   const [assignedTo, setAssignedTo] = React.useState<string>("all");
+  const [draftId, setDraftId] = React.useState<string | null>(null);
 
   const {
     control,
     handleSubmit,
+    watch,
     formState: { errors },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -50,23 +54,70 @@ export default function NewActivityScreen() {
     },
   });
 
+  const wTitle = watch("title");
+  const wDestination = watch("destination");
+  const wDeparture = watch("departureDate");
+  const wReturn = watch("returnDate");
+  const wNotes = watch("notes");
+
+  // Auto-save: create draft once title is non-empty, then update as user types.
+  useAutoSave({
+    enabled: !!household && !!currentMember,
+    value: { wTitle, wDestination, wDeparture, wReturn, wNotes, assignedTo, draftId },
+    initialValue: { wTitle: "", wDestination: "", wDeparture: "", wReturn: "", wNotes: undefined as string | undefined, assignedTo: "all", draftId: null as string | null },
+    canSave: (v) => (v.wTitle ?? "").trim().length > 0,
+    onSave: async (v) => {
+      if (!household || !currentMember) return;
+      const payload = {
+        title: (v.wTitle ?? "").trim(),
+        destination: (v.wDestination ?? "").trim(),
+        departure_date: v.wDeparture || new Date().toISOString().slice(0, 10),
+        return_date: v.wReturn || new Date().toISOString().slice(0, 10),
+        notes: v.wNotes ?? null,
+        assigned_to: v.assignedTo,
+      };
+      if (v.draftId) {
+        await updateTrip.mutateAsync({ id: v.draftId, updates: payload as any });
+      } else {
+        const created = await createTrip.mutateAsync({
+          household_id: household.id,
+          ...payload,
+          created_by: currentMember.id,
+          uses_vendor: false,
+          primary_vendor_id: null,
+        });
+        setDraftId((created as any).id);
+      }
+    },
+  });
+
   const onSubmit = async (data: FormData) => {
     if (!household || !currentMember) return;
     try {
-      const trip = await createTrip.mutateAsync({
-        household_id: household.id,
+      const payload = {
         title: data.title,
         destination: data.destination,
         departure_date: data.departureDate,
         return_date: data.returnDate,
         notes: data.notes ?? null,
-        created_by: currentMember.id,
-        uses_vendor: false,
-        primary_vendor_id: null,
         assigned_to: assignedTo,
-      });
+      };
+      let tripId: string;
+      if (draftId) {
+        await updateTrip.mutateAsync({ id: draftId, updates: payload as any });
+        tripId = draftId;
+      } else {
+        const trip = await createTrip.mutateAsync({
+          household_id: household.id,
+          ...payload,
+          created_by: currentMember.id,
+          uses_vendor: false,
+          primary_vendor_id: null,
+        });
+        tripId = (trip as any).id;
+      }
       Keyboard.dismiss();
-      router.replace(`/(app)/(activity)/${trip.id}`);
+      router.replace(`/(app)/(activity)/${tripId}`);
     } catch (e: any) {
       showAlert("Error", e.message);
     }

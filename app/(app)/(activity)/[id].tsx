@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   View,
   Text,
@@ -209,8 +210,35 @@ export default function TripDetailScreen() {
   const [taskEditAssignedId, setTaskEditAssignedId] = useState<string | null>(null);
   const [taskEditDueDate, setTaskEditDueDate] = useState("");
   const [taskEditChecklist, setTaskEditChecklist] = useState("General");
+  const taskEditInitialRef = useRef({ title: "", assignedId: null as string | null, dueDate: "", checklist: "General" });
+
+  const taskEditAutosave = useAutoSave({
+    enabled: !!editingTask,
+    value: { title: taskEditTitle, assignedId: taskEditAssignedId, dueDate: taskEditDueDate, checklist: taskEditChecklist },
+    initialValue: taskEditInitialRef.current,
+    canSave: (v) => v.title.trim().length > 0,
+    onSave: async (v) => {
+      if (!editingTask) return;
+      await updateTask.mutateAsync({
+        id: editingTask.id,
+        tripId: editingTask.trip_id,
+        updates: {
+          title: v.title.trim(),
+          assigned_member_id: v.assignedId,
+          due_date: v.dueDate || null,
+          checklist_name: v.checklist,
+        },
+      });
+    },
+  });
 
   const openEditTask = (task: TripTask) => {
+    taskEditInitialRef.current = {
+      title: task.title,
+      assignedId: task.assigned_member_id ?? null,
+      dueDate: task.due_date ?? "",
+      checklist: task.checklist_name ?? "General",
+    };
     setEditingTask(task);
     setTaskEditTitle(task.title);
     setTaskEditAssignedId(task.assigned_member_id ?? null);
@@ -221,20 +249,16 @@ export default function TripDetailScreen() {
   const handleSaveEditTask = async () => {
     if (!editingTask || !taskEditTitle.trim()) return;
     try {
-      await updateTask.mutateAsync({
-        id: editingTask.id,
-        tripId: editingTask.trip_id,
-        updates: {
-          title: taskEditTitle.trim(),
-          assigned_member_id: taskEditAssignedId,
-          due_date: taskEditDueDate || null,
-          checklist_name: taskEditChecklist,
-        },
-      });
+      await taskEditAutosave.flush();
       setEditingTask(null);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleCloseEditTask = async () => {
+    try { await taskEditAutosave.flush(); } catch (_) {}
+    setEditingTask(null);
   };
 
   const { data: completedItems = [] } = useCompletedChecklistItems("trip", id);
@@ -247,6 +271,28 @@ export default function TripDetailScreen() {
   const [editReturn, setEditReturn] = useState("");
   const [editNotes, setEditNotes] = useState("");
   const [editAssignedTo, setEditAssignedTo] = useState<string>("all");
+  const tripEditInitialRef = useRef({ title: "", destination: "", departure: "", returnD: "", notes: "", assignedTo: "all" });
+
+  const tripEditAutosave = useAutoSave({
+    enabled: showEditModal && !!trip,
+    value: { title: editTitle, destination: editDestination, departure: editDeparture, returnD: editReturn, notes: editNotes, assignedTo: editAssignedTo },
+    initialValue: tripEditInitialRef.current,
+    canSave: (v) => v.title.trim().length > 0,
+    onSave: async (v) => {
+      if (!trip) return;
+      await updateTrip.mutateAsync({
+        id: trip.id,
+        updates: {
+          title: v.title.trim(),
+          destination: v.destination.trim(),
+          departure_date: v.departure,
+          return_date: v.returnD,
+          notes: v.notes.trim() || null,
+          assigned_to: v.assignedTo,
+        },
+      });
+    },
+  });
 
   // Add checklist modal
   const [showAddChecklist, setShowAddChecklist] = useState(false);
@@ -274,33 +320,37 @@ export default function TripDetailScreen() {
 
   const openEdit = () => {
     if (!trip) return;
-    setEditTitle(trip.title);
-    setEditDestination(trip.destination);
-    setEditDeparture(trip.departure_date);
-    setEditReturn(trip.return_date);
-    setEditNotes(plainTextToHtml(trip.notes ?? ""));
-    setEditAssignedTo((trip as any).assigned_to ?? "all");
+    const initial = {
+      title: trip.title,
+      destination: trip.destination,
+      departure: trip.departure_date,
+      returnD: trip.return_date,
+      notes: plainTextToHtml(trip.notes ?? ""),
+      assignedTo: (trip as any).assigned_to ?? "all",
+    };
+    tripEditInitialRef.current = initial;
+    setEditTitle(initial.title);
+    setEditDestination(initial.destination);
+    setEditDeparture(initial.departure);
+    setEditReturn(initial.returnD);
+    setEditNotes(initial.notes);
+    setEditAssignedTo(initial.assignedTo);
     setShowEditModal(true);
   };
 
   const handleSaveEdit = async () => {
     if (!trip || !editTitle.trim()) return;
     try {
-      await updateTrip.mutateAsync({
-        id: trip.id,
-        updates: {
-          title: editTitle.trim(),
-          destination: editDestination.trim(),
-          departure_date: editDeparture,
-          return_date: editReturn,
-          notes: editNotes.trim() || null,
-          assigned_to: editAssignedTo,
-        },
-      });
+      await tripEditAutosave.flush();
       setShowEditModal(false);
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleCloseEditTrip = async () => {
+    try { await tripEditAutosave.flush(); } catch (_) {}
+    setShowEditModal(false);
   };
 
   const handleDeleteTrip = () => {

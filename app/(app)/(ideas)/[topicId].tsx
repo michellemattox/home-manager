@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useRef, useState } from "react";
+import { useAutoSave } from "@/hooks/useAutoSave";
 import {
   View,
   Text,
@@ -114,7 +115,24 @@ export default function TopicIdeasScreen() {
     );
   };
 
+  const editInitialRef = useRef("");
+  const editAutosave = useAutoSave({
+    enabled: !!editingIdea,
+    value: editBody,
+    initialValue: editInitialRef.current,
+    canSave: (v) => v.trim().length > 0,
+    onSave: async (v) => {
+      if (!editingIdea) return;
+      await editIdea.mutateAsync({
+        id: editingIdea.id,
+        body: v.trim(),
+        topicId: editingIdea.topic_id,
+      });
+    },
+  });
+
   const openEdit = (idea: Idea) => {
+    editInitialRef.current = idea.body;
     setEditingIdea(idea);
     setEditBody(idea.body);
   };
@@ -122,15 +140,16 @@ export default function TopicIdeasScreen() {
   const handleSaveEdit = async () => {
     if (!editingIdea || !editBody.trim()) return;
     try {
-      await editIdea.mutateAsync({
-        id: editingIdea.id,
-        body: editBody.trim(),
-        topicId: editingIdea.topic_id,
-      });
-      setEditingIdea(null);
+      await editAutosave.flush();
+      handleCloseEdit();
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleCloseEdit = async () => {
+    try { await editAutosave.flush(); } catch (_) {}
+    handleCloseEdit();
   };
 
   return (
@@ -204,11 +223,11 @@ export default function TopicIdeasScreen() {
         visible={!!editingIdea}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setEditingIdea(null)}
+        onRequestClose={() => handleCloseEdit()}
       >
         <SafeAreaView className="flex-1 bg-gray-50">
           <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-            <TouchableOpacity onPress={() => setEditingIdea(null)} className="mr-4">
+            <TouchableOpacity onPress={() => handleCloseEdit()} className="mr-4">
               <Text className="text-blue-600 text-base">Cancel</Text>
             </TouchableOpacity>
             <Text className="flex-1 text-lg font-semibold text-gray-900">Edit Idea</Text>
