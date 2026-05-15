@@ -11,6 +11,13 @@ export type Trip = Database["public"]["Tables"]["trips"]["Row"];
 export type TripTask = Database["public"]["Tables"]["trip_tasks"]["Row"];
 export type TripTaskOwner =
   Database["public"]["Tables"]["trip_task_owners"]["Row"];
+export type TripUpdate = {
+  id: string;
+  trip_id: string;
+  author_id: string | null;
+  body: string;
+  created_at: string;
+};
 export type RecurringTask =
   Database["public"]["Tables"]["recurring_tasks"]["Row"];
 export type RecurringTaskCompletion =
@@ -44,6 +51,7 @@ export interface ProjectWithOwners extends Project {
 
 export interface TripWithTasks extends Trip {
   tasks: TripTaskWithOwners[];
+  trip_updates?: TripUpdate[];
 }
 
 export interface TripTaskWithOwners extends TripTask {

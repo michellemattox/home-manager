@@ -62,6 +62,11 @@ export function useGlobalRealtime(householdId: string | undefined) {
         () => qc.invalidateQueries({ queryKey: ["trips", householdId] }))
       .on("postgres_changes", { event: "*", schema: "public", table: "trip_tasks" },
         () => qc.invalidateQueries({ queryKey: ["trip"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_updates" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["trip"] });
+          qc.invalidateQueries({ queryKey: ["trips", householdId] });
+        })
 
       // ── Goals ────────────────────────────────────────────────────────────────
       .on("postgres_changes", { event: "*", schema: "public", table: "goals", filter: hf },

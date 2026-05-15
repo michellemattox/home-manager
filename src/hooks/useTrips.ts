@@ -1,7 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useUndoStore } from "@/stores/undoStore";
-import type { Trip, TripTask, TripWithTasks } from "@/types/app.types";
+import type { Trip, TripTask, TripUpdate, TripWithTasks } from "@/types/app.types";
 
 export function useTrips(householdId: string | undefined) {
   return useQuery({
@@ -27,13 +27,52 @@ export function useTrip(tripId: string | undefined) {
       if (!tripId) return null;
       const { data, error } = await supabase
         .from("trips")
-        .select("*, tasks:trip_tasks(*, trip_task_owners(member_id))")
+        .select("*, tasks:trip_tasks(*, trip_task_owners(member_id)), trip_updates(*)")
         .eq("id", tripId)
         .single();
       if (error) throw error;
       return data as TripWithTasks;
     },
     enabled: !!tripId,
+  });
+}
+
+export function useAddTripUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (update: { trip_id: string; author_id: string | null; body: string }) => {
+      const { data, error } = await supabase
+        .from("trip_updates")
+        .insert(update)
+        .select("*, trips!inner(household_id)")
+        .single();
+      if (error) throw error;
+      return data as TripUpdate & { trips: { household_id: string } };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["trip", data.trip_id] });
+      qc.invalidateQueries({ queryKey: ["trips", data.trips.household_id] });
+    },
+  });
+}
+
+export function useEditTripUpdate() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, body, tripId }: { id: string; body: string; tripId: string }) => {
+      const { data, error } = await supabase
+        .from("trip_updates")
+        .update({ body })
+        .eq("id", id)
+        .select("*, trips!inner(household_id)")
+        .single();
+      if (error) throw error;
+      return data as TripUpdate & { trips: { household_id: string } };
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["trip", data.trip_id] });
+      qc.invalidateQueries({ queryKey: ["trips", data.trips.household_id] });
+    },
   });
 }
 

@@ -78,7 +78,7 @@ export function WeeklyBusinessReview() {
   const { household, members } = useHouseholdStore();
   const { data: wbr, isLoading } = useLatestWBR(household?.id);
   const generate = useGenerateWBR();
-  const [expanded, setExpanded] = useState(true);
+  const [expanded, setExpanded] = useState(false);
 
   if (isLoading) return null;
   if (!wbr) {
@@ -108,13 +108,17 @@ export function WeeklyBusinessReview() {
   }
 
   const s = wbr.snapshot;
+  const activityTasks = s.activity_tasks ?? [];
+  const activityUpdates = s.activities_with_recent_updates ?? [];
   const totalItems =
     s.ideas.length +
     s.tasks.length +
     s.projects_upcoming.length +
     s.project_tasks.length +
     s.projects_with_recent_updates.length +
-    s.activities.length;
+    s.activities.length +
+    activityTasks.length +
+    activityUpdates.length;
 
   return (
     <Card className="mb-3 mt-2">
@@ -139,7 +143,7 @@ export function WeeklyBusinessReview() {
       {expanded && (
         <View className="mt-2">
           {/* IDEAS bucket */}
-          <Bucket title="New Ideas (past 2 weeks)" icon="💡" bg={BUCKET_BG.ideas} count={s.ideas.length}>
+          <Bucket title="New Ideas (Past 3 weeks)" icon="💡" bg={BUCKET_BG.ideas} count={s.ideas.length}>
             {s.ideas.length === 0 ? (
               <Text className="text-xs text-gray-500 italic">No new ideas</Text>
             ) : (
@@ -265,34 +269,83 @@ export function WeeklyBusinessReview() {
 
           <Divider />
 
-          {/* ACTIVITY bucket */}
-          <Bucket title="Activity (next 90 days)" icon="✈️" bg={BUCKET_BG.activity} count={s.activities.length}>
-            {s.activities.length === 0 ? (
-              <Text className="text-xs text-gray-500 italic">No upcoming activities</Text>
+          {/* ACTIVITY bucket (upcoming + activity tasks + recent updates) */}
+          <Bucket
+            title="Activity (next 90 days)"
+            icon="✈️"
+            bg={BUCKET_BG.activity}
+            count={s.activities.length + activityTasks.length + activityUpdates.length}
+          >
+            {s.activities.length === 0 && activityTasks.length === 0 && activityUpdates.length === 0 ? (
+              <Text className="text-xs text-gray-500 italic">No activity</Text>
             ) : (
-              s.activities.map((a) => {
-                const ownerLabel = a.assigned_to === "all"
-                  ? "Household"
-                  : a.assigned_to
-                    ? memberName(members, a.assigned_to)
-                    : "Unassigned";
-                return (
-                  <TouchableOpacity
-                    key={a.id}
-                    onPress={() => router.push(`/(app)/(activity)/${a.id}`)}
-                    className="py-1.5 border-b border-black/10"
-                  >
-                    <Text className="text-sm text-gray-900" numberOfLines={1}>
-                      {a.title}{a.destination && a.destination !== a.title ? ` · ${a.destination}` : ""}
-                    </Text>
-                    <Text className="text-xs text-gray-600 mt-0.5">
-                      {formatDateShort(a.departure_date)}
-                      {a.return_date ? ` → ${formatDateShort(a.return_date)}` : ""}
-                      {" · "}{ownerLabel}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })
+              <>
+                {s.activities.length > 0 && (
+                  <>
+                    <SubGroup count={s.activities.length}>Upcoming</SubGroup>
+                    {s.activities.map((a) => {
+                      const ownerLabel = a.assigned_to === "all"
+                        ? "Household"
+                        : a.assigned_to
+                          ? memberName(members, a.assigned_to)
+                          : "Unassigned";
+                      return (
+                        <TouchableOpacity
+                          key={a.id}
+                          onPress={() => router.push(`/(app)/(activity)/${a.id}`)}
+                          className="py-1.5 border-b border-black/10"
+                        >
+                          <Text className="text-sm text-gray-900" numberOfLines={1}>
+                            {a.title}{a.destination && a.destination !== a.title ? ` · ${a.destination}` : ""}
+                          </Text>
+                          <Text className="text-xs text-gray-600 mt-0.5">
+                            {formatDateShort(a.departure_date)}
+                            {a.return_date ? ` → ${formatDateShort(a.return_date)}` : ""}
+                            {" · "}{ownerLabel}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </>
+                )}
+
+                {activityTasks.length > 0 && (
+                  <>
+                    <SubGroup count={activityTasks.length}>Activity tasks with due dates</SubGroup>
+                    {activityTasks.map((t) => (
+                      <TouchableOpacity
+                        key={t.id}
+                        onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
+                        className="py-1.5 border-b border-black/10"
+                      >
+                        <Text className="text-sm text-gray-900" numberOfLines={1}>{t.title}</Text>
+                        <Text className="text-xs text-gray-600 mt-0.5">
+                          {t.trip_title} · Due {formatDateShort(t.due_date)} · {memberName(members, t.assigned_member_id)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+
+                {activityUpdates.length > 0 && (
+                  <>
+                    <SubGroup count={activityUpdates.length}>Recently updated</SubGroup>
+                    {activityUpdates.map((a) => (
+                      <TouchableOpacity
+                        key={a.id}
+                        onPress={() => router.push(`/(app)/(activity)/${a.id}`)}
+                        className="py-1.5 border-b border-black/10"
+                      >
+                        <Text className="text-sm text-gray-900" numberOfLines={1}>{a.title}</Text>
+                        <Text className="text-xs text-gray-700 mt-0.5" numberOfLines={2}>{a.latest_update_body}</Text>
+                        <Text className="text-xs text-gray-600 mt-0.5">
+                          {memberName(members, a.latest_update_author_id)} · {formatDateShort(a.latest_update_at)}
+                        </Text>
+                      </TouchableOpacity>
+                    ))}
+                  </>
+                )}
+              </>
             )}
           </Bucket>
 

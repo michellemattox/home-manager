@@ -111,6 +111,23 @@ interface ActivityItem {
   assigned_to: string | null;
 }
 
+interface ActivityTaskItem {
+  id: string;
+  trip_id: string;
+  trip_title: string;
+  title: string;
+  due_date: string;
+  assigned_member_id: string | null;
+}
+
+interface ActivityWithUpdate {
+  id: string;
+  title: string;
+  latest_update_body: string;
+  latest_update_author_id: string | null;
+  latest_update_at: string;
+}
+
 interface Snapshot {
   ideas: IdeaItem[];
   tasks: TaskItem[];
@@ -118,22 +135,25 @@ interface Snapshot {
   project_tasks: ProjectTaskItem[];
   projects_with_recent_updates: ProjectWithUpdate[];
   activities: ActivityItem[];
+  activity_tasks: ActivityTaskItem[];
+  activities_with_recent_updates: ActivityWithUpdate[];
 }
 
 // ── Generation ─────────────────────────────────────────────────────────────
 
 async function generateForHousehold(householdId: string, weekStart: string, today: string): Promise<Snapshot> {
   const twoWeeksAgoISO = addDays(today, -14);
+  const threeWeeksAgoISO = addDays(today, -21);
   const sevenDaysAhead = addDays(today, 7);
   const thirtyDaysAhead = addDays(today, 30);
   const ninetyDaysAhead = addDays(today, 90);
 
-  // 1. Ideas — new in past 2 weeks. Ideas use topic_id as household_id (legacy column name).
+  // 1. Ideas — new in past 3 weeks. Ideas use topic_id as household_id (legacy column name).
   const { data: ideasData } = await supabase
     .from("ideas")
     .select("id, subject, body, author_id, created_at")
     .eq("topic_id", householdId)
-    .gte("created_at", `${twoWeeksAgoISO}T00:00:00Z`)
+    .gte("created_at", `${threeWeeksAgoISO}T00:00:00Z`)
     .order("created_at", { ascending: false });
 
   const ideas: IdeaItem[] = (ideasData ?? []).map((i: any) => ({
@@ -252,23 +272,64 @@ async function generateForHousehold(householdId: string, weekStart: string, toda
   project_tasks.sort((a, b) => a.due_date.localeCompare(b.due_date));
   projects_with_recent_updates.sort((a, b) => b.latest_update_at.localeCompare(a.latest_update_at));
 
-  // 4. Activity (Trips) — coming up in next 90 days.
+  // 4. Activity (Trips) — coming up in next 90 days, plus their tasks (due dates) and recent updates.
   const { data: tripData } = await supabase
     .from("trips")
-    .select("id, title, destination, departure_date, return_date, assigned_to")
-    .eq("household_id", householdId)
-    .gte("departure_date", today)
-    .lte("departure_date", ninetyDaysAhead)
-    .order("departure_date", { ascending: true });
+    .select("id, title, destination, departure_date, return_date, assigned_to, trip_tasks(id, title, due_date, assigned_member_id, is_completed), trip_updates(id, body, author_id, created_at)")
+    .eq("household_id", householdId);
 
-  const activities: ActivityItem[] = (tripData ?? []).map((t: any) => ({
-    id: t.id,
-    title: t.title ?? t.destination ?? "Trip",
-    destination: t.destination,
-    departure_date: t.departure_date,
-    return_date: t.return_date,
-    assigned_to: t.assigned_to,
-  }));
+  const activities: ActivityItem[] = [];
+  const activity_tasks: ActivityTaskItem[] = [];
+  const activities_with_recent_updates: ActivityWithUpdate[] = [];
+
+  for (const t of (tripData ?? []) as any[]) {
+    const tripTitle = t.title ?? t.destination ?? "Trip";
+
+    // Upcoming trips: departure in [today, today+90]
+    if (t.departure_date && t.departure_date >= today && t.departure_date <= ninetyDaysAhead) {
+      activities.push({
+        id: t.id,
+        title: tripTitle,
+        destination: t.destination,
+        departure_date: t.departure_date,
+        return_date: t.return_date,
+        assigned_to: t.assigned_to,
+      });
+    }
+
+    // Trip tasks with pending due dates in the next 90 days
+    for (const tt of (t.trip_tasks ?? []) as any[]) {
+      if (tt.due_date && !tt.is_completed && tt.due_date >= today && tt.due_date <= ninetyDaysAhead) {
+        activity_tasks.push({
+          id: tt.id,
+          trip_id: t.id,
+          trip_title: tripTitle,
+          title: tt.title,
+          due_date: tt.due_date,
+          assigned_member_id: tt.assigned_member_id,
+        });
+      }
+    }
+
+    // Trips with updates in past 2 weeks
+    const recentUpdates = (t.trip_updates ?? [])
+      .filter((u: any) => u.created_at >= `${twoWeeksAgoISO}T00:00:00Z`)
+      .sort((a: any, b: any) => b.created_at.localeCompare(a.created_at));
+    if (recentUpdates.length > 0) {
+      const latest = recentUpdates[0];
+      activities_with_recent_updates.push({
+        id: t.id,
+        title: tripTitle,
+        latest_update_body: latest.body,
+        latest_update_author_id: latest.author_id,
+        latest_update_at: latest.created_at,
+      });
+    }
+  }
+
+  activities.sort((a, b) => a.departure_date.localeCompare(b.departure_date));
+  activity_tasks.sort((a, b) => a.due_date.localeCompare(b.due_date));
+  activities_with_recent_updates.sort((a, b) => b.latest_update_at.localeCompare(a.latest_update_at));
 
   return {
     ideas,
@@ -277,6 +338,8 @@ async function generateForHousehold(householdId: string, weekStart: string, toda
     project_tasks,
     projects_with_recent_updates,
     activities,
+    activity_tasks,
+    activities_with_recent_updates,
   };
 }
 

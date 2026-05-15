@@ -20,6 +20,8 @@ import {
   useDeleteTripTask,
   useUpdateTrip,
   useDeleteTrip,
+  useAddTripUpdate,
+  useEditTripUpdate,
 } from "@/hooks/useTrips";
 import {
   useCompletedChecklistItems,
@@ -34,7 +36,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
-import { formatDateShort } from "@/utils/dateUtils";
+import { formatDateShort, formatDateTime } from "@/utils/dateUtils";
 import { RichTextViewer } from "@/components/ui/RichTextViewer";
 import { RichTextEditor, plainTextToHtml } from "@/components/ui/RichTextEditor";
 import type { TripTask } from "@/types/app.types";
@@ -203,6 +205,14 @@ export default function TripDetailScreen() {
   const deleteTrip = useDeleteTrip();
   const deleteCompleted = useDeleteCompletedChecklistItem();
   const uncompleteItem = useUncompleteChecklistItem();
+  const addUpdate = useAddTripUpdate();
+  const editUpdate = useEditTripUpdate();
+
+  // Updates state
+  const [showUpdateModal, setShowUpdateModal] = useState(false);
+  const [updateText, setUpdateText] = useState("");
+  const [editingUpdate, setEditingUpdate] = useState<{ id: string; body: string } | null>(null);
+  const [editUpdateText, setEditUpdateText] = useState("");
 
   // Edit task modal
   const [editingTask, setEditingTask] = useState<TripTask | null>(null);
@@ -314,9 +324,32 @@ export default function TripDetailScreen() {
     const channel = supabase
       .channel(`trip_tasks:${id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "trip_tasks", filter: `trip_id=eq.${id}` }, () => refetch())
+      .on("postgres_changes", { event: "*", schema: "public", table: "trip_updates", filter: `trip_id=eq.${id}` }, () => refetch())
       .subscribe();
     return () => { supabase.removeChannel(channel); };
   }, [id]);
+
+  const handleAddUpdate = async () => {
+    if (!updateText.trim() || !currentMember || !id) return;
+    try {
+      await addUpdate.mutateAsync({ trip_id: id, author_id: currentMember.id, body: updateText.trim() });
+      setUpdateText("");
+      setShowUpdateModal(false);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  const handleSaveEditUpdate = async () => {
+    if (!editingUpdate || !editUpdateText.trim() || !id) return;
+    try {
+      await editUpdate.mutateAsync({ id: editingUpdate.id, body: editUpdateText.trim(), tripId: id });
+      setEditingUpdate(null);
+      setEditUpdateText("");
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
 
   const openEdit = () => {
     if (!trip) return;
@@ -460,6 +493,9 @@ export default function TripDetailScreen() {
   if (!trip) return null;
 
   const allTasks = trip.tasks ?? [];
+  const sortedUpdates = [...((trip as any).trip_updates ?? [])].sort(
+    (a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+  );
 
   // Merge server-side checklist names with local ones
   const serverNames = Array.from(new Set(allTasks.map((t) => t.checklist_name ?? "General")));
@@ -616,6 +652,56 @@ export default function TripDetailScreen() {
           >
             <Text className="text-blue-600 text-sm font-medium">+ Add Checklist</Text>
           </TouchableOpacity>
+        )}
+
+        {/* Updates */}
+        <View className="flex-row items-center justify-between mb-3 mt-2">
+          <Text className="text-sm font-semibold text-gray-500 uppercase tracking-wider">
+            Updates ({sortedUpdates.length})
+          </Text>
+          <TouchableOpacity
+            onPress={() => setShowUpdateModal(true)}
+            className="bg-blue-600 rounded-full px-3 py-1"
+          >
+            <Text className="text-white text-sm font-medium">+ Add</Text>
+          </TouchableOpacity>
+        </View>
+
+        {sortedUpdates.length === 0 ? (
+          <Card className="mb-4">
+            <Text className="text-gray-400 text-sm text-center py-3">
+              No updates yet. Tap + Add to post the first one.
+            </Text>
+          </Card>
+        ) : (
+          sortedUpdates.map((update: any) => {
+            const author = members.find((m) => m.id === update.author_id);
+            const isMyUpdate = currentMember && update.author_id === currentMember.id;
+            return (
+              <Card key={update.id} className="mb-3">
+                <View className="flex-row items-center mb-2">
+                  {author && <MemberAvatar member={author as any} size="sm" />}
+                  <View className="ml-2 flex-1">
+                    <Text className="text-xs text-gray-400">
+                      {formatDateTime(update.created_at)}
+                      {author ? ` · ${author.display_name}` : ""}
+                    </Text>
+                  </View>
+                  {isMyUpdate && (
+                    <TouchableOpacity
+                      onPress={() => {
+                        setEditingUpdate({ id: update.id, body: update.body });
+                        setEditUpdateText(update.body);
+                      }}
+                    >
+                      <Text className="text-blue-500 text-xs font-medium">Edit</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+                <Text className="text-gray-700 text-sm leading-relaxed">{update.body}</Text>
+              </Card>
+            );
+          })
         )}
 
         {/* Completed items */}
@@ -844,6 +930,56 @@ export default function TripDetailScreen() {
             </TouchableOpacity>
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* Add Update Modal */}
+      <Modal visible={showUpdateModal} animationType="slide" presentationStyle="pageSheet">
+        <View className="flex-1 bg-gray-50 px-4 pt-6">
+          <View className="flex-row items-center mb-4">
+            <TouchableOpacity onPress={() => { setShowUpdateModal(false); setUpdateText(""); }}>
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-center text-lg font-semibold">Add Update</Text>
+            <TouchableOpacity onPress={handleAddUpdate} disabled={!updateText.trim() || addUpdate.isPending}>
+              <Text className={`text-base font-semibold ${updateText.trim() ? "text-blue-600" : "text-gray-300"}`}>Post</Text>
+            </TouchableOpacity>
+          </View>
+          <Text className="text-xs text-gray-400 mb-3">Posting as {currentMember?.display_name ?? "you"}</Text>
+          <TextInput
+            className="bg-white border border-gray-200 rounded-2xl p-4 text-base text-gray-900 min-h-[120px]"
+            placeholder="What's the latest on this activity?"
+            value={updateText}
+            onChangeText={setUpdateText}
+            multiline
+            autoFocus
+            textAlignVertical="top"
+            placeholderTextColor="#9ca3af"
+          />
+        </View>
+      </Modal>
+
+      {/* Edit Update Modal */}
+      <Modal visible={!!editingUpdate} animationType="slide" presentationStyle="pageSheet">
+        <View className="flex-1 bg-gray-50 px-4 pt-6">
+          <View className="flex-row items-center mb-4">
+            <TouchableOpacity onPress={() => { setEditingUpdate(null); setEditUpdateText(""); }}>
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-center text-lg font-semibold">Edit Update</Text>
+            <TouchableOpacity onPress={handleSaveEditUpdate} disabled={!editUpdateText.trim() || editUpdate.isPending}>
+              <Text className={`text-base font-semibold ${editUpdateText.trim() ? "text-blue-600" : "text-gray-300"}`}>Save</Text>
+            </TouchableOpacity>
+          </View>
+          <TextInput
+            className="bg-white border border-gray-200 rounded-2xl p-4 text-base text-gray-900 min-h-[120px]"
+            value={editUpdateText}
+            onChangeText={setEditUpdateText}
+            multiline
+            autoFocus
+            textAlignVertical="top"
+            placeholderTextColor="#9ca3af"
+          />
+        </View>
       </Modal>
     </SafeAreaView>
   );

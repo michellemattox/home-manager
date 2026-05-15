@@ -53,6 +53,23 @@ export interface WbrActivity {
   assigned_to: string | null;
 }
 
+export interface WbrActivityTask {
+  id: string;
+  trip_id: string;
+  trip_title: string;
+  title: string;
+  due_date: string;
+  assigned_member_id: string | null;
+}
+
+export interface WbrActivityUpdate {
+  id: string;
+  title: string;
+  latest_update_body: string;
+  latest_update_author_id: string | null;
+  latest_update_at: string;
+}
+
 export interface WbrSnapshot {
   ideas: WbrIdea[];
   tasks: WbrTask[];
@@ -60,6 +77,8 @@ export interface WbrSnapshot {
   project_tasks: WbrProjectTask[];
   projects_with_recent_updates: WbrProjectUpdate[];
   activities: WbrActivity[];
+  activity_tasks?: WbrActivityTask[];
+  activities_with_recent_updates?: WbrActivityUpdate[];
 }
 
 export interface WeeklyBusinessReview {

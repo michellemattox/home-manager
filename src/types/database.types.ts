@@ -287,6 +287,30 @@ export interface Database {
         };
         Relationships: Rel;
       };
+      trip_updates: {
+        Row: {
+          id: string;
+          trip_id: string;
+          author_id: string | null;
+          body: string;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          trip_id: string;
+          author_id?: string | null;
+          body: string;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          trip_id?: string;
+          author_id?: string | null;
+          body?: string;
+          created_at?: string;
+        };
+        Relationships: Rel;
+      };
       trip_tasks: {
         Row: {
           id: string;
