@@ -13,7 +13,8 @@ import { registerForPushNotificationsAsync } from "@/lib/notifications";
 import { OfflineBanner } from "@/components/ui/OfflineBanner";
 import { ErrorBoundary } from "@/components/ui/ErrorBoundary";
 import { UndoToast } from "@/components/ui/UndoToast";
-import { View, ActivityIndicator, Platform, AppState } from "react-native";
+import { LoadingScreen } from "@/components/LoadingScreen";
+import { View, Platform, AppState } from "react-native";
 import type { HouseholdMember } from "@/types/app.types";
 import { useFonts, Lobster_400Regular } from "@expo-google-fonts/lobster";
 
@@ -213,33 +214,39 @@ function AuthGate({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Logged in but household check still in flight → wait
-    if (!householdChecked) return;
-
-    // Logged in, no household → onboarding (but allow /join through)
-    if (!household) {
-      const inOnboarding =
-        segments[0] === "(auth)" && (segments as string[])[1] === "onboarding";
-      const inJoin = segments[0] === "join";
-      if (!inOnboarding && !inJoin) router.replace("/(auth)/onboarding");
+    // Fast path: if a household is already hydrated from persisted storage,
+    // route to the app immediately. The household lookup will validate in
+    // the background and clear/replace state if anything has changed.
+    if (household) {
+      const inApp = segments[0] === "(app)";
+      if (!inApp) router.replace("/(app)/(home)");
       return;
     }
 
-    // Logged in + has household → main app
-    const inApp = segments[0] === "(app)";
-    if (!inApp) router.replace("/(app)/(home)");
+    // No persisted household yet — wait for the live lookup to complete.
+    if (!householdChecked) return;
+
+    // Logged in, no household → onboarding (but allow /join through)
+    const inOnboarding =
+      segments[0] === "(auth)" && (segments as string[])[1] === "onboarding";
+    const inJoin = segments[0] === "join";
+    if (!inOnboarding && !inJoin) router.replace("/(auth)/onboarding");
   }, [authReady, session, segments, householdChecked, household]);
 
-  // Prevent blank screen on cold start: render a spinner until auth is ready
-  // rather than mounting the Stack with no route to show (there is no app/index.tsx).
-  // Without this, the user sees a completely empty screen while INITIAL_SESSION
-  // fires + the household lookup completes, which can take several seconds.
-  if (!authReady) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFED" }}>
-        <ActivityIndicator size="large" color="#FC9853" />
-      </View>
-    );
+  // Cover the entire pre-routed window with a branded loading screen so the
+  // login page never flashes during cold start. Three states route here:
+  //   1. Auth not yet ready (INITIAL_SESSION still in flight)
+  //   2. Signed in, no persisted household, lookup hasn't finished yet
+  //   3. Signed in + household known, router.replace hasn't landed in (app) yet
+  const inJoin = segments[0] === "join";
+  const inApp = segments[0] === "(app)";
+  const showLoading =
+    !authReady ||
+    (!!session && !household && !householdChecked && !inJoin) ||
+    (!!session && !!household && !inApp && !inJoin);
+
+  if (showLoading) {
+    return <LoadingScreen />;
   }
 
   return <>{children}</>;
@@ -248,13 +255,10 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 export default function RootLayout() {
   const [fontsLoaded] = useFonts({ Lobster_400Regular });
 
-  // Show a centered spinner instead of a blank white screen while fonts load.
+  // Branded loading screen while fonts load — same screen used by AuthGate so
+  // the visual stays consistent across the entire pre-routed window.
   if (!fontsLoaded) {
-    return (
-      <View style={{ flex: 1, alignItems: "center", justifyContent: "center", backgroundColor: "#FFFFED" }}>
-        <ActivityIndicator size="large" color="#FC9853" />
-      </View>
-    );
+    return <LoadingScreen />;
   }
 
   return (

@@ -58,17 +58,6 @@ function Bucket({
   );
 }
 
-function SubGroup({ children, count }: { children: React.ReactNode; count: number }) {
-  return (
-    <View className="flex-row items-center gap-2 mt-2 mb-1">
-      <Text className="text-xs font-bold uppercase tracking-wide text-gray-600">{children}</Text>
-      <View className="bg-white/70 rounded-full px-2">
-        <Text className="text-xs text-gray-700 font-semibold">{count}</Text>
-      </View>
-    </View>
-  );
-}
-
 function Divider() {
   return <View className="h-px bg-gray-600 my-3" />;
 }
@@ -198,156 +187,209 @@ export function WeeklyBusinessReview() {
 
           <Divider />
 
-          {/* PROJECTS bucket (contains upcoming + project tasks + recent updates) */}
-          <Bucket
-            title="Projects (next 30 days)"
-            icon="🏗️"
-            bg={BUCKET_BG.projects}
-            count={s.projects_upcoming.length + s.project_tasks.length + s.projects_with_recent_updates.length}
-          >
-            {s.projects_upcoming.length === 0 && s.project_tasks.length === 0 && s.projects_with_recent_updates.length === 0 ? (
-              <Text className="text-xs text-gray-500 italic">No project activity</Text>
-            ) : (
-              <>
-                {s.projects_upcoming.length > 0 && (
-                  <>
-                    <SubGroup count={s.projects_upcoming.length}>Upcoming</SubGroup>
-                    {s.projects_upcoming.map((p) => (
-                      <TouchableOpacity
-                        key={p.id}
-                        onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
-                        className="py-1.5 border-b border-black/10"
-                      >
-                        <Text className="text-sm text-gray-900" numberOfLines={1}>{p.title}</Text>
-                        <Text className="text-xs text-gray-600 mt-0.5">
-                          Due {formatDateShort(p.expected_date)} · {p.owner_ids.map((id) => memberName(members, id)).join(", ") || "Unassigned"}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
+          {/* PROJECTS bucket — each project listed with its tasks/updates nested underneath */}
+          {(() => {
+            const projectMap = new Map<string, {
+              id: string;
+              title: string;
+              expected_date?: string;
+              owner_ids?: string[];
+              tasks: typeof s.project_tasks;
+              update?: typeof s.projects_with_recent_updates[number];
+            }>();
+            for (const p of s.projects_upcoming) {
+              projectMap.set(p.id, { id: p.id, title: p.title, expected_date: p.expected_date, owner_ids: p.owner_ids, tasks: [] });
+            }
+            for (const t of s.project_tasks) {
+              const existing = projectMap.get(t.project_id);
+              if (existing) existing.tasks.push(t);
+              else projectMap.set(t.project_id, { id: t.project_id, title: t.project_title, tasks: [t] });
+            }
+            for (const u of s.projects_with_recent_updates) {
+              const existing = projectMap.get(u.id);
+              if (existing) existing.update = u;
+              else projectMap.set(u.id, { id: u.id, title: u.title, tasks: [], update: u });
+            }
+            const groupedProjects = Array.from(projectMap.values()).sort((a, b) => {
+              const ad = a.expected_date ?? "9999-99-99";
+              const bd = b.expected_date ?? "9999-99-99";
+              return ad.localeCompare(bd);
+            });
 
-                {s.project_tasks.length > 0 && (
-                  <>
-                    <SubGroup count={s.project_tasks.length}>Project tasks with due dates</SubGroup>
-                    {s.project_tasks.map((t) => (
-                      <TouchableOpacity
-                        key={t.id}
-                        onPress={() => router.push({ pathname: `/(app)/(projects)/${t.project_id}`, params: { taskId: t.id } })}
-                        className="py-1.5 border-b border-black/10"
-                      >
-                        <Text className="text-sm text-gray-900" numberOfLines={1}>{t.title}</Text>
-                        <Text className="text-xs text-gray-600 mt-0.5">
-                          {t.project_title} · Due {formatDateShort(t.due_date)} · {memberName(members, t.assigned_member_id)}
-                        </Text>
+            return (
+              <Bucket
+                title="Projects (next 30 days)"
+                icon="🏗️"
+                bg={BUCKET_BG.projects}
+                count={groupedProjects.length}
+              >
+                {groupedProjects.length === 0 ? (
+                  <Text className="text-xs text-gray-500 italic">No project activity</Text>
+                ) : (
+                  groupedProjects.map((p) => (
+                    <View key={p.id} className="py-2 border-b border-black/10">
+                      <TouchableOpacity onPress={() => router.push(`/(app)/(projects)/${p.id}`)}>
+                        <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{p.title}</Text>
+                        {(p.expected_date || (p.owner_ids && p.owner_ids.length > 0)) && (
+                          <Text className="text-xs text-gray-600 mt-0.5">
+                            {p.expected_date ? `Due ${formatDateShort(p.expected_date)}` : ""}
+                            {p.expected_date && p.owner_ids && p.owner_ids.length > 0 ? " · " : ""}
+                            {p.owner_ids && p.owner_ids.length > 0
+                              ? p.owner_ids.map((id) => memberName(members, id)).join(", ")
+                              : ""}
+                          </Text>
+                        )}
                       </TouchableOpacity>
-                    ))}
-                  </>
-                )}
 
-                {s.projects_with_recent_updates.length > 0 && (
-                  <>
-                    <SubGroup count={s.projects_with_recent_updates.length}>Recently updated</SubGroup>
-                    {s.projects_with_recent_updates.map((p) => (
-                      <TouchableOpacity
-                        key={p.id}
-                        onPress={() => router.push(`/(app)/(projects)/${p.id}`)}
-                        className="py-1.5 border-b border-black/10"
-                      >
-                        <Text className="text-sm text-gray-900" numberOfLines={1}>{p.title}</Text>
-                        <Text className="text-xs text-gray-700 mt-0.5" numberOfLines={2}>{p.latest_update_body}</Text>
-                        <Text className="text-xs text-gray-600 mt-0.5">
-                          {memberName(members, p.latest_update_author_id)} · {formatDateShort(p.latest_update_at)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
+                      {p.tasks.length > 0 && (
+                        <View className="mt-1.5 ml-2">
+                          <Text className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-0.5">
+                            Tasks with due dates
+                          </Text>
+                          {p.tasks.map((t) => (
+                            <TouchableOpacity
+                              key={t.id}
+                              onPress={() => router.push({ pathname: `/(app)/(projects)/${t.project_id}`, params: { taskId: t.id } })}
+                              className="py-1 pl-2 border-l-2 border-black/10"
+                            >
+                              <Text className="text-xs text-gray-900" numberOfLines={1}>{t.title}</Text>
+                              <Text className="text-[11px] text-gray-600 mt-0.5">
+                                Due {formatDateShort(t.due_date)} · {memberName(members, t.assigned_member_id)}
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+
+                      {p.update && (
+                        <View className="mt-1.5 ml-2 pl-2 border-l-2 border-black/10">
+                          <Text className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-0.5">
+                            Recent update
+                          </Text>
+                          <Text className="text-xs text-gray-700" numberOfLines={2}>{p.update.latest_update_body}</Text>
+                          <Text className="text-[11px] text-gray-600 mt-0.5">
+                            {memberName(members, p.update.latest_update_author_id)} · {formatDateShort(p.update.latest_update_at)}
+                          </Text>
+                        </View>
+                      )}
+                    </View>
+                  ))
                 )}
-              </>
-            )}
-          </Bucket>
+              </Bucket>
+            );
+          })()}
 
           <Divider />
 
-          {/* ACTIVITY bucket (upcoming + activity tasks + recent updates) */}
-          <Bucket
-            title="Activity (next 90 days)"
-            icon="✈️"
-            bg={BUCKET_BG.activity}
-            count={s.activities.length + activityTasks.length + activityUpdates.length}
-          >
-            {s.activities.length === 0 && activityTasks.length === 0 && activityUpdates.length === 0 ? (
-              <Text className="text-xs text-gray-500 italic">No activity</Text>
-            ) : (
-              <>
-                {s.activities.length > 0 && (
-                  <>
-                    <SubGroup count={s.activities.length}>Upcoming</SubGroup>
-                    {s.activities.map((a) => {
-                      const ownerLabel = a.assigned_to === "all"
-                        ? "Household"
-                        : a.assigned_to
-                          ? memberName(members, a.assigned_to)
-                          : "Unassigned";
-                      return (
-                        <TouchableOpacity
-                          key={a.id}
-                          onPress={() => router.push(`/(app)/(activity)/${a.id}`)}
-                          className="py-1.5 border-b border-black/10"
-                        >
-                          <Text className="text-sm text-gray-900" numberOfLines={1}>
+          {/* ACTIVITY bucket — each activity listed with its tasks/updates nested underneath */}
+          {(() => {
+            const activityMap = new Map<string, {
+              id: string;
+              title: string;
+              destination?: string | null;
+              departure_date?: string;
+              return_date?: string | null;
+              assigned_to?: string | null;
+              tasks: typeof activityTasks;
+              update?: typeof activityUpdates[number];
+            }>();
+            for (const a of s.activities) {
+              activityMap.set(a.id, {
+                id: a.id,
+                title: a.title,
+                destination: a.destination,
+                departure_date: a.departure_date,
+                return_date: a.return_date,
+                assigned_to: a.assigned_to,
+                tasks: [],
+              });
+            }
+            for (const t of activityTasks) {
+              const existing = activityMap.get(t.trip_id);
+              if (existing) existing.tasks.push(t);
+              else activityMap.set(t.trip_id, { id: t.trip_id, title: t.trip_title, tasks: [t] });
+            }
+            for (const u of activityUpdates) {
+              const existing = activityMap.get(u.id);
+              if (existing) existing.update = u;
+              else activityMap.set(u.id, { id: u.id, title: u.title, tasks: [], update: u });
+            }
+            const groupedActivities = Array.from(activityMap.values()).sort((a, b) => {
+              const ad = a.departure_date ?? "9999-99-99";
+              const bd = b.departure_date ?? "9999-99-99";
+              return ad.localeCompare(bd);
+            });
+
+            return (
+              <Bucket
+                title="Activity (next 90 days)"
+                icon="✈️"
+                bg={BUCKET_BG.activity}
+                count={groupedActivities.length}
+              >
+                {groupedActivities.length === 0 ? (
+                  <Text className="text-xs text-gray-500 italic">No activity</Text>
+                ) : (
+                  groupedActivities.map((a) => {
+                    const ownerLabel = a.assigned_to === "all"
+                      ? "Household"
+                      : a.assigned_to
+                        ? memberName(members, a.assigned_to)
+                        : null;
+                    return (
+                      <View key={a.id} className="py-2 border-b border-black/10">
+                        <TouchableOpacity onPress={() => router.push(`/(app)/(activity)/${a.id}`)}>
+                          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>
                             {a.title}{a.destination && a.destination !== a.title ? ` · ${a.destination}` : ""}
                           </Text>
-                          <Text className="text-xs text-gray-600 mt-0.5">
-                            {formatDateShort(a.departure_date)}
-                            {a.return_date ? ` → ${formatDateShort(a.return_date)}` : ""}
-                            {" · "}{ownerLabel}
-                          </Text>
+                          {(a.departure_date || ownerLabel) && (
+                            <Text className="text-xs text-gray-600 mt-0.5">
+                              {a.departure_date ? formatDateShort(a.departure_date) : ""}
+                              {a.departure_date && a.return_date ? ` → ${formatDateShort(a.return_date)}` : ""}
+                              {a.departure_date && ownerLabel ? " · " : ""}
+                              {ownerLabel ?? ""}
+                            </Text>
+                          )}
                         </TouchableOpacity>
-                      );
-                    })}
-                  </>
-                )}
 
-                {activityTasks.length > 0 && (
-                  <>
-                    <SubGroup count={activityTasks.length}>Activity tasks with due dates</SubGroup>
-                    {activityTasks.map((t) => (
-                      <TouchableOpacity
-                        key={t.id}
-                        onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
-                        className="py-1.5 border-b border-black/10"
-                      >
-                        <Text className="text-sm text-gray-900" numberOfLines={1}>{t.title}</Text>
-                        <Text className="text-xs text-gray-600 mt-0.5">
-                          {t.trip_title} · Due {formatDateShort(t.due_date)} · {memberName(members, t.assigned_member_id)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
-                )}
+                        {a.tasks.length > 0 && (
+                          <View className="mt-1.5 ml-2">
+                            <Text className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-0.5">
+                              Tasks with due dates
+                            </Text>
+                            {a.tasks.map((t) => (
+                              <TouchableOpacity
+                                key={t.id}
+                                onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
+                                className="py-1 pl-2 border-l-2 border-black/10"
+                              >
+                                <Text className="text-xs text-gray-900" numberOfLines={1}>{t.title}</Text>
+                                <Text className="text-[11px] text-gray-600 mt-0.5">
+                                  Due {formatDateShort(t.due_date)} · {memberName(members, t.assigned_member_id)}
+                                </Text>
+                              </TouchableOpacity>
+                            ))}
+                          </View>
+                        )}
 
-                {activityUpdates.length > 0 && (
-                  <>
-                    <SubGroup count={activityUpdates.length}>Recently updated</SubGroup>
-                    {activityUpdates.map((a) => (
-                      <TouchableOpacity
-                        key={a.id}
-                        onPress={() => router.push(`/(app)/(activity)/${a.id}`)}
-                        className="py-1.5 border-b border-black/10"
-                      >
-                        <Text className="text-sm text-gray-900" numberOfLines={1}>{a.title}</Text>
-                        <Text className="text-xs text-gray-700 mt-0.5" numberOfLines={2}>{a.latest_update_body}</Text>
-                        <Text className="text-xs text-gray-600 mt-0.5">
-                          {memberName(members, a.latest_update_author_id)} · {formatDateShort(a.latest_update_at)}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </>
+                        {a.update && (
+                          <View className="mt-1.5 ml-2 pl-2 border-l-2 border-black/10">
+                            <Text className="text-[10px] font-semibold uppercase tracking-wide text-gray-500 mb-0.5">
+                              Recent update
+                            </Text>
+                            <Text className="text-xs text-gray-700" numberOfLines={2}>{a.update.latest_update_body}</Text>
+                            <Text className="text-[11px] text-gray-600 mt-0.5">
+                              {memberName(members, a.update.latest_update_author_id)} · {formatDateShort(a.update.latest_update_at)}
+                            </Text>
+                          </View>
+                        )}
+                      </View>
+                    );
+                  })
                 )}
-              </>
-            )}
-          </Bucket>
+              </Bucket>
+            );
+          })()}
 
           <View className="flex-row items-center justify-between mt-3 pt-2 border-t border-gray-100">
             <Text className="text-[10px] text-gray-400">
