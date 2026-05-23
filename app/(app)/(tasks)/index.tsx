@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useRouter, useLocalSearchParams } from "expo-router";
+import { useNavStore } from "@/stores/navStore";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { notificationSuccess } from "@/lib/haptics";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -198,6 +199,11 @@ export default function TasksScreen() {
   const { openTaskId, openStandaloneId, focus: focusTaskId, kind: focusKind } = useLocalSearchParams<{ openTaskId?: string; openStandaloneId?: string; focus?: string; kind?: string }>();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
+  // When the user arrives via a deep link (openTaskId / openStandaloneId from
+  // Home), closing the task modal should return them to the tab they came
+  // from instead of stranding them on the Tasks tab.
+  const previousTabRoute = useNavStore((s) => s.previousTabRoute);
+  const cameFromDeepLink = useRef(false);
 
   const [mode, setMode] = useState<TaskMode>("low-lift");
   const { refreshing: appRefreshing, onRefresh: appOnRefresh } = useAppRefresh();
@@ -295,13 +301,17 @@ export default function TasksScreen() {
   useEffect(() => {
     if (!openTaskId || recurringTasks.length === 0) return;
     const task = recurringTasks.find((t) => t.id === openTaskId);
-    if (task) openLowLiftEdit(task);
+    if (task) {
+      cameFromDeepLink.current = true;
+      openLowLiftEdit(task);
+    }
   }, [openTaskId, recurringTasks]);
 
   useEffect(() => {
     if (!openStandaloneId || standaloneTasks.length === 0) return;
     const task = standaloneTasks.find((t) => t.id === openStandaloneId);
     if (task) {
+      cameFromDeepLink.current = true;
       setMode("low-lift");
       openStandaloneEdit(task);
     }
@@ -313,12 +323,14 @@ export default function TasksScreen() {
     if (focusKind === "recurring") {
       const t = recurringTasks.find((rt) => rt.id === focusTaskId);
       if (t) {
+        cameFromDeepLink.current = true;
         setMode("low-lift");
         openLowLiftEdit(t);
       }
     } else if (focusKind === "task") {
       const t = standaloneTasks.find((st) => st.id === focusTaskId);
       if (t) {
+        cameFromDeepLink.current = true;
         setMode("low-lift");
         openStandaloneEdit(t);
       }
@@ -401,6 +413,10 @@ export default function TasksScreen() {
       await doSaveLowLift();
     }
     setEditingLowLift(null);
+    if (cameFromDeepLink.current) {
+      cameFromDeepLink.current = false;
+      router.replace(previousTabRoute as any);
+    }
   };
 
   const handleCompleteLowLift = async (task: RecurringTask) => {
@@ -586,6 +602,10 @@ export default function TasksScreen() {
       await doSaveStandalone();
     }
     setEditingStandalone(null);
+    if (cameFromDeepLink.current) {
+      cameFromDeepLink.current = false;
+      router.replace(previousTabRoute as any);
+    }
   };
 
   const handleCompleteStandalone = async (task: Task) => {

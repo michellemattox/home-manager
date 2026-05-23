@@ -37,12 +37,24 @@ export function tabGroupRoute(group: TabGroup): string {
 }
 
 interface NavState {
-  /** The last tab list the user was actually viewing (not a detail screen). */
+  /** The tab list the user is currently on (last index-level route visited). */
   lastTabRoute: string;
+  /**
+   * The tab list the user was on *before* the current one. Used by deep-link
+   * modal flows (e.g. tap task on Home → opens modal on Tasks tab → close
+   * should return to Home, not stay on Tasks).
+   */
+  previousTabRoute: string;
   setLastTabRoute: (route: string) => void;
 }
 
 export const useNavStore = create<NavState>((set) => ({
   lastTabRoute: "/(app)/(home)",
-  setLastTabRoute: (route) => set({ lastTabRoute: route }),
+  previousTabRoute: "/(app)/(home)",
+  setLastTabRoute: (route) =>
+    set((s) =>
+      route === s.lastTabRoute
+        ? s
+        : { previousTabRoute: s.lastTabRoute, lastTabRoute: route }
+    ),
 }));
