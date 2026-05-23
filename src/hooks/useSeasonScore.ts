@@ -46,14 +46,14 @@ export function useSeasonScore(householdId: string | undefined) {
             .select("id", { count: "exact", head: true })
             .eq("household_id", householdId)
             .in("status", ["completed", "finished"])
-            .gte("updated_at", thisMonthStart),
+            .gte("completed_at", thisMonthStart),
           supabase
             .from("projects")
             .select("id", { count: "exact", head: true })
             .eq("household_id", householdId)
             .in("status", ["completed", "finished"])
-            .gte("updated_at", lastMonthStart)
-            .lte("updated_at", lastMonthEnd),
+            .gte("completed_at", lastMonthStart)
+            .lte("completed_at", lastMonthEnd),
         ]);
 
       const tasksThis   = thisMonthCompletions.count ?? 0;

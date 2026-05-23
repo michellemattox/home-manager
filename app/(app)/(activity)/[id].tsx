@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useNavStore } from "@/stores/navStore";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { impactLight } from "@/lib/haptics";
 import {
@@ -192,6 +193,8 @@ export default function TripDetailScreen() {
   const { id, from } = useLocalSearchParams<{ id: string; from?: string }>();
   const router = useRouter();
   const fromWow = from === "wow";
+  const lastTabRoute = useNavStore((s) => s.lastTabRoute);
+  const handleBack = () => router.replace(lastTabRoute as any);
   const { data: trip, refetch } = useTrip(id);
   const { members } = useHouseholdStore();
   const { user } = useAuthStore();
@@ -394,7 +397,7 @@ export default function TripDetailScreen() {
       async () => {
         try {
           await deleteTrip.mutateAsync({ id: trip.id, householdId: trip.household_id });
-          router.back();
+          handleBack();
         } catch (e: any) {
           showAlert("Error", e.message);
         }
@@ -517,7 +520,7 @@ export default function TripDetailScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
       {/* Nav */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-        <TouchableOpacity onPress={() => router.back()} className="mr-4">
+        <TouchableOpacity onPress={() => handleBack()} className="mr-4">
           <Text className="text-green-700 text-base">← Back</Text>
         </TouchableOpacity>
         <View className="flex-1">

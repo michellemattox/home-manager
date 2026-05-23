@@ -5,6 +5,7 @@ import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useOverdueOrDueTodayCount } from "@/hooks/useRecurringTasks";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useGlobalRealtime } from "@/hooks/useRealtimeInvalidate";
+import { useTrackLastTab } from "@/hooks/useTrackLastTab";
 import { WebPullToRefresh } from "@/components/WebPullToRefresh";
 
 function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
@@ -51,6 +52,9 @@ export default function AppLayout() {
   // Single global realtime subscription — covers all tabs so any screen
   // reflects inserts/updates/deletes from other household members instantly.
   useGlobalRealtime(householdId);
+
+  // Track which tab the user was last on so detail screens can return there.
+  useTrackLastTab();
 
   return (
     <>

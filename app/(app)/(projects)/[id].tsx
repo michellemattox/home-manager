@@ -8,6 +8,7 @@ import {
   Modal,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useNavStore } from "@/stores/navStore";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   useProject,
@@ -113,6 +114,8 @@ export default function ProjectDetailScreen() {
   const { id, from, taskId: focusTaskId } = useLocalSearchParams<{ id: string; from?: string; taskId?: string }>();
   const router = useRouter();
   const fromWow = from === "wow";
+  const lastTabRoute = useNavStore((s) => s.lastTabRoute);
+  const handleBack = () => router.replace(lastTabRoute as any);
   const { data: project, isLoading, refetch } = useProject(id);
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
@@ -128,7 +131,7 @@ export default function ProjectDetailScreen() {
   const uncompleteItem = useUncompleteChecklistItem();
   const { data: completedItems = [] } = useCompletedChecklistItems("project", id);
   const { data: eventServiceRecords = [] } = useEventServiceRecords("project", id);
-  const { data: vendors = [] } = usePreferredVendors(household?.id);
+  const { data: vendors = [], refetch: refetchVendors } = usePreferredVendors(household?.id);
   const qc = useQueryClient();
 
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -200,6 +203,9 @@ export default function ProjectDetailScreen() {
   // Seed edit modal and capture initial snapshot
   useEffect(() => {
     if (showEditModal && project) {
+      // Always pull a fresh vendor list — realtime can miss when the screen
+      // stayed mounted while a vendor was added elsewhere.
+      refetchVendors();
       setEditTitle(project.title);
       setEditDescription(project.description ?? "");
       setEditPriority(project.priority as ProjectPriority);
@@ -318,6 +324,9 @@ export default function ProjectDetailScreen() {
             .select("id")
             .single();
           resolvedVendorId = newVendor?.id ?? null;
+          // Direct supabase insert bypasses the mutation hook — force the
+          // preferred-vendors cache to refresh for every screen watching it.
+          qc.invalidateQueries({ queryKey: ["preferred_vendors", household.id] });
         }
         if (resolvedVendorId) {
           await supabase
@@ -401,7 +410,7 @@ export default function ProjectDetailScreen() {
       async () => {
         try {
           await deleteProject.mutateAsync({ id: project.id, householdId: project.household_id });
-          router.back();
+          handleBack();
         } catch (e: any) { showAlert("Error", e.message); }
       },
       true
@@ -539,7 +548,7 @@ export default function ProjectDetailScreen() {
     return (
       <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
         <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-          <TouchableOpacity onPress={() => router.back()} className="mr-4">
+          <TouchableOpacity onPress={() => handleBack()} className="mr-4">
             <Text className="text-green-700 text-base">← Back</Text>
           </TouchableOpacity>
           <Text className="flex-1 text-lg font-semibold text-gray-400">Loading…</Text>
@@ -555,7 +564,7 @@ export default function ProjectDetailScreen() {
     return (
       <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
         <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-          <TouchableOpacity onPress={() => router.back()} className="mr-4">
+          <TouchableOpacity onPress={() => handleBack()} className="mr-4">
             <Text className="text-green-700 text-base">← Back</Text>
           </TouchableOpacity>
           <Text className="flex-1 text-lg font-semibold text-gray-400">Project not found</Text>
@@ -564,7 +573,7 @@ export default function ProjectDetailScreen() {
           <Text className="text-gray-400 text-sm text-center">
             This project could not be loaded. It may have been deleted.
           </Text>
-          <TouchableOpacity onPress={() => router.back()} className="mt-4">
+          <TouchableOpacity onPress={() => handleBack()} className="mt-4">
             <Text className="text-green-700 text-base">← Back</Text>
           </TouchableOpacity>
         </View>
@@ -600,7 +609,7 @@ export default function ProjectDetailScreen() {
     <SafeAreaView className="flex-1 bg-gray-50" edges={["top"]}>
       {/* Nav bar */}
       <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
-        <TouchableOpacity onPress={() => router.back()} className="mr-4">
+        <TouchableOpacity onPress={() => handleBack()} className="mr-4">
           <Text className="text-green-700 text-base">← Back</Text>
         </TouchableOpacity>
         <Text className="flex-1 text-lg font-semibold text-gray-900" numberOfLines={1}>

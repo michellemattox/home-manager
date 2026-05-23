@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
+import { useGiftFilterStore } from "@/stores/giftFilterStore";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 import {
   useGifts,
@@ -32,7 +33,8 @@ import { formatDateSlash } from "@/utils/dateUtils";
 import type { Gift, GiftPriority } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 
-type SortMode = "priority" | "price" | "date_added" | "store";
+import type { GiftSortMode } from "@/stores/giftFilterStore";
+type SortMode = GiftSortMode;
 
 // Sentinel recipient id for the shared "Home" list (stored as NULL in DB).
 const HOME_LIST_ID = "__home__";
@@ -288,11 +290,15 @@ export default function GiftsScreen() {
   const deleteGift = useDeleteGift();
   const clearTotals = useClearGiftTotals();
 
-  // Filter / sort state
-  const [recipientFilter, setRecipientFilter] = useState<string | null>(null);
-  const [sortMode, setSortMode] = useState<SortMode>("priority");
+  // Filter / sort state — recipient + sort + panel state persist across sessions;
+  // search query is intentionally session-only (cleared on app close).
+  const recipientFilter = useGiftFilterStore((s) => s.recipientFilter);
+  const setRecipientFilter = useGiftFilterStore((s) => s.setRecipientFilter);
+  const sortMode = useGiftFilterStore((s) => s.sortMode);
+  const setSortMode = useGiftFilterStore((s) => s.setSortMode);
+  const filtersOpen = useGiftFilterStore((s) => s.filtersOpen);
+  const setFiltersOpen = useGiftFilterStore((s) => s.setFiltersOpen);
   const [searchQuery, setSearchQuery] = useState("");
-  const [filtersOpen, setFiltersOpen] = useState(false);
   const giftActiveFilterCount = (recipientFilter !== null ? 1 : 0) + (sortMode !== "priority" ? 1 : 0);
 
   // New gift modal
