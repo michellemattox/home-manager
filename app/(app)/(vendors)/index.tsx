@@ -15,6 +15,7 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import { usePreferredVendors, useAddPreferredVendor, useUpdatePreferredVendor, useDeletePreferredVendor } from "@/hooks/usePreferredVendors";
 import { useQueryClient } from "@tanstack/react-query";
 import { useServiceRecords } from "@/hooks/useServices";
+import { supabase } from "@/lib/supabase";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
@@ -185,16 +186,52 @@ export default function VendorsScreen() {
   // Vendors from service history not already in preferred vendors. Build the
   // name lookup inside the memo so it tracks preferredVendors changes and we
   // don't risk a stale closure when the cache refreshes after a new add.
+  // Names are normalized (trim + collapse internal whitespace + lowercase)
+  // so "Bees Plumbing" / "Bees  Plumbing " / "bees plumbing" dedupe.
+  const normalizeName = (s: string) => s.trim().replace(/\s+/g, " ").toLowerCase();
   const historyVendors = useMemo(() => {
-    const preferredNames = new Set((preferredVendors ?? []).map((v) => v.name.toLowerCase()));
+    const preferredNames = new Set((preferredVendors ?? []).map((v) => normalizeName(v.name)));
     const map: Record<string, string> = {};
     (serviceRecords ?? []).forEach((r) => {
-      if (!preferredNames.has(r.vendor_name.toLowerCase())) {
-        map[r.vendor_name] = r.service_type;
+      const key = normalizeName(r.vendor_name);
+      if (!preferredNames.has(key) && !map[key]) {
+        // Display the first-seen original casing/spacing for this normalized key.
+        map[key] = `${r.vendor_name}|||${r.service_type}`;
       }
     });
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
+    return Object.entries(map)
+      .map(([, packed]) => {
+        const [name, serviceType] = packed.split("|||");
+        return [name, serviceType] as [string, string];
+      })
+      .sort(([a], [b]) => a.localeCompare(b));
   }, [serviceRecords, preferredVendors]);
+
+  const handleDismissHistory = (name: string) => {
+    if (!household) return;
+    const matching = (serviceRecords ?? []).filter(
+      (r) => normalizeName(r.vendor_name) === normalizeName(name)
+    );
+    if (matching.length === 0) return;
+    const count = matching.length;
+    showConfirm(
+      `Dismiss "${name}"?`,
+      `This deletes ${count} service record${count === 1 ? "" : "s"} for "${name}". This cannot be undone.`,
+      async () => {
+        try {
+          const { error } = await supabase
+            .from("service_records")
+            .delete()
+            .in("id", matching.map((r) => r.id));
+          if (error) throw error;
+          await qc.invalidateQueries({ queryKey: ["service_records", household.id] });
+        } catch (e: any) {
+          showAlert("Could not dismiss", e?.message ?? "Try again later.");
+        }
+      },
+      true
+    );
+  };
 
   const zipCode = household?.zip_code ?? "";
 
@@ -272,9 +309,16 @@ export default function VendorsScreen() {
                   </View>
                   <TouchableOpacity
                     onPress={() => openAdd(name, serviceType)}
-                    className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5"
+                    className="bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5 mr-2"
                   >
                     <Text className="text-blue-700 text-xs font-semibold">+ Add</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    onPress={() => handleDismissHistory(name)}
+                    className="bg-gray-50 border border-gray-200 rounded-lg w-7 h-7 items-center justify-center"
+                    accessibilityLabel={`Dismiss ${name} from history`}
+                  >
+                    <Text className="text-gray-500 text-sm">✕</Text>
                   </TouchableOpacity>
                 </View>
               ))}
