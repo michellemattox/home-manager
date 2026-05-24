@@ -132,6 +132,7 @@ export default function ProjectDetailScreen() {
   const { data: completedItems = [] } = useCompletedChecklistItems("project", id);
   const { data: eventServiceRecords = [] } = useEventServiceRecords("project", id);
   const { data: vendors = [], refetch: refetchVendors } = usePreferredVendors(household?.id);
+  const qc = useQueryClient();
 
   // Project detail can stay mounted while the user adds a vendor in the
   // Vendors tab. When focus returns here, force-refresh the vendor list so
@@ -144,7 +145,6 @@ export default function ProjectDetailScreen() {
       refetchVendors();
     }, [refetchVendors, qc, household?.id])
   );
-  const qc = useQueryClient();
 
   const currentMember = members.find((m) => m.user_id === user?.id);
 
