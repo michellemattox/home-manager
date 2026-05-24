@@ -99,6 +99,42 @@ export function parseTimeToMinutes(time?: string | null): number {
 }
 
 /**
+ * Convert any reasonable time string to Postgres TIME format "HH:MM:SS".
+ * Accepts "6pm", "8am", "5 PM", "2:30pm", "10:30 AM", "18:00", "18:00:00".
+ * Returns null when the input can't be confidently parsed — callers should
+ * fall back to leaving the field blank rather than persisting garbage.
+ */
+export function normalizeTimeTo24h(time: string): string | null {
+  if (!time) return null;
+  const trimmed = time.trim();
+  const pad = (n: number) => n.toString().padStart(2, "0");
+
+  // 24-hour: "18:00", "18:00:00", "9:05"
+  const h24 = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?$/);
+  if (h24) {
+    const hh = parseInt(h24[1], 10);
+    const mm = parseInt(h24[2], 10);
+    const ss = h24[3] ? parseInt(h24[3], 10) : 0;
+    if (hh > 23 || mm > 59 || ss > 59) return null;
+    return `${pad(hh)}:${pad(mm)}:${pad(ss)}`;
+  }
+
+  // 12-hour: "6pm", "6:30 PM", "8 am", "10:30AM"
+  const h12 = trimmed.match(/^(\d{1,2})(?::(\d{2}))?\s*(am|pm)$/i);
+  if (h12) {
+    let hh = parseInt(h12[1], 10);
+    const mm = h12[2] ? parseInt(h12[2], 10) : 0;
+    const ampm = h12[3].toLowerCase();
+    if (hh < 1 || hh > 12 || mm > 59) return null;
+    if (ampm === "pm" && hh < 12) hh += 12;
+    if (ampm === "am" && hh === 12) hh = 0;
+    return `${pad(hh)}:${pad(mm)}:00`;
+  }
+
+  return null;
+}
+
+/**
  * Normalize a time string to 12-hour AM/PM format.
  * Handles Postgres TIME ("19:00:00"), "18:00", "09:00", and passes through "2:30pm"/"9am".
  */

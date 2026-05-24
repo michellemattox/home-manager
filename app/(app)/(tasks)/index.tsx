@@ -37,7 +37,7 @@ import { Input } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
-import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, formatDate, formatDateShort, toISODateString, taskBadgeLabel, parseTimeToMinutes, normalizeTimeTo12h } from "@/utils/dateUtils";
+import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, formatDate, formatDateShort, toISODateString, taskBadgeLabel, parseTimeToMinutes, normalizeTimeTo12h, normalizeTimeTo24h } from "@/utils/dateUtils";
 import { frequencyLabel as getFreqLabel, frequencyToDays, frequencyLabelFromRule, firstOccurrenceOnOrAfter } from "@/utils/scheduleUtils";
 import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
@@ -367,7 +367,7 @@ export default function TasksScreen() {
           frequency_type: llFreqType,
           frequency_days: freqDays,
           assigned_member_id: llAssignedId ?? null,
-          time_of_day: llTimeOfDay.trim() ? normalizeTimeTo12h(llTimeOfDay.trim()) : null,
+          time_of_day: llTimeOfDay.trim() ? normalizeTimeTo24h(llTimeOfDay.trim()) : null,
           is_personal: llIsPersonal,
           days_of_week: llDaysOfWeek,
           nth_week: llNthWeek,
