@@ -24,7 +24,7 @@ import { useAddProjectTask } from "@/hooks/useProjectTasks";
 import { useProjects } from "@/hooks/useProjects";
 import { type FrequencyType } from "@/types/app.types";
 import { toISODateString, normalizeTimeTo24h } from "@/utils/dateUtils";
-import { frequencyToDays, firstOccurrenceOnOrAfter } from "@/utils/scheduleUtils";
+import { frequencyToDays, firstFutureOccurrence } from "@/utils/scheduleUtils";
 import type { ProjectWithOwners } from "@/types/app.types";
 import { parseTaskFromText } from "@/hooks/useParseTask";
 import { RepeatPickerModal, type RepeatResult } from "@/components/ui/RepeatPicker";
@@ -143,17 +143,14 @@ export default function NewTaskScreen() {
           data.frequencyType === "custom"
             ? parseInt(data.customDays ?? "30", 10)
             : frequencyToDays(data.frequencyType);
-        const rule = {
-          daysOfWeek: ruleDaysOfWeek,
-          nthWeek: ruleNthWeek,
-          nthWeekday: ruleNthWeekday,
-        };
-        const hasRule =
-          (ruleDaysOfWeek && ruleDaysOfWeek.length > 0) ||
-          (ruleNthWeek != null && ruleNthWeekday != null);
         const anchorParts = anchorDate.split("-").map(Number);
         const anchorLocal = new Date(anchorParts[0], anchorParts[1] - 1, anchorParts[2]);
-        const nextDue = hasRule ? firstOccurrenceOnOrAfter(rule, anchorLocal) : anchorDate;
+        const nextDue = firstFutureOccurrence(
+          data.frequencyType,
+          freqDays,
+          anchorLocal,
+          { daysOfWeek: ruleDaysOfWeek, nthWeek: ruleNthWeek, nthWeekday: ruleNthWeekday }
+        );
         await createRecurring.mutateAsync({
           household_id: household.id,
           title: data.title,

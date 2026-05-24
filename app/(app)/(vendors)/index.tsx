@@ -13,6 +13,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import * as Linking from "expo-linking";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { usePreferredVendors, useAddPreferredVendor, useUpdatePreferredVendor, useDeletePreferredVendor } from "@/hooks/usePreferredVendors";
+import { useQueryClient } from "@tanstack/react-query";
 import { useServiceRecords } from "@/hooks/useServices";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Input } from "@/components/ui/Input";
@@ -85,6 +86,7 @@ export default function VendorsScreen() {
   const addVendor = useAddPreferredVendor();
   const updateVendor = useUpdatePreferredVendor();
   const deleteVendor = useDeletePreferredVendor();
+  const qc = useQueryClient();
 
   const [showModal, setShowModal] = useState(false);
   const [editingVendor, setEditingVendor] = useState<PreferredVendor | null>(null);
@@ -112,7 +114,14 @@ export default function VendorsScreen() {
   };
 
   const handleSave = async () => {
-    if (!modalName.trim() || !household) return;
+    if (!modalName.trim()) {
+      showAlert("Missing name", "Enter a vendor name before saving.");
+      return;
+    }
+    if (!household) {
+      showAlert("No household", "Reload the app and try again.");
+      return;
+    }
     try {
       if (editingVendor) {
         await updateVendor.mutateAsync({
@@ -134,9 +143,13 @@ export default function VendorsScreen() {
           notes: modalNotes.trim() || null,
         });
       }
+      // Wait for the cache to actually reflect the new row before the modal
+      // animates closed — otherwise "From Service History" can still render
+      // the just-added vendor for a tick and look like the save failed.
+      await qc.invalidateQueries({ queryKey: ["preferred_vendors", household.id] });
       setShowModal(false);
     } catch (e: any) {
-      showAlert("Error", e.message);
+      showAlert("Error saving vendor", e?.message ?? "Unknown error. Please try again.");
     }
   };
 
@@ -169,9 +182,11 @@ export default function VendorsScreen() {
     return map;
   }, [serviceRecords]);
 
-  // Vendors from service history not already in preferred vendors
-  const preferredNames = new Set((preferredVendors ?? []).map((v) => v.name.toLowerCase()));
+  // Vendors from service history not already in preferred vendors. Build the
+  // name lookup inside the memo so it tracks preferredVendors changes and we
+  // don't risk a stale closure when the cache refreshes after a new add.
   const historyVendors = useMemo(() => {
+    const preferredNames = new Set((preferredVendors ?? []).map((v) => v.name.toLowerCase()));
     const map: Record<string, string> = {};
     (serviceRecords ?? []).forEach((r) => {
       if (!preferredNames.has(r.vendor_name.toLowerCase())) {

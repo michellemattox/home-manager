@@ -80,6 +80,61 @@ export function calculateNextDueDate(
   return format(next, "yyyy-MM-dd");
 }
 
+/**
+ * First on-cadence occurrence at or after `today` for any recurring task.
+ *
+ * - Rule-based (`daysOfWeek` or `nthWeek`/`nthWeekday`): delegates to
+ *   `firstOccurrenceOnOrAfter` which already handles those branches.
+ * - Simple frequencies (`daily`/`weekly`/`monthly`/`yearly`/`custom`): walk
+ *   forward from `anchor` by the cadence step until the candidate is ≥ today.
+ *   This is what keeps an edit on a past-anchored task from snapping the
+ *   `next_due_date` back to the original start.
+ *
+ * Returns `YYYY-MM-DD`.
+ */
+export function firstFutureOccurrence(
+  freqType: FrequencyType,
+  freqDays: number,
+  anchor: Date,
+  rule: ScheduleRule = {},
+  today: Date = new Date()
+): string {
+  if ((rule.daysOfWeek && rule.daysOfWeek.length > 0) ||
+      (rule.nthWeek != null && rule.nthWeekday != null)) {
+    return firstOccurrenceOnOrAfter(rule, today);
+  }
+
+  const todayStr = format(today, "yyyy-MM-dd");
+  let candidate = anchor;
+  // Hard bound so a misconfigured cadence (e.g. freqDays=0 custom) can't spin.
+  for (let i = 0; i < 10000; i++) {
+    if (format(candidate, "yyyy-MM-dd") >= todayStr) {
+      return format(candidate, "yyyy-MM-dd");
+    }
+    switch (freqType) {
+      case "daily":
+        candidate = addDays(candidate, 1);
+        break;
+      case "weekly":
+        candidate = addWeeks(candidate, 1);
+        break;
+      case "monthly":
+        candidate = addMonths(candidate, 1);
+        break;
+      case "yearly":
+        candidate = addYears(candidate, 1);
+        break;
+      case "custom":
+        candidate = addDays(candidate, Math.max(1, freqDays));
+        break;
+      case "no_repeat":
+      default:
+        return format(anchor, "yyyy-MM-dd");
+    }
+  }
+  return todayStr;
+}
+
 // First occurrence of the rule on or after `today`. Used to compute the
 // initial next_due_date when a rule-based task is created.
 export function firstOccurrenceOnOrAfter(rule: ScheduleRule, today: Date = new Date()): string {

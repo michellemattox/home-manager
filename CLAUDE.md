@@ -134,6 +134,34 @@ Task edit modals (low-lift, standalone, project-adjacent) in the Tasks tab use a
 ### Multi-Select Filter Pattern
 Member filters across Home and Tasks tabs use `filterStore` (Zustand + AsyncStorage) for persistence. The store provides `memberFilter: string[]` (empty = All), `toggleMember(id)`, and `setMemberFilter(ids)`. Settings "Notify me about" has a "Select Multiples" checkbox that toggles between single-select (one at a time) and multi-select (combine "All" + individuals).
 
+Gift filters use the same pattern via `src/stores/giftFilterStore.ts` (`recipientFilter`, `sortMode`, `filtersOpen` persisted; search text is session-only).
+
+### Cross-Tab Back Navigation
+`src/stores/navStore.ts` keeps two values: `lastTabRoute` (the tab the user is currently on) and `previousTabRoute` (the tab before that). `src/hooks/useTrackLastTab.ts` is mounted in `app/(app)/_layout.tsx` and updates them whenever `useSegments()` resolves to a tab index (e.g. `["(app)", "(home)"]`, length 2). Detail screens override the Back chevron:
+
+- `app/(app)/(projects)/[id].tsx` and `app/(app)/(activity)/[id].tsx` define `handleBack = () => router.replace(lastTabRoute)` so Back returns to wherever the user came from.
+- `app/(app)/(tasks)/index.tsx` opens a modal in-place when arriving via `?openTaskId` / `?openStandaloneId` / `?focus` (deep links from Home). The deep-link effects set `cameFromDeepLink.current = true`; closing the modal calls `router.replace(previousTabRoute)` so the user returns to Home instead of being stranded on the Tasks tab.
+
+### Time Inputs
+`src/utils/dateUtils.ts` exports two normalizers — they have non-interchangeable roles:
+
+- `normalizeTimeTo24h(input)` → `"HH:MM:SS"` or `null`. Accepts `"6pm"`, `"8am"`, `"5 PM"`, `"2:30pm"`, `"18:00"`, `"18:00:00"`. **Always use this before writing to Postgres `TIME` columns** (`time_of_day` on `recurring_tasks`, `due_time` on `tasks`). Postgres TIME rejects the bare `"6pm"` form.
+- `normalizeTimeTo12h(input)` → compact display string like `"6pm"` / `"2:30pm"`. Use for rendering only.
+
+### Recurring Task Save Invariant
+When saving a recurring task (both `app/(app)/(tasks)/index.tsx` `doSaveLowLift` and `app/(app)/(tasks)/new.tsx` `onSubmitLowLift`), `next_due_date` is computed via `firstFutureOccurrence(freqType, freqDays, anchorLocal, rule)` from `src/utils/scheduleUtils.ts`. This always returns a date ≥ today, walking forward from the anchor by the cadence step until reaching today (or using the rule's first matching day-of-week / Nth-weekday). Never write `next_due_date = anchor` directly — editing a past-anchored task would snap the badge backwards.
+
+### Vendor Sync to Project Edit Modal
+The project Edit modal vendor chip picker reads from `usePreferredVendors(household?.id)`. To keep it fresh when vendors are added elsewhere:
+
+- `app/(app)/(projects)/[id].tsx` declares `const qc = useQueryClient()` **before** the `useFocusEffect` that invalidates `["preferred_vendors", householdId]` and calls `refetchVendors()` — declaring after produced a "Cannot access 'ce' before initialization" TDZ crash in production builds.
+- The Edit-modal seeding `useEffect` also calls `refetchVendors()` when `showEditModal` flips to true.
+- Direct `supabase.from("preferred_vendors").insert(...)` calls (e.g. the inline "Other" vendor path) must `qc.invalidateQueries({ queryKey: ["preferred_vendors", householdId] })` themselves since they bypass `useAddPreferredVendor`.
+- The Vendors tab `handleSave` awaits `qc.invalidateQueries(...)` before closing the modal so the "From Service History" list reflects the move into "My Vendors" immediately.
+
+### Monthly Scorecard
+`src/hooks/useSeasonScore.ts` counts completed projects by `completed_at` — the `projects` table has no `updated_at` column, so an earlier version that filtered on `updated_at` always returned 0. Project `completed_at` is set in `app/(app)/(projects)/[id].tsx` `handleStatusChange` when status flips to `completed`/`finished`.
+
 ### Personal Task Privacy
 `recurring_tasks` and `tasks` tables have an `is_personal` boolean column. When `is_personal` is true, the task is only visible to the assigned member. Filtering is done client-side via the `isVisible(assignedMemberId, isPersonal)` helper in Home and Tasks tabs. Edit modals expose a "Personal Task" Switch toggle.
 

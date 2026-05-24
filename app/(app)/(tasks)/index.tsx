@@ -38,7 +38,7 @@ import { Button } from "@/components/ui/Button";
 import { DateInput } from "@/components/ui/DateInput";
 import { MemberAvatar } from "@/components/ui/MemberAvatar";
 import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, formatDate, formatDateShort, toISODateString, taskBadgeLabel, parseTimeToMinutes, normalizeTimeTo12h, normalizeTimeTo24h } from "@/utils/dateUtils";
-import { frequencyLabel as getFreqLabel, frequencyToDays, frequencyLabelFromRule, firstOccurrenceOnOrAfter } from "@/utils/scheduleUtils";
+import { frequencyLabel as getFreqLabel, frequencyToDays, frequencyLabelFromRule, firstFutureOccurrence } from "@/utils/scheduleUtils";
 import type { RecurringTask, Task, ProjectTask, FrequencyType } from "@/types/app.types";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { RepeatPickerModal } from "@/components/ui/RepeatPicker";
@@ -342,19 +342,17 @@ export default function TasksScreen() {
     const freqDays = llFreqType === "custom"
       ? parseInt(llCustomDays || "30", 10)
       : frequencyToDays(llFreqType);
-    const hasRule =
-      (llDaysOfWeek && llDaysOfWeek.length > 0) ||
-      (llNthWeek != null && llNthWeekday != null);
     const anchor = llAnchorDate || toISODateString(new Date());
-    let nextDue = anchor;
-    if (hasRule) {
-      const anchorParts = anchor.split("-").map(Number);
-      const anchorLocal = new Date(anchorParts[0], anchorParts[1] - 1, anchorParts[2]);
-      nextDue = firstOccurrenceOnOrAfter(
-        { daysOfWeek: llDaysOfWeek, nthWeek: llNthWeek, nthWeekday: llNthWeekday },
-        anchorLocal
-      );
-    }
+    const anchorParts = anchor.split("-").map(Number);
+    const anchorLocal = new Date(anchorParts[0], anchorParts[1] - 1, anchorParts[2]);
+    // Always advance to the next on-cadence date ≥ today so editing a task
+    // whose anchor is in the past doesn't snap the badge backwards.
+    const nextDue = firstFutureOccurrence(
+      llFreqType,
+      freqDays,
+      anchorLocal,
+      { daysOfWeek: llDaysOfWeek, nthWeek: llNthWeek, nthWeekday: llNthWeekday }
+    );
     try {
       await updateRecurring.mutateAsync({
         id: editingLowLift.id,
