@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -7,7 +7,7 @@ import {
   TextInput,
   Modal,
 } from "react-native";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useNavStore } from "@/stores/navStore";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
@@ -132,6 +132,18 @@ export default function ProjectDetailScreen() {
   const { data: completedItems = [] } = useCompletedChecklistItems("project", id);
   const { data: eventServiceRecords = [] } = useEventServiceRecords("project", id);
   const { data: vendors = [], refetch: refetchVendors } = usePreferredVendors(household?.id);
+
+  // Project detail can stay mounted while the user adds a vendor in the
+  // Vendors tab. When focus returns here, force-refresh the vendor list so
+  // the Edit modal chip picker reflects the latest set.
+  useFocusEffect(
+    useCallback(() => {
+      if (household?.id) {
+        qc.invalidateQueries({ queryKey: ["preferred_vendors", household.id] });
+      }
+      refetchVendors();
+    }, [refetchVendors, qc, household?.id])
+  );
   const qc = useQueryClient();
 
   const currentMember = members.find((m) => m.user_id === user?.id);
