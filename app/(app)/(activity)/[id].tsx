@@ -11,6 +11,7 @@ import {
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useNavStore } from "@/stores/navStore";
+import { dismissToTab } from "@/utils/tabNav";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { impactLight } from "@/lib/haptics";
 import {
@@ -194,7 +195,7 @@ export default function TripDetailScreen() {
   const router = useRouter();
   const fromWow = from === "wow";
   const lastTabRoute = useNavStore((s) => s.lastTabRoute);
-  const handleBack = () => router.replace(lastTabRoute as any);
+  const handleBack = () => dismissToTab(lastTabRoute);
   const { data: trip, refetch } = useTrip(id);
   const { members } = useHouseholdStore();
   const { user } = useAuthStore();

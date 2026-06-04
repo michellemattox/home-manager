@@ -9,6 +9,7 @@ import {
 } from "react-native";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useNavStore } from "@/stores/navStore";
+import { dismissToTab } from "@/utils/tabNav";
 import { SafeAreaView } from "react-native-safe-area-context";
 import {
   useProject,
@@ -115,7 +116,7 @@ export default function ProjectDetailScreen() {
   const router = useRouter();
   const fromWow = from === "wow";
   const lastTabRoute = useNavStore((s) => s.lastTabRoute);
-  const handleBack = () => router.replace(lastTabRoute as any);
+  const handleBack = () => dismissToTab(lastTabRoute);
   const { data: project, isLoading, refetch } = useProject(id);
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();

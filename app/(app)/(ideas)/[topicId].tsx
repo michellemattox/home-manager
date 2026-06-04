@@ -11,6 +11,8 @@ import {
 } from "react-native";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useNavStore } from "@/stores/navStore";
+import { dismissToTab } from "@/utils/tabNav";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { impactLight } from "@/lib/haptics";
 import { useIdeas, useCreateIdea, useToggleIdeaPin, useDeleteIdea, useEditIdea } from "@/hooks/useIdeas";
@@ -72,6 +74,8 @@ function IdeaCard({
 export default function TopicIdeasScreen() {
   const { topicId } = useLocalSearchParams<{ topicId: string }>();
   const router = useRouter();
+  const lastTabRoute = useNavStore((s) => s.lastTabRoute);
+  const handleBack = () => dismissToTab(lastTabRoute);
   const { data: ideas, isLoading, refetch } = useIdeas(topicId);
   const { data: topics } = useIdeaTopics(
     useHouseholdStore.getState().household?.id
@@ -158,7 +162,7 @@ export default function TopicIdeasScreen() {
         className="flex-row items-center px-4 py-3 border-b border-gray-100"
         style={{ backgroundColor: topic?.color_hex ?? "#3b82f6" }}
       >
-        <TouchableOpacity onPress={() => router.back()} className="mr-4">
+        <TouchableOpacity onPress={handleBack} className="mr-4">
           <Text className="text-white text-base opacity-80">←</Text>
         </TouchableOpacity>
         <Text className="flex-1 text-lg font-bold text-white" numberOfLines={1}>

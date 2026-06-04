@@ -1,5 +1,5 @@
 import React from "react";
-import { Tabs } from "expo-router";
+import { Tabs, router } from "expo-router";
 import { Text, View } from "react-native";
 import { useNotificationScheduler } from "@/hooks/useNotificationScheduler";
 import { useOverdueOrDueTodayCount } from "@/hooks/useRecurringTasks";
@@ -7,6 +7,19 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import { useGlobalRealtime } from "@/hooks/useRealtimeInvalidate";
 import { useTrackLastTab } from "@/hooks/useTrackLastTab";
 import { WebPullToRefresh } from "@/components/WebPullToRefresh";
+
+// Tapping a tab while inside a nested screen (e.g. an activity detail) should
+// always pop back to that tab's index. Expo Router's default Tabs doesn't do
+// this on Android, so we dismiss any stacked screens on every tab press.
+const popToTabRoot = {
+  tabPress: () => {
+    try {
+      router.dismissAll();
+    } catch {
+      // No stack to dismiss — that's fine, default tab switch handles it.
+    }
+  },
+};
 
 function TabIcon({ emoji, label, focused }: { emoji: string; label: string; focused: boolean }) {
   return (
@@ -74,6 +87,7 @@ export default function AppLayout() {
     >
       <Tabs.Screen
         name="(home)"
+        listeners={popToTabRoot}
         options={{
           tabBarIcon: ({ focused }) => (
             <TabIcon emoji="🏠" label="Home" focused={focused} />
@@ -82,6 +96,7 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="(ideas)"
+        listeners={popToTabRoot}
         options={{
           tabBarIcon: ({ focused }) => (
             <TabIcon emoji="💡" label="Ideas" focused={focused} />
@@ -90,12 +105,14 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="(tasks)"
+        listeners={popToTabRoot}
         options={{
           tabBarIcon: ({ focused }) => <TasksTabIcon focused={focused} />,
         }}
       />
       <Tabs.Screen
         name="(projects)"
+        listeners={popToTabRoot}
         options={{
           tabBarIcon: ({ focused }) => (
             <TabIcon emoji="🏗️" label="Projects" focused={focused} />
@@ -104,6 +121,7 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="(activity)"
+        listeners={popToTabRoot}
         options={{
           tabBarIcon: ({ focused }) => (
             <TabIcon emoji="🗓️" label="Activity" focused={focused} />
@@ -112,6 +130,7 @@ export default function AppLayout() {
       />
       <Tabs.Screen
         name="(gifts)"
+        listeners={popToTabRoot}
         options={{
           tabBarIcon: ({ focused }) => (
             <TabIcon emoji="🎁" label="Gifts" focused={focused} />
