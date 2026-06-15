@@ -39,6 +39,7 @@ function TemplateCard({
   const deleteItem = useDeleteTemplateItem();
   const reorderItems = useReorderTemplateItems();
 
+  const [expanded, setExpanded] = useState(false); // lists start minimized
   const [name, setName] = useState(template.name);
   const [newItem, setNewItem] = useState("");
   // Local mirror of item order for instant drag/arrow feedback before the
@@ -91,79 +92,103 @@ function TemplateCard({
 
   return (
     <Card className="mb-4">
-      <View className="flex-row items-center mb-3">
-        <TextInput
-          className="flex-1 text-base font-semibold text-gray-900 border-b border-gray-100 pb-1"
-          value={name}
-          onChangeText={setName}
-          onEndEditing={saveName}
-          onBlur={saveName}
-          placeholder="List name"
-          placeholderTextColor="#9ca3af"
-        />
-        <TouchableOpacity onPress={handleDeleteTemplate} className="ml-2 px-2 py-1">
-          <Text className="text-red-400 text-xs font-medium">Delete list</Text>
-        </TouchableOpacity>
-      </View>
+      {/* Collapsible header — tap to expand/collapse */}
+      <TouchableOpacity
+        onPress={() => setExpanded((e) => !e)}
+        activeOpacity={0.7}
+        className="flex-row items-center"
+        style={{ paddingVertical: 4 }}
+      >
+        <Text style={{ color: "#9ca3af", fontSize: 14, width: 18 }}>{expanded ? "▾" : "▸"}</Text>
+        <Text className="flex-1 text-base font-semibold text-gray-900" numberOfLines={1}>
+          {name}
+        </Text>
+        <Text className="text-xs text-gray-400 ml-2">
+          {items.length} item{items.length === 1 ? "" : "s"}
+        </Text>
+      </TouchableOpacity>
 
-      {items.length === 0 ? (
-        <Text className="text-gray-400 text-sm py-2">No items yet — add one below.</Text>
-      ) : (
-        <DraggableList
-          data={items}
-          keyExtractor={(i) => i.id}
-          onReorder={handleReorder}
-          renderContent={(item) => (
-            <View className="flex-row items-center">
-              <TextInput
-                className="flex-1 text-sm text-gray-800 py-1"
-                defaultValue={item.title}
-                onEndEditing={(e) => {
-                  const t = e.nativeEvent.text.trim();
-                  if (t && t !== item.title) {
-                    updateItem.mutate({ id: item.id, householdId, title: t });
-                  }
-                }}
-                placeholderTextColor="#9ca3af"
-              />
-              <TouchableOpacity
-                onPress={() =>
-                  showConfirm(
-                    "Remove item?",
-                    `"${item.title}" will be removed from this list.`,
-                    () => deleteItem.mutate({ id: item.id, householdId }),
-                    true
-                  )
-                }
-                className="px-2 py-1"
-              >
-                <Text className="text-gray-300 text-base leading-none">×</Text>
-              </TouchableOpacity>
-            </View>
+      {expanded && (
+        <View className="mt-3">
+          {/* Rename + delete */}
+          <View className="flex-row items-center mb-3">
+            <TextInput
+              className="flex-1 text-sm font-medium text-gray-900 border border-gray-200 rounded-xl px-3 py-2"
+              style={{ minWidth: 0 }}
+              value={name}
+              onChangeText={setName}
+              onEndEditing={saveName}
+              onBlur={saveName}
+              placeholder="List name"
+              placeholderTextColor="#9ca3af"
+            />
+            <TouchableOpacity onPress={handleDeleteTemplate} className="ml-2 px-2 py-1">
+              <Text className="text-red-400 text-xs font-medium">Delete list</Text>
+            </TouchableOpacity>
+          </View>
+
+          {items.length === 0 ? (
+            <Text className="text-gray-400 text-sm py-2">No items yet — add one below.</Text>
+          ) : (
+            <DraggableList
+              data={items}
+              keyExtractor={(i) => i.id}
+              onReorder={handleReorder}
+              renderContent={(item) => (
+                <View className="flex-row items-center" style={{ minWidth: 0 }}>
+                  <TextInput
+                    className="text-sm text-gray-800 py-1"
+                    style={{ flex: 1, minWidth: 0 }}
+                    defaultValue={item.title}
+                    onEndEditing={(e) => {
+                      const t = e.nativeEvent.text.trim();
+                      if (t && t !== item.title) {
+                        updateItem.mutate({ id: item.id, householdId, title: t });
+                      }
+                    }}
+                    placeholderTextColor="#9ca3af"
+                  />
+                  <TouchableOpacity
+                    onPress={() =>
+                      showConfirm(
+                        "Remove item?",
+                        `"${item.title}" will be removed from this list.`,
+                        () => deleteItem.mutate({ id: item.id, householdId }),
+                        true
+                      )
+                    }
+                    style={{ paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0 }}
+                  >
+                    <Text className="text-gray-300 text-base leading-none">×</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
           )}
-        />
-      )}
 
-      <View className="flex-row items-center gap-2 mt-3">
-        <TextInput
-          className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900"
-          value={newItem}
-          onChangeText={setNewItem}
-          onSubmitEditing={handleAddItem}
-          placeholder="Add an item (e.g. Toothbrush)"
-          placeholderTextColor="#9ca3af"
-          returnKeyType="done"
-        />
-        <TouchableOpacity
-          onPress={handleAddItem}
-          disabled={!newItem.trim()}
-          className={`px-3 py-2 rounded-xl ${newItem.trim() ? "bg-blue-600" : "bg-gray-200"}`}
-        >
-          <Text className={`text-sm font-semibold ${newItem.trim() ? "text-white" : "text-gray-400"}`}>
-            Add
-          </Text>
-        </TouchableOpacity>
-      </View>
+          <View className="flex-row items-center gap-2 mt-3">
+            <TextInput
+              className="flex-1 bg-white border border-gray-200 rounded-xl px-3 py-2 text-sm text-gray-900"
+              style={{ minWidth: 0 }}
+              value={newItem}
+              onChangeText={setNewItem}
+              onSubmitEditing={handleAddItem}
+              placeholder="Add an item (e.g. Toothbrush)"
+              placeholderTextColor="#9ca3af"
+              returnKeyType="done"
+            />
+            <TouchableOpacity
+              onPress={handleAddItem}
+              disabled={!newItem.trim()}
+              className={`px-3 py-2 rounded-xl ${newItem.trim() ? "bg-blue-600" : "bg-gray-200"}`}
+            >
+              <Text className={`text-sm font-semibold ${newItem.trim() ? "text-white" : "text-gray-400"}`}>
+                Add
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
     </Card>
   );
 }

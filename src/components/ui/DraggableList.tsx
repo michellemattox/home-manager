@@ -64,40 +64,49 @@ function Row({
     })
   ).current;
 
+  // Layout uses explicit inline styles (not NativeWind classNames) because
+  // className doesn't reliably apply flex rules to Animated.View on web,
+  // which was causing the handle, text, and arrows to overlap.
   return (
     <Animated.View
       style={{
+        flexDirection: "row",
+        alignItems: "center",
+        minHeight: rowHeight,
+        borderBottomWidth: 1,
+        borderBottomColor: "#f3f4f6",
         transform: [{ translateY: pan }],
         zIndex: dragging ? 50 : 0,
         elevation: dragging ? 8 : 0,
-        height: rowHeight,
+        backgroundColor: dragging ? "#eff6ff" : "transparent",
+        borderRadius: dragging ? 8 : 0,
       }}
-      className={`flex-row items-center ${dragging ? "bg-blue-50 rounded-lg" : ""}`}
     >
       {/* Drag handle — only this region captures the pan gesture */}
-      <View {...responder.panHandlers} className="px-2 py-2 justify-center">
-        <Text className="text-gray-400 text-lg leading-none">≡</Text>
+      <View
+        {...responder.panHandlers}
+        style={{ paddingHorizontal: 8, paddingVertical: 8, flexShrink: 0 }}
+      >
+        <Text style={{ color: "#9ca3af", fontSize: 18 }}>≡</Text>
       </View>
 
-      <View className="flex-1 min-w-0">{children}</View>
+      <View style={{ flex: 1, minWidth: 0 }}>{children}</View>
 
       {/* Arrow fallback */}
-      <View className="flex-row items-center">
+      <View style={{ flexDirection: "row", alignItems: "center", flexShrink: 0 }}>
         <TouchableOpacity
           disabled={index === 0}
           onPress={() => onReorder(index, index - 1)}
-          className="px-2 py-1"
+          style={{ paddingHorizontal: 6, paddingVertical: 6 }}
         >
-          <Text className={`text-base ${index === 0 ? "text-gray-200" : "text-gray-500"}`}>▲</Text>
+          <Text style={{ fontSize: 15, color: index === 0 ? "#e5e7eb" : "#6b7280" }}>▲</Text>
         </TouchableOpacity>
         <TouchableOpacity
           disabled={index === count - 1}
           onPress={() => onReorder(index, index + 1)}
-          className="px-2 py-1"
+          style={{ paddingHorizontal: 6, paddingVertical: 6 }}
         >
-          <Text className={`text-base ${index === count - 1 ? "text-gray-200" : "text-gray-500"}`}>
-            ▼
-          </Text>
+          <Text style={{ fontSize: 15, color: index === count - 1 ? "#e5e7eb" : "#6b7280" }}>▼</Text>
         </TouchableOpacity>
       </View>
     </Animated.View>
