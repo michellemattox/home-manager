@@ -9,6 +9,7 @@ import {
   TextInput,
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
+import { useRouter } from "expo-router";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -42,6 +43,7 @@ const roleBadgeVariant = (role: string) => {
 };
 
 export default function SettingsScreen() {
+  const router = useRouter();
   const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -280,6 +282,26 @@ export default function SettingsScreen() {
       </View>
 
       <ScrollView contentContainerClassName="px-4 pb-8">
+        {/* Home */}
+        <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+          Home
+        </Text>
+        <Card className="mb-6">
+          <TouchableOpacity
+            onPress={() => router.push("/(app)/settings/packing-templates")}
+            className="flex-row items-center"
+          >
+            <Text className="text-2xl mr-3">🧳</Text>
+            <View className="flex-1">
+              <Text className="text-sm font-semibold text-gray-900">Packing List Templates</Text>
+              <Text className="text-xs text-gray-400 mt-0.5">
+                Reusable lists you can apply to Activities
+              </Text>
+            </View>
+            <Text className="text-gray-300 text-lg">›</Text>
+          </TouchableOpacity>
+        </Card>
+
         {/* Household */}
         <Text className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
           Household

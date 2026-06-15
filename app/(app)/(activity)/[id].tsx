@@ -30,6 +30,7 @@ import {
   useDeleteCompletedChecklistItem,
   useUncompleteChecklistItem,
 } from "@/hooks/useChecklistItems";
+import { usePackingTemplates } from "@/hooks/usePackingTemplates";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { supabase } from "@/lib/supabase";
@@ -197,9 +198,10 @@ export default function TripDetailScreen() {
   const lastTabRoute = useNavStore((s) => s.lastTabRoute);
   const handleBack = () => dismissToTab(lastTabRoute);
   const { data: trip, refetch } = useTrip(id);
-  const { members } = useHouseholdStore();
+  const { household, members } = useHouseholdStore();
   const { user } = useAuthStore();
   const currentMember = members.find((m) => m.user_id === user?.id);
+  const { data: packingTemplates = [] } = usePackingTemplates(household?.id);
 
   const createTask = useCreateTripTask();
   const updateTask = useUpdateTripTask();
@@ -315,6 +317,11 @@ export default function TripDetailScreen() {
 
   // Add item modal
   const [addItemChecklist, setAddItemChecklist] = useState<string | null>(null);
+
+  // Apply-templates modal (Feature 1)
+  const [showApplyTemplates, setShowApplyTemplates] = useState(false);
+  const [selectedTemplateIds, setSelectedTemplateIds] = useState<string[]>([]);
+  const [applyingTemplates, setApplyingTemplates] = useState(false);
 
   // Move-to-checklist modal
   const [movingTask, setMovingTask] = useState<TripTask | null>(null);
@@ -465,6 +472,67 @@ export default function TripDetailScreen() {
       setAddItemChecklist(null);
     } catch (e: any) {
       showAlert("Error", e.message);
+    }
+  };
+
+  const handleApplyTemplates = async () => {
+    if (!id || selectedTemplateIds.length === 0) return;
+    const CHECKLIST = "Packing";
+    setApplyingTemplates(true);
+    try {
+      // Merge items from every selected template, deduping case-insensitively
+      // and preserving first-seen order across the selected lists.
+      const seen = new Set<string>();
+      const merged: string[] = [];
+      for (const tpl of packingTemplates.filter((t) => selectedTemplateIds.includes(t.id))) {
+        for (const item of tpl.items) {
+          const key = item.title.trim().toLowerCase();
+          if (!key || seen.has(key)) continue;
+          seen.add(key);
+          merged.push(item.title.trim());
+        }
+      }
+
+      // Skip titles already present in the activity's Packing checklist.
+      const existing = new Set(
+        (trip?.tasks ?? [])
+          .filter((t) => (t.checklist_name ?? "General") === CHECKLIST)
+          .map((t) => t.title.trim().toLowerCase())
+      );
+      const toAdd = merged.filter((title) => !existing.has(title.toLowerCase()));
+
+      if (toAdd.length === 0) {
+        showAlert("Nothing to add", "All items from the selected lists are already on this activity.");
+        setApplyingTemplates(false);
+        return;
+      }
+
+      // Continue numbering after any existing Packing items.
+      const packingTasks = (trip?.tasks ?? []).filter(
+        (t) => (t.checklist_name ?? "General") === CHECKLIST
+      );
+      let nextOrder =
+        packingTasks.length > 0 ? Math.max(...packingTasks.map((t) => t.sort_order)) + 1 : 0;
+
+      for (const title of toAdd) {
+        await createTask.mutateAsync({
+          trip_id: id,
+          title,
+          is_completed: false,
+          completed_at: null,
+          sort_order: nextOrder++,
+          checklist_name: CHECKLIST,
+          assigned_member_id: null,
+          due_date: null,
+        });
+      }
+
+      setShowApplyTemplates(false);
+      setSelectedTemplateIds([]);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    } finally {
+      setApplyingTemplates(false);
     }
   };
 
@@ -650,12 +718,19 @@ export default function TripDetailScreen() {
             </TouchableOpacity>
           </View>
         ) : (
-          <TouchableOpacity
-            onPress={() => setShowAddChecklist(true)}
-            className="flex-row items-center gap-2 mb-4 py-2"
-          >
-            <Text className="text-blue-600 text-sm font-medium">+ Add Checklist</Text>
-          </TouchableOpacity>
+          <View className="flex-row items-center gap-4 mb-4 py-2">
+            <TouchableOpacity onPress={() => setShowAddChecklist(true)}>
+              <Text className="text-blue-600 text-sm font-medium">+ Add Checklist</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                setSelectedTemplateIds([]);
+                setShowApplyTemplates(true);
+              }}
+            >
+              <Text className="text-blue-600 text-sm font-medium">🧳 Apply Templates</Text>
+            </TouchableOpacity>
+          </View>
         )}
 
         {/* Updates */}
@@ -751,6 +826,88 @@ export default function TripDetailScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* Apply Templates Modal */}
+      <Modal
+        visible={showApplyTemplates}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setShowApplyTemplates(false)}
+      >
+        <SafeAreaView className="flex-1 bg-gray-50">
+          <View className="flex-row items-center px-4 py-3 border-b border-gray-100 bg-white">
+            <TouchableOpacity onPress={() => setShowApplyTemplates(false)} className="mr-4">
+              <Text className="text-blue-600 text-base">Cancel</Text>
+            </TouchableOpacity>
+            <Text className="flex-1 text-base font-semibold text-gray-900">Apply Packing Templates</Text>
+            <TouchableOpacity
+              onPress={handleApplyTemplates}
+              disabled={selectedTemplateIds.length === 0 || applyingTemplates}
+            >
+              <Text
+                className={`text-base font-semibold ${
+                  selectedTemplateIds.length > 0 && !applyingTemplates ? "text-blue-600" : "text-gray-300"
+                }`}
+              >
+                {applyingTemplates ? "Adding…" : "Add"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerClassName="px-4 py-4" keyboardShouldPersistTaps="handled">
+            <Text className="text-xs text-gray-500 mb-4">
+              Select one or more lists. Their items are added to a{" "}
+              <Text className="font-semibold">Packing</Text> checklist, with duplicates removed.
+            </Text>
+            {packingTemplates.length === 0 ? (
+              <View className="items-center py-10">
+                <Text className="text-4xl mb-3">🧳</Text>
+                <Text className="text-base font-semibold text-gray-700">No templates yet</Text>
+                <Text className="text-sm text-gray-400 mt-1 text-center">
+                  Create packing lists in Settings → Home → Packing List Templates.
+                </Text>
+              </View>
+            ) : (
+              packingTemplates.map((tpl) => {
+                const selected = selectedTemplateIds.includes(tpl.id);
+                return (
+                  <TouchableOpacity
+                    key={tpl.id}
+                    onPress={() =>
+                      setSelectedTemplateIds((prev) =>
+                        prev.includes(tpl.id)
+                          ? prev.filter((x) => x !== tpl.id)
+                          : [...prev, tpl.id]
+                      )
+                    }
+                    className={`mb-3 rounded-xl border p-3 ${
+                      selected ? "bg-blue-50 border-blue-300" : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <View className="flex-row items-center">
+                      <View
+                        className={`w-5 h-5 rounded border mr-3 items-center justify-center ${
+                          selected ? "bg-blue-600 border-blue-600" : "border-gray-300 bg-white"
+                        }`}
+                      >
+                        {selected && <Text className="text-white text-xs font-bold">✓</Text>}
+                      </View>
+                      <Text className="flex-1 text-sm font-semibold text-gray-900">{tpl.name}</Text>
+                      <Text className="text-xs text-gray-400">
+                        {tpl.items.length} item{tpl.items.length === 1 ? "" : "s"}
+                      </Text>
+                    </View>
+                    {tpl.items.length > 0 && (
+                      <Text className="text-xs text-gray-400 mt-1 ml-8" numberOfLines={1}>
+                        {tpl.items.map((i) => i.title).join(", ")}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
+                );
+              })
+            )}
+          </ScrollView>
+        </SafeAreaView>
+      </Modal>
 
       {/* Add Item Modal */}
       <AddItemModal

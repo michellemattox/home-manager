@@ -20,6 +20,7 @@ import {
   useCreateGift,
   useUpdateGift,
   useMarkGiftBought,
+  useMarkGiftSetBought,
   useDeleteGift,
   useClearGiftTotals,
 } from "@/hooks/useGifts";
@@ -74,9 +75,11 @@ function GiftFormFields(props: {
   color: string; setColor: (v: string) => void;
   size: string; setSize: (v: string) => void;
   link: string; setLink: (v: string) => void;
+  setName_: string; setSetName: (v: string) => void;
 }) {
   const { name, setName, giftDate, setGiftDate, priority, setPriority,
-    store, setStore, price, setPrice, color, setColor, size, setSize, link, setLink } = props;
+    store, setStore, price, setPrice, color, setColor, size, setSize, link, setLink,
+    setName_, setSetName } = props;
   return (
     <>
       <Text className="text-sm font-medium text-gray-700 mb-1">Gift Name</Text>
@@ -158,6 +161,19 @@ function GiftFormFields(props: {
         autoCapitalize="none"
         autoCorrect={false}
       />
+
+      <Text className="text-sm font-medium text-gray-700 mb-1">Gift Set (optional)</Text>
+      <TextInput
+        className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-1"
+        value={setName_}
+        onChangeText={setSetName}
+        placeholder="e.g. Ski Outfit"
+        placeholderTextColor="#9ca3af"
+      />
+      <Text className="text-xs text-gray-400 mb-4">
+        Give two or more items on the same list the same set name to mark them as meant to be
+        purchased together.
+      </Text>
     </>
   );
 }
@@ -287,6 +303,7 @@ export default function GiftsScreen() {
   const createGift = useCreateGift();
   const updateGift = useUpdateGift();
   const markBought = useMarkGiftBought();
+  const markSetBought = useMarkGiftSetBought();
   const deleteGift = useDeleteGift();
   const clearTotals = useClearGiftTotals();
 
@@ -301,6 +318,15 @@ export default function GiftsScreen() {
   const [searchQuery, setSearchQuery] = useState("");
   const giftActiveFilterCount = (recipientFilter !== null ? 1 : 0) + (sortMode !== "priority" ? 1 : 0);
 
+  // Set "buy together" mark-bought prompt (Feature 2)
+  const [setBoughtPrompt, setSetBoughtPrompt] = useState<{
+    gift: Gift;
+    bought: boolean;
+    setName: string;
+    recipientId: string | null;
+    count: number;
+  } | null>(null);
+
   // New gift modal
   const [showNewModal, setShowNewModal] = useState(false);
   const [newName, setNewName] = useState("");
@@ -312,13 +338,14 @@ export default function GiftsScreen() {
   const [newColor, setNewColor] = useState("");
   const [newSize, setNewSize] = useState("");
   const [newLink, setNewLink] = useState("");
+  const [newSetName, setNewSetName] = useState("");
   const [newGiftDraftId, setNewGiftDraftId] = useState<string | null>(null);
 
   // Auto-save: create draft once name is non-empty, then update that row as user edits.
   const newGiftAutosave = useAutoSave({
     enabled: showNewModal && !!household && !!currentMember,
-    value: { newName, newDate, newPriority, newRecipient, newStore, newPrice, newColor, newSize, newLink, newGiftDraftId },
-    initialValue: { newName: "", newDate: "", newPriority: null as GiftPriority | null, newRecipient: null as string | null, newStore: "", newPrice: "", newColor: "", newSize: "", newLink: "", newGiftDraftId: null as string | null },
+    value: { newName, newDate, newPriority, newRecipient, newStore, newPrice, newColor, newSize, newLink, newSetName, newGiftDraftId },
+    initialValue: { newName: "", newDate: "", newPriority: null as GiftPriority | null, newRecipient: null as string | null, newStore: "", newPrice: "", newColor: "", newSize: "", newLink: "", newSetName: "", newGiftDraftId: null as string | null },
     canSave: (v) => (v.newName.trim().length > 0) && !!household && !!currentMember,
     onSave: async (v) => {
       if (!household || !currentMember) return;
@@ -332,6 +359,7 @@ export default function GiftsScreen() {
         color_material: v.newColor.trim() || null,
         size: v.newSize.trim() || null,
         link: v.newLink.trim() ? normalizeUrl(v.newLink) : null,
+        set_name: v.newSetName.trim() || null,
       } as const;
       if (v.newGiftDraftId) {
         await updateGift.mutateAsync({
@@ -361,11 +389,12 @@ export default function GiftsScreen() {
   const [editColor, setEditColor] = useState("");
   const [editSize, setEditSize] = useState("");
   const [editLink, setEditLink] = useState("");
-  const giftEditInitialRef = useRef({ name: "", date: "", priority: null as GiftPriority | null, store: "", price: "", color: "", size: "", link: "" });
+  const [editSetName, setEditSetName] = useState("");
+  const giftEditInitialRef = useRef({ name: "", date: "", priority: null as GiftPriority | null, store: "", price: "", color: "", size: "", link: "", setName: "" });
 
   const giftEditAutosave = useAutoSave({
     enabled: !!editingGift && !!household,
-    value: { name: editName, date: editDate, priority: editPriority, store: editStore, price: editPrice, color: editColor, size: editSize, link: editLink },
+    value: { name: editName, date: editDate, priority: editPriority, store: editStore, price: editPrice, color: editColor, size: editSize, link: editLink, setName: editSetName },
     initialValue: giftEditInitialRef.current,
     canSave: (_v) => true,
     onSave: async (v) => {
@@ -382,6 +411,7 @@ export default function GiftsScreen() {
           color_material: v.color.trim() || null,
           size: v.size.trim() || null,
           link: v.link.trim() ? normalizeUrl(v.link) : null,
+          set_name: v.setName.trim() || null,
         },
       });
     },
@@ -397,6 +427,7 @@ export default function GiftsScreen() {
     setNewColor("");
     setNewSize("");
     setNewLink("");
+    setNewSetName("");
     setNewGiftDraftId(null);
   };
 
@@ -479,6 +510,40 @@ export default function GiftsScreen() {
     return sorted;
   }, [gifts, recipientFilter, sortMode, searchQuery, members]);
 
+  // Group visible gifts into render units: standalone cards, or "sets" of 2+
+  // items that share a set name within the same list (Feature 2).
+  const setKeyOf = (g: Gift) =>
+    `${g.recipient_member_id ?? "home"}::${(g.set_name ?? "").trim().toLowerCase()}`;
+  type RenderUnit =
+    | { type: "single"; gift: Gift }
+    | { type: "set"; key: string; setName: string; recipientId: string | null; gifts: Gift[] };
+  const renderUnits = useMemo<RenderUnit[]>(() => {
+    const units: RenderUnit[] = [];
+    const seen = new Set<string>();
+    for (const g of visibleGifts) {
+      if (g.set_name && g.set_name.trim()) {
+        const key = setKeyOf(g);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const groupGifts = visibleGifts.filter(
+          (x) => x.set_name && x.set_name.trim() && setKeyOf(x) === key
+        );
+        if (groupGifts.length >= 2) {
+          units.push({
+            type: "set",
+            key,
+            setName: g.set_name.trim(),
+            recipientId: g.recipient_member_id ?? null,
+            gifts: groupGifts,
+          });
+          continue;
+        }
+      }
+      units.push({ type: "single", gift: g });
+    }
+    return units;
+  }, [visibleGifts]);
+
   // Build store → [{ gift, recipientId }] index for cross-list hints.
   // Groups all household gifts by normalized store name.
   const storeIndex = useMemo(() => {
@@ -549,6 +614,7 @@ export default function GiftsScreen() {
       color: gift.color_material ?? "",
       size: gift.size ?? "",
       link: gift.link ?? "",
+      setName: gift.set_name ?? "",
     };
     giftEditInitialRef.current = initial;
     setEditingGift(gift);
@@ -560,6 +626,7 @@ export default function GiftsScreen() {
     setEditColor(initial.color);
     setEditSize(initial.size);
     setEditLink(initial.link);
+    setEditSetName(initial.setName);
   };
 
   const handleSaveEdit = async () => {
@@ -589,6 +656,45 @@ export default function GiftsScreen() {
     } catch (e: any) {
       showAlert("Error", e.message);
     }
+  };
+
+  const handleConfirmSetBought = async (scope: "all" | "one") => {
+    if (!setBoughtPrompt || !household || !currentMember) return;
+    const p = setBoughtPrompt;
+    try {
+      if (scope === "all") {
+        await markSetBought.mutateAsync({
+          householdId: household.id,
+          recipientMemberId: p.recipientId,
+          setName: p.setName,
+          buyerId: currentMember.id,
+          bought: p.bought,
+        });
+      } else {
+        await markBought.mutateAsync({
+          id: p.gift.id,
+          householdId: household.id,
+          buyerId: currentMember.id,
+          bought: p.bought,
+        });
+      }
+      setSetBoughtPrompt(null);
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  // Per-gift display flags shared by standalone cards and set members.
+  const giftCardFlags = (g: Gift) => {
+    const isHomeList = g.recipient_member_id == null;
+    const viewerIsRecipient = g.recipient_member_id === currentMember?.id;
+    const buyer = members.find((m) => m.id === g.bought_by_member_id);
+    return {
+      isHomeList,
+      canSeeBought: isHomeList || !viewerIsRecipient,
+      canMarkBought: isHomeList || !viewerIsRecipient,
+      buyerName: buyer?.display_name ?? null,
+    };
   };
 
   const handleDelete = (gift: Gift) => {
@@ -783,33 +889,75 @@ export default function GiftsScreen() {
             </Text>
           </View>
         ) : (
-          visibleGifts.map((g) => {
-            const isHomeList = g.recipient_member_id == null;
-            const viewerIsRecipient = g.recipient_member_id === currentMember?.id;
-            const recipient = members.find((m) => m.id === g.recipient_member_id);
-            const buyer = members.find((m) => m.id === g.bought_by_member_id);
-            // Home list: both members see bought state AND can mark bought.
-            // Personal list: recipient sees clean view; non-recipients can buy.
-            const canSeeBought = isHomeList || !viewerIsRecipient;
-            const canMarkBought = isHomeList || !viewerIsRecipient;
+          renderUnits.map((unit) => {
+            // Label shown above a card/set when viewing all lists together.
+            const listLabel = (recipientId: string | null) => {
+              if (recipientFilter !== null) return null;
+              const recipient = members.find((m) => m.id === recipientId);
+              return (
+                <Text className="text-xs text-gray-700 mb-1 px-1">
+                  {recipientId == null
+                    ? "For 🏠 Home"
+                    : recipient
+                    ? `For ${recipient.display_name}${recipient.id === currentMember?.id ? " (You)" : ""}`
+                    : ""}
+                </Text>
+              );
+            };
+
+            if (unit.type === "set") {
+              return (
+                <View key={unit.key} className="mb-3">
+                  {listLabel(unit.recipientId)}
+                  <View className="rounded-2xl border-2 border-indigo-300 bg-indigo-50 p-2">
+                    <View className="px-1 pt-1 pb-2">
+                      <Text className="text-sm font-bold text-indigo-900">
+                        🎁 Set: {unit.setName}
+                      </Text>
+                      <Text className="text-xs text-indigo-700 mt-0.5">
+                        These {unit.gifts.length} items are part of a set that's meant to be
+                        purchased together — buy them all or none.
+                      </Text>
+                    </View>
+                    {unit.gifts.map((g) => {
+                      const flags = giftCardFlags(g);
+                      return (
+                        <GiftCard
+                          key={g.id}
+                          gift={g}
+                          canSeeBought={flags.canSeeBought}
+                          canMarkBought={flags.canMarkBought}
+                          buyerName={flags.buyerName}
+                          storeHint={null}
+                          onMarkBought={(gift, bought) =>
+                            setSetBoughtPrompt({
+                              gift,
+                              bought,
+                              setName: unit.setName,
+                              recipientId: unit.recipientId,
+                              count: unit.gifts.length,
+                            })
+                          }
+                          onEdit={openEdit}
+                          onDelete={handleDelete}
+                        />
+                      );
+                    })}
+                  </View>
+                </View>
+              );
+            }
+
+            const g = unit.gift;
+            const flags = giftCardFlags(g);
             return (
               <View key={g.id}>
-                {recipientFilter === null && (
-                  <Text className="text-xs text-gray-700 mb-1 px-1">
-                    {isHomeList
-                      ? "For 🏠 Home"
-                      : recipient
-                      ? `For ${recipient.display_name}${
-                          recipient.id === currentMember?.id ? " (You)" : ""
-                        }`
-                      : ""}
-                  </Text>
-                )}
+                {listLabel(g.recipient_member_id ?? null)}
                 <GiftCard
                   gift={g}
-                  canSeeBought={canSeeBought}
-                  canMarkBought={canMarkBought}
-                  buyerName={buyer?.display_name ?? null}
+                  canSeeBought={flags.canSeeBought}
+                  canMarkBought={flags.canMarkBought}
+                  buyerName={flags.buyerName}
                   storeHint={buildStoreHint(g)}
                   onMarkBought={handleMarkBought}
                   onEdit={openEdit}
@@ -820,6 +968,43 @@ export default function GiftsScreen() {
           })
         )}
       </ScrollView>
+
+      {/* ── Gift Set "buy together" prompt ─────────────────────────────────── */}
+      <Modal
+        visible={!!setBoughtPrompt}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setSetBoughtPrompt(null)}
+      >
+        <View className="flex-1 bg-black/40 items-center justify-center px-8">
+          <View className="bg-white rounded-2xl p-5 w-full max-w-[360px]">
+            <Text className="text-base font-semibold text-gray-900 mb-1">
+              Part of a set of {setBoughtPrompt?.count ?? 0}
+            </Text>
+            <Text className="text-sm text-gray-500 mb-5">
+              "{setBoughtPrompt?.setName}" is a set that's meant to be purchased together. Do you
+              want to {setBoughtPrompt?.bought ? "mark the whole set as bought" : "un-mark the whole set"}?
+            </Text>
+            <TouchableOpacity
+              onPress={() => handleConfirmSetBought("all")}
+              className="bg-indigo-600 rounded-xl py-3 items-center mb-2"
+            >
+              <Text className="text-white text-sm font-semibold">
+                {setBoughtPrompt?.bought ? "Mark whole set" : "Un-mark whole set"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => handleConfirmSetBought("one")}
+              className="bg-white border border-gray-200 rounded-xl py-3 items-center mb-2"
+            >
+              <Text className="text-gray-700 text-sm font-semibold">Just this one</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setSetBoughtPrompt(null)} className="py-2 items-center">
+              <Text className="text-gray-400 text-sm">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* ── New Gift Modal ────────────────────────────────────────────────── */}
       <Modal
@@ -895,6 +1080,7 @@ export default function GiftsScreen() {
               color={newColor} setColor={setNewColor}
               size={newSize} setSize={setNewSize}
               link={newLink} setLink={setNewLink}
+              setName_={newSetName} setSetName={setNewSetName}
             />
 
             <TouchableOpacity
@@ -945,6 +1131,7 @@ export default function GiftsScreen() {
               color={editColor} setColor={setEditColor}
               size={editSize} setSize={setEditSize}
               link={editLink} setLink={setEditLink}
+              setName_={editSetName} setSetName={setEditSetName}
             />
           </ScrollView>
         </SafeAreaView>

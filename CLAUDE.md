@@ -77,6 +77,8 @@ All tables use RLS. The `is_household_member(household_id)` function is the main
 ### Database Migrations
 Sequential SQL files in `supabase/migrations/` (latest file is highest numbered — check `ls supabase/migrations/ | tail -1`). Run new migrations manually in the **Supabase SQL Editor** (the CLI `db` commands require Docker). Always create a new numbered file rather than editing existing ones.
 
+**Data API grants (required since the 2026-10-30 Supabase change):** New `public`-schema tables are no longer auto-exposed to the Data API (PostgREST/GraphQL/supabase-js). Every `create table` must be followed immediately by `grant select, insert, update, delete on public.<table> to anon, authenticated;`. Grants gate table access; RLS still gates rows. Existing tables (001–050) are covered by `051_grant_data_api_access.sql`. Edge Functions use the service_role key and are unaffected.
+
 ### Edge Functions
 Located in `supabase/functions/`. Deployed functions:
 - **`invite-member`** — Sends invite email. For new users: `auth.admin.inviteUserByEmail`. For existing Supabase Auth users: `auth.admin.generateLink` (magic link). Returns `{ existingUser: true, actionLink }` for existing users; the app copies the invite token to clipboard instead of relying on the email.

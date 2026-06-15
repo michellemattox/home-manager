@@ -83,6 +83,44 @@ export function useMarkGiftBought() {
   });
 }
 
+// Mark every item in a gift set bought/unbought at once. A set is the rows that
+// share the same set_name within one list (same recipient, or the shared Home list
+// where recipient_member_id is null).
+export function useMarkGiftSetBought() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      householdId,
+      recipientMemberId,
+      setName,
+      buyerId,
+      bought,
+    }: {
+      householdId: string;
+      recipientMemberId: string | null;
+      setName: string;
+      buyerId: string;
+      bought: boolean;
+    }) => {
+      const updates = bought
+        ? { bought: true, bought_by_member_id: buyerId, bought_at: new Date().toISOString() }
+        : { bought: false, bought_by_member_id: null, bought_at: null };
+      const base = supabase
+        .from("gifts")
+        .update(updates)
+        .eq("household_id", householdId)
+        .eq("set_name", setName);
+      const { error } = await (recipientMemberId == null
+        ? base.is("recipient_member_id", null)
+        : base.eq("recipient_member_id", recipientMemberId));
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["gifts", householdId] }),
+  });
+}
+
 export function useDeleteGift() {
   const qc = useQueryClient();
   return useMutation({
