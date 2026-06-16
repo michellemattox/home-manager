@@ -40,6 +40,7 @@ interface AdvisorRec {
   action_label: string;
   action_type: string;
   priority: string;
+  details?: string;
 }
 
 Deno.serve(async (req) => {
@@ -151,13 +152,18 @@ GARDEN DATA:
 
 Generate exactly 3-5 specific, actionable recommendations for TODAY based on the data above. Reference specific plants, zones, or issues by name. Prioritize urgent problems (pests, drought stress, frost risk).
 
+For any recommendation with action_type "harvest" (e.g. a crop is ready or nearly ready to harvest), ALSO fill the "details" field with succession-planting advice: name 2-3 specific crops that are good to plant in that bed AFTER this harvest, appropriate for Zone 8b / Puget Sound given that it is ${season} and the recent weather above. Give each option a single-line benefit (e.g. nitrogen-fixing cover crop, frost-hardy for fall, quick-maturing before first frost). Format as a short header line then a bullet per crop, e.g.:
+"After harvesting onions, good options to plant next:\n- Garlic — overwinters well, ready next summer\n- Fava beans — fixes nitrogen for spring crops\n- Spinach — frost-hardy, harvest into fall"
+For all OTHER action types, leave "details" as an empty string.
+
 Respond ONLY with a JSON array:
 [
   {
     "recommendation": "1-2 sentences of specific actionable advice",
     "action_label": "2-3 word label",
     "action_type": "watering|pests|garden|tasks|harvest",
-    "priority": "urgent|normal|info"
+    "priority": "urgent|normal|info",
+    "details": "succession-planting suggestions for harvest recs, otherwise empty string"
   }
 ]
 
@@ -176,7 +182,7 @@ Priority:
       },
       body: JSON.stringify({
         model: "claude-haiku-4-5-20251001",
-        max_tokens: 1024,
+        max_tokens: 2048,
         messages: [{ role: "user", content: prompt }],
       }),
     });
@@ -217,6 +223,7 @@ Priority:
       action_label: r.action_label ?? "View",
       action_type: r.action_type ?? "garden",
       priority: ["urgent", "normal", "info"].includes(r.priority) ? r.priority : "normal",
+      details: typeof r.details === "string" && r.details.trim() ? r.details.trim() : null,
       status: "pending",
     }));
 

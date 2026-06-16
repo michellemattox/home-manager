@@ -9,6 +9,7 @@ export type AdvisorRec = {
   action_label: string;
   action_type: "watering" | "pests" | "garden" | "tasks" | "harvest";
   priority: "urgent" | "normal" | "info";
+  details: string | null;
   status: "pending" | "accepted" | "dismissed";
   created_at: string;
 };

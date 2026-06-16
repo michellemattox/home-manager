@@ -543,8 +543,16 @@ export default function HomeScreen() {
     setAdvisorPending((p) => ({ ...p, [rec.id]: "accepting" }));
     try {
       await acceptRec.mutateAsync(rec.id);
-      // Navigate to tasks after accepting — user can create the task there
-      router.push("/(app)/(tasks)/new");
+      // Navigate to the new-task form with the rec pre-filled:
+      // Title = the short action label, Notes = the recommendation plus any
+      // succession-planting detail (harvest recs carry this in `rec.details`).
+      const notes = rec.details?.trim()
+        ? `${rec.recommendation}\n\n${rec.details.trim()}`
+        : rec.recommendation;
+      router.push({
+        pathname: "/(app)/(tasks)/new",
+        params: { prefillTitle: rec.action_label, prefillNotes: notes },
+      });
     } catch (e: any) {
       showAlert("Error", e.message);
     } finally {

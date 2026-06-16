@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -8,7 +8,7 @@ import {
   Keyboard,
   ActivityIndicator,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 import { useForm, Controller } from "react-hook-form";
 import { z } from "zod";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -180,10 +180,37 @@ export default function NewTaskScreen() {
   const {
     control: paControl,
     handleSubmit: paHandleSubmit,
+    setValue: paSetValue,
     formState: { errors: paErrors },
   } = useForm<PAFormData>({
     resolver: zodResolver(paSchema),
   });
+
+  // Prefill from a Garden Today recommendation (Accept → Tasks). Title comes
+  // from the rec's short action label, Notes from the advice + succession
+  // detail. Seed both forms so the values survive a Low-Lift/Project switch.
+  const { prefillTitle, prefillNotes } = useLocalSearchParams<{
+    prefillTitle?: string;
+    prefillNotes?: string;
+  }>();
+  useEffect(() => {
+    if (prefillTitle) {
+      llSetValue("title", prefillTitle);
+      paSetValue("title", prefillTitle);
+    }
+    if (prefillNotes) {
+      llSetValue("notes", prefillNotes);
+      paSetValue("notes", prefillNotes);
+    }
+    // Garden recs are one-time, time-sensitive actions — default the Low-Lift
+    // form to a non-recurring task (due today) rather than monthly recurring.
+    if (prefillTitle || prefillNotes) {
+      llSetValue("frequencyType", "no_repeat");
+      setRepeatLabel("Doesn't Repeat");
+    }
+    // Only seed once on mount from the incoming params.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onSubmitPA = async (data: PAFormData) => {
     if (!household) return;

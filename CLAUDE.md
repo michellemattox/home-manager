@@ -84,6 +84,7 @@ Located in `supabase/functions/`. Deployed functions:
 - **`invite-member`** — Sends invite email. For new users: `auth.admin.inviteUserByEmail`. For existing Supabase Auth users: `auth.admin.generateLink` (magic link). Returns `{ existingUser: true, actionLink }` for existing users; the app copies the invite token to clipboard instead of relying on the email.
 - **`send-reminders`** — Member-first email digest + Expo push notifications. Loads all notification preferences, filters to members eligible at the current Pacific Time hour, then fetches and groups tasks. Members with no tasks get an "all caught up" email. Uses `last_digest_sent_at` for idempotency.
 - **`generate-wow`** / **`garden-advisor`** / **`parse-task`** / **`identify-pest`** / **`garden-weather`** — AI-powered features using OpenAI/external APIs.
+  - `garden-advisor` recs have a `recommendation` (short card text) and an optional `details` column (migration 055). For `harvest` recs, Claude fills `details` with 2-3 Zone 8b / season-aware succession-planting options (one-line benefit each). On the Home "Garden Today" card, **Accept → Tasks** routes to `(tasks)/new` with `prefillTitle` (= `action_label`) and `prefillNotes` (= `recommendation` + `details`) params; `new.tsx` seeds both the Low-Lift and Project-Adjacent forms from those params on mount.
 
 Deploy with `--no-verify-jwt` (both functions are called with the user's session token but the function itself uses the service role key internally).
 
