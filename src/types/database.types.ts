@@ -1191,6 +1191,7 @@ export type Database = {
           household_id: string
           last_digest_sent_at: string | null
           member_id: string
+          notifications_enabled: boolean
           notify_member_ids: Json
           overdue_enabled: boolean
           reminder_frequency: string
@@ -1202,6 +1203,7 @@ export type Database = {
           household_id: string
           last_digest_sent_at?: string | null
           member_id: string
+          notifications_enabled?: boolean
           notify_member_ids?: Json
           overdue_enabled?: boolean
           reminder_frequency?: string
@@ -1213,6 +1215,7 @@ export type Database = {
           household_id?: string
           last_digest_sent_at?: string | null
           member_id?: string
+          notifications_enabled?: boolean
           notify_member_ids?: Json
           overdue_enabled?: boolean
           reminder_frequency?: string

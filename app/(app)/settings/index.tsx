@@ -50,6 +50,7 @@ export default function SettingsScreen() {
   const isAdmin = true; // any member can manage others in a household
 
   const {
+    notificationsEnabled, setNotificationsEnabled,
     overdueEnabled, setOverdueEnabled,
     dueSoonEnabled, setDueSoonEnabled,
     reminderHour, setReminderHour,
@@ -75,10 +76,11 @@ export default function SettingsScreen() {
     (async () => {
       const { data, error } = await supabase
         .from("notification_preferences" as any)
-        .select("overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, notify_member_ids")
+        .select("notifications_enabled, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, notify_member_ids")
         .eq("member_id", currentMember.id)
         .maybeSingle();
       if (!error && data) {
+        if (typeof (data as any).notifications_enabled === "boolean") setNotificationsEnabled((data as any).notifications_enabled);
         setOverdueEnabled((data as any).overdue_enabled);
         setDueSoonEnabled((data as any).due_soon_enabled);
         setReminderHour((data as any).reminder_hour);
@@ -90,6 +92,7 @@ export default function SettingsScreen() {
         await supabase.from("notification_preferences" as any).upsert({
           member_id: currentMember.id,
           household_id: household.id,
+          notifications_enabled: notificationsEnabled,
           overdue_enabled: overdueEnabled,
           due_soon_enabled: dueSoonEnabled,
           reminder_hour: reminderHour,
@@ -110,6 +113,7 @@ export default function SettingsScreen() {
       const { error } = await supabase.from("notification_preferences" as any).upsert({
         member_id: currentMember.id,
         household_id: household.id,
+        notifications_enabled: notificationsEnabled,
         overdue_enabled: overdueEnabled,
         due_soon_enabled: dueSoonEnabled,
         reminder_hour: reminderHour,
@@ -125,7 +129,7 @@ export default function SettingsScreen() {
       }
     }, 1000);
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
-  }, [overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency, notifyMemberIds, currentMember?.id, household?.id]);
+  }, [notificationsEnabled, overdueEnabled, dueSoonEnabled, reminderHour, reminderFrequency, notifyMemberIds, currentMember?.id, household?.id]);
 
   const [testReminderLoading, setTestReminderLoading] = useState(false);
   const handleTestReminder = useCallback(async () => {
@@ -532,6 +536,30 @@ export default function SettingsScreen() {
                 </Text>
               </TouchableOpacity>
             ))}
+          </View>
+
+          {/* Master opt-out */}
+          <View className="mt-5 pt-4 border-t border-gray-100">
+            {notificationsEnabled ? (
+              <TouchableOpacity
+                onPress={() => setNotificationsEnabled(false)}
+                className="rounded-xl py-2.5 px-4 items-center bg-red-50 border border-red-200"
+              >
+                <Text className="text-sm font-semibold text-red-600">Turn off Notifications</Text>
+              </TouchableOpacity>
+            ) : (
+              <>
+                <Text className="text-xs text-gray-500 mb-3 text-center">
+                  Notifications are off. You won&apos;t receive any reminder emails.
+                </Text>
+                <TouchableOpacity
+                  onPress={() => setNotificationsEnabled(true)}
+                  className="rounded-xl py-2.5 px-4 items-center bg-blue-600 border border-blue-600"
+                >
+                  <Text className="text-sm font-semibold text-white">Turn Notifications Back On</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         </Card>
 

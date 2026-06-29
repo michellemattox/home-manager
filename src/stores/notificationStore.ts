@@ -32,6 +32,8 @@ export type ReminderFrequency = "daily" | "every_other_day" | "weekly" | "monthl
 
 interface NotificationState {
   // User preferences (persisted)
+  // Master switch: when false the member is opted out of ALL reminder emails.
+  notificationsEnabled: boolean;
   overdueEnabled: boolean;
   dueSoonEnabled: boolean;
   summaryEnabled: boolean;
@@ -39,6 +41,7 @@ interface NotificationState {
   reminderFrequency: ReminderFrequency;
   // Member filter: ["all"] means all members; otherwise list of member IDs
   notifyMemberIds: string[];
+  setNotificationsEnabled: (v: boolean) => void;
   setOverdueEnabled: (v: boolean) => void;
   setDueSoonEnabled: (v: boolean) => void;
   setSummaryEnabled: (v: boolean) => void;
@@ -50,12 +53,14 @@ interface NotificationState {
 export const useNotificationStore = create<NotificationState>()(
   persist(
     (set) => ({
+      notificationsEnabled: true,
       overdueEnabled: true,
       dueSoonEnabled: true,
       summaryEnabled: false,
       reminderHour: 8,
       reminderFrequency: "daily",
       notifyMemberIds: ["all"],
+      setNotificationsEnabled: (v) => set({ notificationsEnabled: v }),
       setOverdueEnabled: (v) => set({ overdueEnabled: v }),
       setDueSoonEnabled: (v) => set({ dueSoonEnabled: v }),
       setSummaryEnabled: (v) => set({ summaryEnabled: v }),
@@ -67,6 +72,7 @@ export const useNotificationStore = create<NotificationState>()(
       name: "notification-prefs",
       storage: notifStorage,
       partialize: (state) => ({
+        notificationsEnabled: state.notificationsEnabled,
         overdueEnabled: state.overdueEnabled,
         dueSoonEnabled: state.dueSoonEnabled,
         summaryEnabled: state.summaryEnabled,

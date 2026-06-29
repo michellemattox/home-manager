@@ -737,7 +737,7 @@ Deno.serve(async (req) => {
     // 1. Load ALL notification preferences
     const { data: allPrefs } = await supabase
       .from("notification_preferences")
-      .select("member_id, household_id, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, last_digest_sent_at, notify_member_ids");
+      .select("member_id, household_id, notifications_enabled, overdue_enabled, due_soon_enabled, reminder_hour, reminder_frequency, last_digest_sent_at, notify_member_ids");
 
     if (!allPrefs?.length) {
       return new Response(JSON.stringify({ sent: 0, message: "No members have notification preferences" }), {
@@ -747,6 +747,9 @@ Deno.serve(async (req) => {
 
     // 2. Filter to eligible members
     const eligiblePrefs = allPrefs.filter((p) => {
+      // Master opt-out: skip members who turned notifications off. (null/undefined
+      // = legacy rows before migration 056, treated as opted in.)
+      if ((p as any).notifications_enabled === false) return false;
       if (p.reminder_hour !== currentHourPT) return false;
       if (!shouldSendToday(p.reminder_frequency, p.last_digest_sent_at)) return false;
       if (p.last_digest_sent_at) {
