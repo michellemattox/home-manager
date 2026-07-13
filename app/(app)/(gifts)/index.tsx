@@ -9,6 +9,7 @@ import {
   Modal,
   RefreshControl,
   Linking,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
@@ -21,6 +22,7 @@ import {
   useUpdateGift,
   useMarkGiftBought,
   useMarkGiftSetBought,
+  useMoveGiftSetToList,
   useDeleteGift,
   useClearGiftTotals,
 } from "@/hooks/useGifts";
@@ -76,10 +78,29 @@ function GiftFormFields(props: {
   size: string; setSize: (v: string) => void;
   link: string; setLink: (v: string) => void;
   setName_: string; setSetName: (v: string) => void;
+  setSuggestions: string[];
 }) {
   const { name, setName, giftDate, setGiftDate, priority, setPriority,
     store, setStore, price, setPrice, color, setColor, size, setSize, link, setLink,
-    setName_, setSetName } = props;
+    setName_, setSetName, setSuggestions } = props;
+
+  // Inline autocomplete against existing set names on the current list. The
+  // ghost suggestion is the first set name that starts with what's typed (but
+  // isn't already an exact match). It disappears the moment the typed text stops
+  // being a prefix of any set, and reappears if you delete back to a prefix.
+  const ghostSuggestion = useMemo(() => {
+    if (!setName_) return null;
+    const lower = setName_.toLowerCase();
+    const match = setSuggestions.find(
+      (s) => s.toLowerCase().startsWith(lower) && s.toLowerCase() !== lower
+    );
+    return match ?? null;
+  }, [setName_, setSuggestions]);
+  // Grey portion shown after the typed text. Slicing by the raw typed length
+  // keeps the overlay aligned with the visible input (the typed prefix is
+  // rendered transparent underneath the real input text).
+  const ghostRemainder = ghostSuggestion ? ghostSuggestion.slice(setName_.length) : "";
+
   return (
     <>
       <Text className="text-sm font-medium text-gray-700 mb-1">Gift Name</Text>
@@ -163,13 +184,49 @@ function GiftFormFields(props: {
       />
 
       <Text className="text-sm font-medium text-gray-700 mb-1">Gift Set (optional)</Text>
-      <TextInput
-        className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 mb-1"
-        value={setName_}
-        onChangeText={setSetName}
-        placeholder="e.g. Ski Outfit"
-        placeholderTextColor="#9ca3af"
-      />
+      <View className="relative mb-1">
+        <TextInput
+          className="bg-white border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900"
+          value={setName_}
+          onChangeText={setSetName}
+          placeholder="e.g. Ski Outfit"
+          placeholderTextColor="#9ca3af"
+          onKeyPress={(e: any) => {
+            if (Platform.OS !== "web") return;
+            const key = e?.nativeEvent?.key;
+            if (key === "Tab" && ghostSuggestion) {
+              e.preventDefault?.();
+              setSetName(ghostSuggestion);
+            }
+          }}
+        />
+        {/* Web-only greyed inline completion, aligned under the real input text. */}
+        {Platform.OS === "web" && ghostRemainder ? (
+          <View
+            pointerEvents="none"
+            className="absolute left-0 right-0 top-0 bottom-0 px-3 py-2.5"
+          >
+            <Text className="text-sm" numberOfLines={1}>
+              <Text className="text-sm" style={{ color: "transparent" }}>
+                {setName_}
+              </Text>
+              <Text className="text-sm text-gray-400">{ghostRemainder}</Text>
+            </Text>
+          </View>
+        ) : null}
+      </View>
+      {/* Tappable suggestion pill — the reliable accept path on touch devices. */}
+      {ghostSuggestion ? (
+        <TouchableOpacity
+          onPress={() => setSetName(ghostSuggestion)}
+          className="self-start flex-row items-center gap-1.5 mb-1 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200"
+        >
+          <Text className="text-xs font-semibold text-indigo-700">{ghostSuggestion}</Text>
+          <Text className="text-[10px] text-indigo-400">
+            {Platform.OS === "web" ? "Tab ⇥ or tap" : "tap to use"}
+          </Text>
+        </TouchableOpacity>
+      ) : null}
       <Text className="text-xs text-gray-400 mb-4">
         Give two or more items on the same list the same set name to mark them as meant to be
         purchased together.
@@ -304,6 +361,7 @@ export default function GiftsScreen() {
   const updateGift = useUpdateGift();
   const markBought = useMarkGiftBought();
   const markSetBought = useMarkGiftSetBought();
+  const moveGiftSet = useMoveGiftSetToList();
   const deleteGift = useDeleteGift();
   const clearTotals = useClearGiftTotals();
 
@@ -381,6 +439,14 @@ export default function GiftsScreen() {
 
   // Edit modal
   const [editingGift, setEditingGift] = useState<Gift | null>(null);
+  const [editRecipient, setEditRecipient] = useState<string>(""); // member id or HOME_LIST_ID
+  // When moving a set member to another list, ask whether to move just it or the set.
+  const [moveListPrompt, setMoveListPrompt] = useState<{
+    targetChip: string;
+    targetLabel: string;
+    setName: string;
+    count: number;
+  } | null>(null);
   const [editName, setEditName] = useState("");
   const [editDate, setEditDate] = useState("");
   const [editPriority, setEditPriority] = useState<GiftPriority | null>(null);
@@ -618,6 +684,7 @@ export default function GiftsScreen() {
     };
     giftEditInitialRef.current = initial;
     setEditingGift(gift);
+    setEditRecipient(gift.recipient_member_id == null ? HOME_LIST_ID : gift.recipient_member_id);
     setEditName(initial.name);
     setEditDate(initial.date);
     setEditPriority(initial.priority);
@@ -642,6 +709,89 @@ export default function GiftsScreen() {
   const handleCloseEdit = async () => {
     try { await giftEditAutosave.flush(); } catch (_) {}
     setEditingGift(null);
+  };
+
+  // Distinct set names already used on a given list (recipient), canonical casing.
+  const setNamesForList = (recipientId: string | null): string[] => {
+    const seen = new Map<string, string>();
+    for (const g of gifts) {
+      if (g.recipient_member_id !== recipientId) continue;
+      const s = (g.set_name ?? "").trim();
+      if (!s) continue;
+      const lower = s.toLowerCase();
+      if (!seen.has(lower)) seen.set(lower, s);
+    }
+    return Array.from(seen.values());
+  };
+
+  const newListRecipientId =
+    newRecipient === HOME_LIST_ID ? null : (newRecipient ?? currentMember?.id ?? null);
+  const newSetSuggestions = useMemo(
+    () => setNamesForList(newListRecipientId),
+    [gifts, newListRecipientId]
+  );
+
+  const editListRecipientId = editRecipient === HOME_LIST_ID ? null : (editRecipient || null);
+  const editSetSuggestions = useMemo(
+    () => setNamesForList(editListRecipientId),
+    [gifts, editListRecipientId]
+  );
+
+  // Perform the actual list move for the gift being edited.
+  const doMoveEditList = async (targetChip: string, scope: "one" | "all") => {
+    if (!editingGift || !household) return;
+    const target = targetChip === HOME_LIST_ID ? null : targetChip;
+    try {
+      if (scope === "all") {
+        await moveGiftSet.mutateAsync({
+          householdId: household.id,
+          fromRecipientId: editingGift.recipient_member_id,
+          setName: (editingGift.set_name ?? "").trim(),
+          toRecipientId: target,
+        });
+      } else {
+        await updateGift.mutateAsync({
+          id: editingGift.id,
+          householdId: household.id,
+          updates: { recipient_member_id: target } as Partial<Gift>,
+        });
+      }
+      setEditRecipient(targetChip);
+      setEditingGift((prev) => (prev ? { ...prev, recipient_member_id: target } : prev));
+    } catch (e: any) {
+      showAlert("Error", e.message);
+    }
+  };
+
+  // Tapping a list chip in the Edit modal. If the gift belongs to a set (2+ items
+  // sharing set_name on its current list), ask whether to move just it or the set.
+  const handleEditListChange = (targetChip: string) => {
+    if (!editingGift) return;
+    const currentChip =
+      editingGift.recipient_member_id == null ? HOME_LIST_ID : editingGift.recipient_member_id;
+    if (targetChip === currentChip) return;
+    const origSet = (editingGift.set_name ?? "").trim();
+    const setMembers = origSet
+      ? gifts.filter(
+          (g) =>
+            g.recipient_member_id === editingGift.recipient_member_id &&
+            (g.set_name ?? "").trim().toLowerCase() === origSet.toLowerCase()
+        )
+      : [];
+    if (setMembers.length >= 2) {
+      const label =
+        targetChip === HOME_LIST_ID
+          ? "🏠 Home (shared)"
+          : members.find((m) => m.id === targetChip)?.display_name ?? "another list";
+      setMoveListPrompt({
+        targetChip,
+        targetLabel: label,
+        setName: origSet,
+        count: setMembers.length,
+      });
+    } else {
+      doMoveEditList(targetChip, "one");
+    }
   };
 
   const handleMarkBought = async (gift: Gift, bought: boolean) => {
@@ -1081,6 +1231,7 @@ export default function GiftsScreen() {
               size={newSize} setSize={setNewSize}
               link={newLink} setLink={setNewLink}
               setName_={newSetName} setSetName={setNewSetName}
+              setSuggestions={newSetSuggestions}
             />
 
             <TouchableOpacity
@@ -1122,6 +1273,50 @@ export default function GiftsScreen() {
             contentContainerClassName="px-4 py-4"
             keyboardShouldPersistTaps="handled"
           >
+            <Text className="text-sm font-medium text-gray-700 mb-2">On list</Text>
+            <View className="flex-row flex-wrap gap-2 mb-1">
+              {members.map((m) => {
+                const active = editRecipient === m.id;
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    onPress={() => handleEditListChange(m.id)}
+                    className={`px-3 py-1.5 rounded-full border ${
+                      active ? "bg-blue-600 border-blue-600" : "bg-white border-gray-200"
+                    }`}
+                  >
+                    <Text
+                      className={`text-sm font-medium ${
+                        active ? "text-white" : "text-gray-700"
+                      }`}
+                    >
+                      {m.display_name}
+                      {m.id === currentMember?.id ? " (You)" : ""}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <TouchableOpacity
+                onPress={() => handleEditListChange(HOME_LIST_ID)}
+                className={`px-3 py-1.5 rounded-full border ${
+                  editRecipient === HOME_LIST_ID
+                    ? "bg-emerald-600 border-emerald-600"
+                    : "bg-white border-gray-200"
+                }`}
+              >
+                <Text
+                  className={`text-sm font-medium ${
+                    editRecipient === HOME_LIST_ID ? "text-white" : "text-gray-700"
+                  }`}
+                >
+                  🏠 Home (shared)
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <Text className="text-xs text-gray-400 mb-4">
+              Move this gift to a different list if it was added to the wrong one.
+            </Text>
+
             <GiftFormFields
               name={editName} setName={setEditName}
               giftDate={editDate} setGiftDate={setEditDate}
@@ -1132,9 +1327,53 @@ export default function GiftsScreen() {
               size={editSize} setSize={setEditSize}
               link={editLink} setLink={setEditLink}
               setName_={editSetName} setSetName={setEditSetName}
+              setSuggestions={editSetSuggestions}
             />
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* ── Move-list prompt (gift is part of a set) ───────────────────────── */}
+      <Modal
+        visible={!!moveListPrompt}
+        animationType="fade"
+        transparent
+        onRequestClose={() => setMoveListPrompt(null)}
+      >
+        <View className="flex-1 bg-black/40 items-center justify-center px-8">
+          <View className="bg-white rounded-2xl p-5 w-full max-w-[360px]">
+            <Text className="text-base font-semibold text-gray-900 mb-1">
+              Part of a set of {moveListPrompt?.count ?? 0}
+            </Text>
+            <Text className="text-sm text-gray-500 mb-5">
+              "{moveListPrompt?.setName}" is a set. Do you want to move just this item to{" "}
+              {moveListPrompt?.targetLabel}, or the whole set?
+            </Text>
+            <TouchableOpacity
+              onPress={() => {
+                const p = moveListPrompt;
+                setMoveListPrompt(null);
+                if (p) doMoveEditList(p.targetChip, "all");
+              }}
+              className="bg-indigo-600 rounded-xl py-3 items-center mb-2"
+            >
+              <Text className="text-white text-sm font-semibold">Move whole set</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={() => {
+                const p = moveListPrompt;
+                setMoveListPrompt(null);
+                if (p) doMoveEditList(p.targetChip, "one");
+              }}
+              className="bg-white border border-gray-200 rounded-xl py-3 items-center mb-2"
+            >
+              <Text className="text-gray-700 text-sm font-semibold">Just this item</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMoveListPrompt(null)} className="py-2 items-center">
+              <Text className="text-gray-400 text-sm">Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );

@@ -121,6 +121,39 @@ export function useMarkGiftSetBought() {
   });
 }
 
+// Move every item in a gift set from one list to another at once. Mirrors
+// useMarkGiftSetBought's filtering: a set is the rows sharing set_name within one
+// list (a recipient, or the shared Home list where recipient_member_id is null).
+export function useMoveGiftSetToList() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      householdId,
+      fromRecipientId,
+      setName,
+      toRecipientId,
+    }: {
+      householdId: string;
+      fromRecipientId: string | null;
+      setName: string;
+      toRecipientId: string | null;
+    }) => {
+      const base = supabase
+        .from("gifts")
+        .update({ recipient_member_id: toRecipientId })
+        .eq("household_id", householdId)
+        .eq("set_name", setName);
+      const { error } = await (fromRecipientId == null
+        ? base.is("recipient_member_id", null)
+        : base.eq("recipient_member_id", fromRecipientId));
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) =>
+      qc.invalidateQueries({ queryKey: ["gifts", householdId] }),
+  });
+}
+
 export function useDeleteGift() {
   const qc = useQueryClient();
   return useMutation({
