@@ -16,9 +16,28 @@ SUPABASE_ACCESS_TOKEN=<token> npx supabase functions deploy <function-name> --pr
 
 # Push code (triggers Vercel auto-deploy)
 git push origin master
+
+# Type-check (NOT part of the build — see "TypeScript / Type Errors" below)
+npm run typecheck
+
+# Regenerate Supabase types from the live schema after a migration
+SUPABASE_ACCESS_TOKEN=<token> npm run gen:types
 ```
 
-There are no test or lint scripts configured. This is an Expo/React Native app — **not Next.js**. Ignore any "use client" validation suggestions.
+There are no lint or automated test scripts. A `typecheck` script exists but is advisory only. This is an Expo/React Native app — **not Next.js**. Ignore any "use client" validation suggestions.
+
+### TypeScript / Type Errors (read before "fixing" tsc output)
+`npm run typecheck` reports **~374 errors, and that is expected — do NOT try to clear them by mass-editing.** They do not affect the build or runtime: Expo/Metro transpiles via Babel and never type-checks, so types are stripped at build time and the app runs fine.
+
+Root cause (investigated 2026-07-13): postgrest-js's TypeScript inference resolves every `supabase.from(...).select(...)` to an internal `SelectQueryError<...>` union, which cascades into both the `as SomeType[]` return casts (TS2352/2345/2769/2339) **and** the query-builder args (`.eq`/`.insert`/`.update`). Confirmed:
+- **Not** stale generated types — regenerating `database.types.ts` did not change the count.
+- **Not** a supabase-js version lag — reproduced on 2.99.2 and 2.110.3.
+- It's the *shape/scale* of the generated schema (30+ tables + relationships): a minimal 1-table `Database` type infers cleanly in this same tsconfig; the full one does not (a postgrest-js type-complexity limit).
+
+Implications for anyone tempted to fix this:
+- A cast-based cleanup **cannot** work — the query *builder* loses its types, so silencing errors would require typing the client as `any`, which removes all DB type-safety. Don't do it.
+- A real fix means bisecting the generated schema type / applying a postgrest type-complexity workaround. It's editor-hygiene only, zero runtime urgency. Leave it unless explicitly asked to tackle it.
+- Because of all this, when you add a feature, only verify that **your new code** introduces no *new* categories of error — don't be alarmed by the standing ~374.
 
 ## Architecture
 
