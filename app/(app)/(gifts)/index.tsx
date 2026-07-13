@@ -84,18 +84,20 @@ function GiftFormFields(props: {
     store, setStore, price, setPrice, color, setColor, size, setSize, link, setLink,
     setName_, setSetName, setSuggestions } = props;
 
-  // Inline autocomplete against existing set names on the current list. The
-  // ghost suggestion is the first set name that starts with what's typed (but
-  // isn't already an exact match). It disappears the moment the typed text stops
-  // being a prefix of any set, and reappears if you delete back to a prefix.
-  const ghostSuggestion = useMemo(() => {
-    if (!setName_) return null;
+  // Autocomplete against existing set names on the current list. Every set name
+  // that starts with what's typed (but isn't already an exact match) is offered.
+  // As you type more, non-matching names fall off; delete back to a prefix and
+  // they return.
+  const setMatches = useMemo(() => {
+    if (!setName_) return [] as string[];
     const lower = setName_.toLowerCase();
-    const match = setSuggestions.find(
-      (s) => s.toLowerCase().startsWith(lower) && s.toLowerCase() !== lower
-    );
-    return match ?? null;
+    return setSuggestions
+      .filter((s) => s.toLowerCase().startsWith(lower) && s.toLowerCase() !== lower)
+      .sort((a, b) => a.localeCompare(b));
   }, [setName_, setSuggestions]);
+  // Inline greyed completion + Tab only when a single match remains, so the
+  // completion is unambiguous. With multiple matches the user taps a pill.
+  const ghostSuggestion = setMatches.length === 1 ? setMatches[0] : null;
   // Grey portion shown after the typed text. Slicing by the raw typed length
   // keeps the overlay aligned with the visible input (the typed prefix is
   // rendered transparent underneath the real input text).
@@ -215,17 +217,24 @@ function GiftFormFields(props: {
           </View>
         ) : null}
       </View>
-      {/* Tappable suggestion pill — the reliable accept path on touch devices. */}
-      {ghostSuggestion ? (
-        <TouchableOpacity
-          onPress={() => setSetName(ghostSuggestion)}
-          className="self-start flex-row items-center gap-1.5 mb-1 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200"
-        >
-          <Text className="text-xs font-semibold text-indigo-700">{ghostSuggestion}</Text>
-          <Text className="text-[10px] text-indigo-400">
-            {Platform.OS === "web" ? "Tab ⇥ or tap" : "tap to use"}
-          </Text>
-        </TouchableOpacity>
+      {/* Tappable suggestion pills — every set on this list matching what's typed.
+          The list narrows as you type; tap one to fill (the reliable accept path
+          on touch devices). */}
+      {setMatches.length > 0 ? (
+        <View className="flex-row flex-wrap gap-1.5 mb-1">
+          {setMatches.map((s) => (
+            <TouchableOpacity
+              key={s}
+              onPress={() => setSetName(s)}
+              className="flex-row items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200"
+            >
+              <Text className="text-xs font-semibold text-indigo-700">{s}</Text>
+              {Platform.OS === "web" && setMatches.length === 1 ? (
+                <Text className="text-[10px] text-indigo-400">Tab ⇥</Text>
+              ) : null}
+            </TouchableOpacity>
+          ))}
+        </View>
       ) : null}
       <Text className="text-xs text-gray-400 mb-4">
         Give two or more items on the same list the same set name to mark them as meant to be
