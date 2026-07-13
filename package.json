@@ -6,7 +6,9 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit",
+    "gen:types": "supabase gen types typescript --project-id sjtlmvcxcffftsdleftf > src/types/database.types.ts"
   },
   "dependencies": {
     "@expo-google-fonts/lobster": "^0.4.1",

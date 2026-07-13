@@ -97,6 +97,7 @@ export type Database = {
           action_label: string | null
           action_type: string
           created_at: string | null
+          details: string | null
           generated_date: string
           household_id: string
           id: string
@@ -108,6 +109,7 @@ export type Database = {
           action_label?: string | null
           action_type?: string
           created_at?: string | null
+          details?: string | null
           generated_date?: string
           household_id: string
           id?: string
@@ -119,6 +121,7 @@ export type Database = {
           action_label?: string | null
           action_type?: string
           created_at?: string | null
+          details?: string | null
           generated_date?: string
           household_id?: string
           id?: string
@@ -1235,6 +1238,70 @@ export type Database = {
             columns: ["member_id"]
             isOneToOne: true
             referencedRelation: "household_members"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      packing_template_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          sort_order: number
+          template_id: string
+          title: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          sort_order?: number
+          template_id: string
+          title: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          sort_order?: number
+          template_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "packing_template_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "packing_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      packing_templates: {
+        Row: {
+          created_at: string | null
+          household_id: string
+          id: string
+          name: string
+          sort_order: number
+        }
+        Insert: {
+          created_at?: string | null
+          household_id: string
+          id?: string
+          name: string
+          sort_order?: number
+        }
+        Update: {
+          created_at?: string | null
+          household_id?: string
+          id?: string
+          name?: string
+          sort_order?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "packing_templates_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
             referencedColumns: ["id"]
           },
         ]
