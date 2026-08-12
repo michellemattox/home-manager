@@ -449,6 +449,354 @@ export type Database = {
           },
         ]
       }
+      garden_areas: {
+        Row: {
+          created_at: string
+          household_id: string
+          id: string
+          length_ft: number
+          name: string
+          notes: string | null
+          sort_order: number
+          width_ft: number
+        }
+        Insert: {
+          created_at?: string
+          household_id: string
+          id?: string
+          length_ft?: number
+          name: string
+          notes?: string | null
+          sort_order?: number
+          width_ft?: number
+        }
+        Update: {
+          created_at?: string
+          household_id?: string
+          id?: string
+          length_ft?: number
+          name?: string
+          notes?: string | null
+          sort_order?: number
+          width_ft?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garden_areas_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      garden_beds: {
+        Row: {
+          area_id: string
+          created_at: string
+          frame_color: string
+          household_id: string
+          id: string
+          length_ft: number | null
+          name: string
+          notes: string | null
+          points: Json | null
+          rotation_deg: number
+          shape: string
+          sort_order: number
+          width_ft: number | null
+          x_ft: number
+          y_ft: number
+        }
+        Insert: {
+          area_id: string
+          created_at?: string
+          frame_color?: string
+          household_id: string
+          id?: string
+          length_ft?: number | null
+          name?: string
+          notes?: string | null
+          points?: Json | null
+          rotation_deg?: number
+          shape?: string
+          sort_order?: number
+          width_ft?: number | null
+          x_ft?: number
+          y_ft?: number
+        }
+        Update: {
+          area_id?: string
+          created_at?: string
+          frame_color?: string
+          household_id?: string
+          id?: string
+          length_ft?: number | null
+          name?: string
+          notes?: string | null
+          points?: Json | null
+          rotation_deg?: number
+          shape?: string
+          sort_order?: number
+          width_ft?: number | null
+          x_ft?: number
+          y_ft?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garden_beds_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "garden_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      garden_hardscape: {
+        Row: {
+          area_id: string
+          created_at: string
+          household_id: string
+          id: string
+          length_ft: number | null
+          material: string
+          name: string | null
+          points: Json | null
+          rotation_deg: number
+          shape: string
+          width_ft: number | null
+          x_ft: number
+          y_ft: number
+          z_index: number
+        }
+        Insert: {
+          area_id: string
+          created_at?: string
+          household_id: string
+          id?: string
+          length_ft?: number | null
+          material?: string
+          name?: string | null
+          points?: Json | null
+          rotation_deg?: number
+          shape?: string
+          width_ft?: number | null
+          x_ft?: number
+          y_ft?: number
+          z_index?: number
+        }
+        Update: {
+          area_id?: string
+          created_at?: string
+          household_id?: string
+          id?: string
+          length_ft?: number | null
+          material?: string
+          name?: string | null
+          points?: Json | null
+          rotation_deg?: number
+          shape?: string
+          width_ft?: number | null
+          x_ft?: number
+          y_ft?: number
+          z_index?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garden_hardscape_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "garden_areas"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      garden_supports: {
+        Row: {
+          area_id: string
+          bed_id: string | null
+          created_at: string
+          default_spacing_in: number | null
+          height_ft: number | null
+          household_id: string
+          id: string
+          length_ft: number | null
+          name: string | null
+          points: Json | null
+          rotation_deg: number
+          shape: string
+          support_type: string
+          width_ft: number | null
+          x_ft: number
+          y_ft: number
+        }
+        Insert: {
+          area_id: string
+          bed_id?: string | null
+          created_at?: string
+          default_spacing_in?: number | null
+          height_ft?: number | null
+          household_id: string
+          id?: string
+          length_ft?: number | null
+          name?: string | null
+          points?: Json | null
+          rotation_deg?: number
+          shape?: string
+          support_type?: string
+          width_ft?: number | null
+          x_ft?: number
+          y_ft?: number
+        }
+        Update: {
+          area_id?: string
+          bed_id?: string | null
+          created_at?: string
+          default_spacing_in?: number | null
+          height_ft?: number | null
+          household_id?: string
+          id?: string
+          length_ft?: number | null
+          name?: string | null
+          points?: Json | null
+          rotation_deg?: number
+          shape?: string
+          support_type?: string
+          width_ft?: number | null
+          x_ft?: number
+          y_ft?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garden_supports_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "garden_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garden_supports_bed_id_fkey"
+            columns: ["bed_id"]
+            isOneToOne: false
+            referencedRelation: "garden_beds"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      garden_crops: {
+        Row: {
+          area_id: string
+          bed_id: string | null
+          created_at: string
+          date_planted: string | null
+          date_removed: string | null
+          household_id: string
+          id: string
+          notes: string | null
+          plant_family: string | null
+          plant_name: string
+          season_year: number
+          source_planting_id: string | null
+          spacing_in: number | null
+          support_id: string | null
+          variety: string | null
+          x_ft: number
+          y_ft: number
+        }
+        Insert: {
+          area_id: string
+          bed_id?: string | null
+          created_at?: string
+          date_planted?: string | null
+          date_removed?: string | null
+          household_id: string
+          id?: string
+          notes?: string | null
+          plant_family?: string | null
+          plant_name: string
+          season_year?: number
+          source_planting_id?: string | null
+          spacing_in?: number | null
+          support_id?: string | null
+          variety?: string | null
+          x_ft?: number
+          y_ft?: number
+        }
+        Update: {
+          area_id?: string
+          bed_id?: string | null
+          created_at?: string
+          date_planted?: string | null
+          date_removed?: string | null
+          household_id?: string
+          id?: string
+          notes?: string | null
+          plant_family?: string | null
+          plant_name?: string
+          season_year?: number
+          source_planting_id?: string | null
+          spacing_in?: number | null
+          support_id?: string | null
+          variety?: string | null
+          x_ft?: number
+          y_ft?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garden_crops_area_id_fkey"
+            columns: ["area_id"]
+            isOneToOne: false
+            referencedRelation: "garden_areas"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garden_crops_bed_id_fkey"
+            columns: ["bed_id"]
+            isOneToOne: false
+            referencedRelation: "garden_beds"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "garden_crops_support_id_fkey"
+            columns: ["support_id"]
+            isOneToOne: false
+            referencedRelation: "garden_supports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      garden_crop_history_choices: {
+        Row: {
+          crop_key: string
+          decided_at: string
+          decision: string
+          household_id: string
+          id: string
+        }
+        Insert: {
+          crop_key: string
+          decided_at?: string
+          decision: string
+          household_id: string
+          id?: string
+        }
+        Update: {
+          crop_key?: string
+          decided_at?: string
+          decision?: string
+          household_id?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "garden_crop_history_choices_household_id_fkey"
+            columns: ["household_id"]
+            isOneToOne: false
+            referencedRelation: "households"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       garden_plantings: {
         Row: {
           created_at: string

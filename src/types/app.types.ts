@@ -131,6 +131,16 @@ export type GardenWeatherLog = Database["public"]["Tables"]["garden_weather_logs
 export type GardenAmendment = Database["public"]["Tables"]["garden_amendments"]["Row"];
 export type AmendmentType = GardenAmendment["amendment_type"];
 
+// ── Garden Map v2 (freeform beds / hardscape / vertical supports / crops) ──────
+export type GardenArea = Database["public"]["Tables"]["garden_areas"]["Row"];
+export type GardenBed = Database["public"]["Tables"]["garden_beds"]["Row"];
+export type GardenHardscape = Database["public"]["Tables"]["garden_hardscape"]["Row"];
+export type GardenSupport = Database["public"]["Tables"]["garden_supports"]["Row"];
+export type GardenCrop = Database["public"]["Tables"]["garden_crops"]["Row"];
+export type GardenCropHistoryChoice = Database["public"]["Tables"]["garden_crop_history_choices"]["Row"];
+/** A point in area coordinates (feet), used for polygon `points` columns. */
+export type GardenPoint = { x: number; y: number };
+
 export const AMENDMENT_TYPES: { value: AmendmentType; label: string; emoji: string; color: string }[] = [
   { value: "fertilizer",   label: "Fertilizer",   emoji: "🌿", color: "#16a34a" },
   { value: "compost",      label: "Compost",       emoji: "♻️", color: "#92400e" },

@@ -17,10 +17,6 @@ import { Input } from "@/components/ui/Input";
 import { SkeletonCard } from "@/components/ui/Skeleton";
 import { useHouseholdStore } from "@/stores/householdStore";
 import {
-  useGardenPlots,
-  useCreateGardenPlot,
-  useUpdateGardenPlot,
-  useDeleteGardenPlot,
   useGardenSeeds,
   useGardenJournal,
   useGardenWatering,
@@ -28,22 +24,22 @@ import {
   useGardenAllHarvests,
   useGardenWeatherLogs,
 } from "@/hooks/useGarden";
+import {
+  useGardenAreas,
+  useCreateGardenArea,
+  useUpdateGardenArea,
+  useDeleteGardenArea,
+} from "@/hooks/useGardenMap";
 import { useGardenWeather } from "@/hooks/useGardenWeather";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
-import type { GardenPlot } from "@/types/app.types";
+import type { GardenArea } from "@/types/app.types";
 
-const PLOT_PRESETS = [
-  { label: "10×20 Veggie Bed",    cols: 10, rows: 20 },
-  { label: "4×8 Raised Bed",      cols: 4,  rows: 8  },
-  { label: "8×8 Square",          cols: 8,  rows: 8  },
-  { label: "Pots/Containers",     cols: 5,  rows: 5  },
-  { label: "Custom",              cols: 0,  rows: 0  },
-];
-
-const SUN_OPTIONS = [
-  { value: "full_sun",    label: "Full Sun",     emoji: "☀️",  hint: "6+ hrs direct" },
-  { value: "partial_sun", label: "Partial Sun",  emoji: "⛅",  hint: "3-6 hrs direct" },
-  { value: "shade",       label: "Shade",        emoji: "🌥",  hint: "< 3 hrs direct" },
+const AREA_PRESETS = [
+  { label: "Whole yard 20×20", width: 20, length: 20 },
+  { label: "Bed strip 4×12",   width: 4,  length: 12 },
+  { label: "Patio 12×12",      width: 12, length: 12 },
+  { label: "Greenhouse 8×10",  width: 8,  length: 10 },
+  { label: "Custom",           width: 0,  length: 0  },
 ];
 
 function SectionHeader({
@@ -116,10 +112,10 @@ export default function GardenScreen() {
   const { household } = useHouseholdStore();
   const householdId = household?.id;
 
-  const { data: plots = [], isLoading, refetch } = useGardenPlots(householdId);
-  const createPlot = useCreateGardenPlot();
-  const updatePlot = useUpdateGardenPlot();
-  const deletePlot = useDeleteGardenPlot();
+  const { data: plots = [], isLoading, refetch } = useGardenAreas(householdId);
+  const createPlot = useCreateGardenArea();
+  const updatePlot = useUpdateGardenArea();
+  const deletePlot = useDeleteGardenArea();
 
   // Dashboard data
   const { data: seeds = [] } = useGardenSeeds(householdId);
@@ -141,53 +137,49 @@ export default function GardenScreen() {
 
   // New / Edit garden modal state (shared form)
   const [showNew, setShowNew] = useState(false);
-  const [editingPlot, setEditingPlot] = useState<GardenPlot | null>(null);
+  const [editingPlot, setEditingPlot] = useState<GardenArea | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [sunExposure, setSunExposure] = useState<string | null>(null);
-  const [preset, setPreset] = useState(PLOT_PRESETS[0]);
-  const [customCols, setCustomCols] = useState("10");
+  const [preset, setPreset] = useState(AREA_PRESETS[0]);
+  const [customCols, setCustomCols] = useState("20");
   const [customRows, setCustomRows] = useState("20");
 
   function resetForm() {
     setName("");
     setDescription("");
-    setSunExposure(null);
-    setPreset(PLOT_PRESETS[0]);
-    setCustomCols("10");
+    setPreset(AREA_PRESETS[0]);
+    setCustomCols("20");
     setCustomRows("20");
   }
 
-  function openEdit(plot: GardenPlot) {
+  function openEdit(plot: GardenArea) {
     setEditingPlot(plot);
     setName(plot.name);
-    setDescription(plot.description ?? "");
-    setSunExposure(plot.sun_exposure ?? null);
-    const match = PLOT_PRESETS.find((p) => p.cols === plot.cols && p.rows === plot.rows && p.label !== "Custom");
-    setPreset(match ?? PLOT_PRESETS[PLOT_PRESETS.length - 1]);
-    setCustomCols(plot.cols.toString());
-    setCustomRows(plot.rows.toString());
+    setDescription(plot.notes ?? "");
+    const match = AREA_PRESETS.find((p) => p.width === plot.width_ft && p.length === plot.length_ft && p.label !== "Custom");
+    setPreset(match ?? AREA_PRESETS[AREA_PRESETS.length - 1]);
+    setCustomCols(String(plot.width_ft));
+    setCustomRows(String(plot.length_ft));
     setShowNew(true);
   }
 
   async function handleCreate() {
     if (!householdId || !name.trim()) return;
-    const cols = preset.cols > 0 ? preset.cols : parseInt(customCols) || 10;
-    const rows = preset.rows > 0 ? preset.rows : parseInt(customRows) || 20;
+    const width = preset.width > 0 ? preset.width : parseFloat(customCols) || 20;
+    const length = preset.length > 0 ? preset.length : parseFloat(customRows) || 20;
     if (editingPlot) {
       await updatePlot.mutateAsync({
         id: editingPlot.id,
         householdId,
-        updates: { name: name.trim(), description: description.trim() || null, sun_exposure: sunExposure },
+        updates: { name: name.trim(), notes: description.trim() || null, width_ft: width, length_ft: length },
       });
     } else {
       await createPlot.mutateAsync({
         household_id: householdId,
         name: name.trim(),
-        description: description.trim() || null,
-        cols,
-        rows,
-        sun_exposure: sunExposure,
+        notes: description.trim() || null,
+        width_ft: width,
+        length_ft: length,
       });
     }
     setEditingPlot(null);
@@ -195,10 +187,10 @@ export default function GardenScreen() {
     setShowNew(false);
   }
 
-  function confirmDelete(plot: GardenPlot) {
+  function confirmDelete(plot: GardenArea) {
     Alert.alert(
-      "Delete Garden",
-      `Remove "${plot.name}" and all its zones and plantings? This cannot be undone.`,
+      "Delete Garden Area",
+      `Remove "${plot.name}" and everything in it (beds, paths, supports, plants)? This cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
@@ -277,7 +269,7 @@ export default function GardenScreen() {
                 <Text className="text-xs text-gray-400">varieties tracked</Text>
               </View>
               <View className="flex-1 bg-white rounded-xl p-3 border border-green-100">
-                <Text className="text-xs text-gray-500 mb-0.5">Active plots</Text>
+                <Text className="text-xs text-gray-500 mb-0.5">Garden areas</Text>
                 <Text className="text-lg font-bold text-green-700">{plots.length}</Text>
                 <Text className="text-xs text-gray-400">garden zones</Text>
               </View>
@@ -531,8 +523,10 @@ export default function GardenScreen() {
                 plot={plot}
                 onOpen={() =>
                   router.push({
-                    pathname: "/(app)/(garden)/[plotId]",
-                    params: { plotId: plot.id },
+                    // Expo Router regenerates typed routes on `expo start`; cast
+                    // avoids a stale-types error right after renaming the file.
+                    pathname: "/(app)/(garden)/[areaId]" as any,
+                    params: { areaId: plot.id },
                   })
                 }
                 onEdit={() => openEdit(plot)}
@@ -587,9 +581,9 @@ export default function GardenScreen() {
               className="min-h-[80px]"
             />
 
-            <Text className="text-sm font-medium text-gray-700 mb-2">Grid Size</Text>
+            <Text className="text-sm font-medium text-gray-700 mb-2">Area Size (feet)</Text>
             <View className="flex-row flex-wrap gap-2 mb-4">
-              {PLOT_PRESETS.map((p) => (
+              {AREA_PRESETS.map((p) => (
                 <TouchableOpacity
                   key={p.label}
                   onPress={() => setPreset(p)}
@@ -614,16 +608,16 @@ export default function GardenScreen() {
               <View className="flex-row gap-3">
                 <View className="flex-1">
                   <Input
-                    label="Columns (width)"
-                    keyboardType="number-pad"
+                    label="Width (ft)"
+                    keyboardType="decimal-pad"
                     value={customCols}
                     onChangeText={setCustomCols}
                   />
                 </View>
                 <View className="flex-1">
                   <Input
-                    label="Rows (length)"
-                    keyboardType="number-pad"
+                    label="Length (ft)"
+                    keyboardType="decimal-pad"
                     value={customRows}
                     onChangeText={setCustomRows}
                   />
@@ -631,41 +625,17 @@ export default function GardenScreen() {
               </View>
             )}
 
-            {preset.label === "Pots/Containers" && (
+            {preset.label !== "Custom" && preset.width > 0 && (
               <Text className="text-gray-400 text-sm -mt-2 mb-4">
-                5×5 grid — each cell represents one pot or container
+                {preset.width} ft wide × {preset.length} ft long
               </Text>
             )}
-            {preset.label !== "Custom" && preset.label !== "Pots/Containers" && preset.cols > 0 && (
-              <Text className="text-gray-400 text-sm -mt-2 mb-4">
-                {preset.cols} columns × {preset.rows} rows
-              </Text>
-            )}
-
-            <Text className="text-sm font-medium text-gray-700 mb-2">Sun Exposure</Text>
-            <View className="flex-row gap-2 mb-4">
-              {SUN_OPTIONS.map((opt) => (
-                <TouchableOpacity
-                  key={opt.value}
-                  onPress={() => setSunExposure(sunExposure === opt.value ? null : opt.value)}
-                  className={`flex-1 items-center py-2.5 rounded-xl border ${
-                    sunExposure === opt.value ? "bg-amber-50 border-amber-400" : "bg-white border-gray-200"
-                  }`}
-                >
-                  <Text className="text-xl mb-0.5">{opt.emoji}</Text>
-                  <Text className={`text-xs font-semibold ${sunExposure === opt.value ? "text-amber-700" : "text-gray-700"}`}>
-                    {opt.label}
-                  </Text>
-                  <Text className="text-xs text-gray-400">{opt.hint}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
 
             <View className="bg-green-50 border border-green-200 rounded-xl p-3 mt-2">
               <Text className="text-green-800 text-sm font-medium mb-1">Zone 8b tips</Text>
               <Text className="text-green-700 text-xs">
-                Your 10×20 veggie plot can be divided into zones for crop rotation tracking.
-                Mark walkways as unusable areas to keep your layout accurate.
+                Set the area to the real footprint of your yard or greenhouse — beds, paths, and
+                supports are drawn to scale inside it, so spacing and "how many fit" stay accurate.
               </Text>
             </View>
           </ScrollView>
@@ -675,45 +645,32 @@ export default function GardenScreen() {
   );
 }
 
-const SUN_LABEL: Record<string, { emoji: string; label: string }> = {
-  full_sun:    { emoji: "☀️",  label: "Full Sun" },
-  partial_sun: { emoji: "⛅",  label: "Partial Sun" },
-  shade:       { emoji: "🌥",  label: "Shade" },
-};
-
 function PlotCard({
   plot,
   onOpen,
   onEdit,
   onDelete,
 }: {
-  plot: GardenPlot;
+  plot: GardenArea;
   onOpen: () => void;
   onEdit: () => void;
   onDelete: () => void;
 }) {
-  const sun = plot.sun_exposure ? SUN_LABEL[plot.sun_exposure] : null;
   return (
     <Card className="p-0 overflow-hidden">
       <TouchableOpacity onPress={onOpen} activeOpacity={0.7}>
         <View className="bg-green-700 px-4 py-3 flex-row items-center justify-between">
           <Text className="text-white text-base font-bold">{plot.name}</Text>
           <View className="flex-row items-center gap-2">
-            {sun && (
-              <View className="bg-green-600 rounded-lg px-2 py-1 flex-row items-center gap-1">
-                <Text className="text-xs">{sun.emoji}</Text>
-                <Text className="text-green-100 text-xs">{sun.label}</Text>
-              </View>
-            )}
             <View className="bg-green-600 rounded-lg px-2 py-1">
-              <Text className="text-green-100 text-xs">{plot.cols}×{plot.rows}</Text>
+              <Text className="text-green-100 text-xs">{plot.width_ft}×{plot.length_ft} ft</Text>
             </View>
           </View>
         </View>
 
         <View className="px-4 py-3">
-          {plot.description ? (
-            <Text className="text-gray-600 text-sm mb-2">{plot.description}</Text>
+          {plot.notes ? (
+            <Text className="text-gray-600 text-sm mb-2">{plot.notes}</Text>
           ) : null}
           <View className="flex-row items-center justify-between">
             <Text className="text-green-700 text-sm font-medium">Open Map →</Text>
