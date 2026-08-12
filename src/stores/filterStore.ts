@@ -29,6 +29,13 @@ interface FilterState {
   memberFilter: string[];
   setMemberFilter: (ids: string[]) => void;
   toggleMember: (id: string) => void;
+  /**
+   * Per-tab "Crossed-off items are invisible" toggle. Keyed by a stable tab
+   * key (e.g. "tasks", "home", "project", "trip"). Each tab remembers its own
+   * on/off state. Absent/false = show crossed-off items (struck-through).
+   */
+  hideCompleted: Record<string, boolean>;
+  toggleHideCompleted: (key: string) => void;
 }
 
 export const useFilterStore = create<FilterState>()(
@@ -44,12 +51,18 @@ export const useFilterStore = create<FilterState>()(
           set({ memberFilter: [...current, id] });
         }
       },
+      hideCompleted: {},
+      toggleHideCompleted: (key) =>
+        set((state) => ({
+          hideCompleted: { ...state.hideCompleted, [key]: !state.hideCompleted[key] },
+        })),
     }),
     {
       name: "filter-prefs",
       storage: filterStorage,
       partialize: (state) => ({
         memberFilter: state.memberFilter,
+        hideCompleted: state.hideCompleted,
       }),
     }
   )

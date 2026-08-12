@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useUndoStore } from "@/stores/undoStore";
+import { useCompletedStore } from "@/stores/completedStore";
 import type { Trip, TripTask, TripUpdate, TripWithTasks } from "@/types/app.types";
 
 export function useTrips(householdId: string | undefined) {
@@ -138,21 +139,41 @@ export function useCompleteTripChecklistItem() {
 
       return { trip_id: task.trip_id };
     },
-    onMutate: async ({ task }) => {
-      // Optimistically remove from the Home dashboard list so the row disappears instantly
-      const snapshots = qc.getQueriesData<TripTask[]>({ queryKey: ["all_trip_tasks"] });
-      qc.setQueriesData<TripTask[]>({ queryKey: ["all_trip_tasks"] }, (old) =>
-        old ? old.filter((t) => t.id !== task.id) : old
-      );
-      return { snapshots };
+    // Cross-off pattern: keep the item visible (struck-through via
+    // completedStore) rather than vanishing. Mark it crossed-off immediately for
+    // instant feedback; do NOT invalidate the ["all_trip_tasks"] list so the
+    // struck row stays until the next refetch. The trip detail screen's own
+    // Completed section still refreshes via the ["trip"]/["completed_checklist"]
+    // invalidations.
+    onMutate: ({ task }) => {
+      useCompletedStore.getState().markCompleted(task.id, async () => {
+        const { error: reinsertErr } = await supabase.from("trip_tasks").insert({
+          trip_id: task.trip_id,
+          title: task.title,
+          checklist_name: task.checklist_name ?? "General",
+          assigned_member_id: task.assigned_member_id,
+          due_date: task.due_date,
+          is_completed: false,
+          sort_order: 9999,
+        });
+        if (reinsertErr) throw reinsertErr;
+        await supabase
+          .from("completed_checklist_items")
+          .delete()
+          .eq("original_task_id", task.id)
+          .eq("source_type", "trip");
+        qc.invalidateQueries({ queryKey: ["trip", task.trip_id] });
+        qc.invalidateQueries({ queryKey: ["completed_checklist", "trip", task.trip_id] });
+        qc.invalidateQueries({ queryKey: ["all_trip_tasks"] });
+      });
     },
-    onError: (_err, _vars, ctx) => {
-      ctx?.snapshots.forEach(([key, data]) => qc.setQueryData(key, data));
+    onError: (err, { task }) => {
+      console.error(err);
+      useCompletedStore.getState().unmark(task.id);
     },
     onSuccess: ({ trip_id }) => {
       qc.invalidateQueries({ queryKey: ["trip", trip_id] });
       qc.invalidateQueries({ queryKey: ["completed_checklist", "trip", trip_id] });
-      qc.invalidateQueries({ queryKey: ["all_trip_tasks"] });
     },
   });
 }

@@ -30,6 +30,7 @@ import {
 } from "@/hooks/useProjectTasks";
 import { useAuthStore } from "@/stores/authStore";
 import { useFilterStore } from "@/stores/filterStore";
+import { useCompletedStore, runUncomplete } from "@/stores/completedStore";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 import { Card } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
@@ -57,7 +58,7 @@ function dueTierToVariant(dateStr: string): "danger" | "due_today" | "due_tomorr
   return "default";
 }
 
-function LowLiftCard({ task, onPress, onComplete }: { task: RecurringTask; onPress: () => void; onComplete: () => void }) {
+function LowLiftCard({ task, onPress, onComplete, struck }: { task: RecurringTask; onPress: () => void; onComplete: () => void; struck?: boolean }) {
   const { members } = useHouseholdStore();
   const assignee = members.find((m) => m.id === task.assigned_member_id);
 
@@ -66,14 +67,14 @@ function LowLiftCard({ task, onPress, onComplete }: { task: RecurringTask; onPre
       <Card className="mb-3">
         <View className="flex-row items-start justify-between">
           <View className="flex-1 mr-3">
-            <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
+            <Text className={`text-base font-semibold ${struck ? "text-gray-400 line-through" : "text-gray-900"}`}>{task.title}</Text>
             {task.description ? (
-              <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>{task.description}</Text>
+              <Text className={`text-sm mt-0.5 ${struck ? "text-gray-300 line-through" : "text-gray-500"}`} numberOfLines={2}>{task.description}</Text>
             ) : null}
             <View className="flex-row items-center mt-1.5 gap-2 flex-wrap">
               <Badge
                 label={taskBadgeLabel(task.next_due_date, (task as any).time_of_day)}
-                variant={dueTierToVariant(task.next_due_date)}
+                variant={struck ? "default" : dueTierToVariant(task.next_due_date)}
                 size="sm"
               />
               <Text className="text-xs text-gray-400">
@@ -83,15 +84,25 @@ function LowLiftCard({ task, onPress, onComplete }: { task: RecurringTask; onPre
           </View>
           <View className="items-end gap-2">
             {assignee && <MemberAvatar member={assignee} size="sm" />}
-            <TouchableOpacity
-              onPress={(e) => { e.stopPropagation(); onComplete(); }}
-              className="bg-green-100 rounded-lg px-3 py-1.5"
-            >
-              <Text className="text-green-700 text-xs font-semibold">Done</Text>
-            </TouchableOpacity>
+            <CompleteButton struck={struck} onPress={onComplete} />
           </View>
         </View>
       </Card>
+    </TouchableOpacity>
+  );
+}
+
+// Shared Done / Undo button. Tapping toggles completion: green "Done" when
+// active, filled "✓ Undo" when the item is crossed-off (struck-through).
+function CompleteButton({ struck, onPress }: { struck?: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={(e) => { e.stopPropagation(); onPress(); }}
+      className={`rounded-lg px-3 py-1.5 ${struck ? "bg-green-600" : "bg-green-100"}`}
+    >
+      <Text className={`text-xs font-semibold ${struck ? "text-white" : "text-green-700"}`}>
+        {struck ? "✓ Undo" : "Done"}
+      </Text>
     </TouchableOpacity>
   );
 }
@@ -102,11 +113,13 @@ function ProjectAdjacentCard({
   projectTitle,
   onPress,
   onComplete,
+  struck,
 }: {
   task: ProjectTask & { notes?: string | null };
   projectTitle?: string;
   onPress: () => void;
   onComplete: () => void;
+  struck?: boolean;
 }) {
   const { members } = useHouseholdStore();
   const assignee = task.assigned_member_id
@@ -117,14 +130,14 @@ function ProjectAdjacentCard({
       <Card className="mb-3">
         <View className="flex-row items-start justify-between">
           <View className="flex-1 mr-2">
-            <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
+            <Text className={`text-base font-semibold ${struck ? "text-gray-400 line-through" : "text-gray-900"}`}>{task.title}</Text>
             {projectTitle && (
-              <Text className="text-xs text-blue-500 mt-0.5 font-medium">
+              <Text className={`text-xs mt-0.5 font-medium ${struck ? "text-blue-300 line-through" : "text-blue-500"}`}>
                 {projectTitle} · {task.checklist_name ?? "General"}
               </Text>
             )}
             {(task as any).notes ? (
-              <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>
+              <Text className={`text-sm mt-0.5 ${struck ? "text-gray-300 line-through" : "text-gray-500"}`} numberOfLines={2}>
                 {(task as any).notes}
               </Text>
             ) : null}
@@ -132,7 +145,7 @@ function ProjectAdjacentCard({
               <View className="mt-1.5">
                 <Badge
                   label={taskBadgeLabel(task.due_date)}
-                  variant={dueTierToVariant(task.due_date)}
+                  variant={struck ? "default" : dueTierToVariant(task.due_date)}
                   size="sm"
                 />
               </View>
@@ -140,12 +153,7 @@ function ProjectAdjacentCard({
           </View>
           <View className="items-end gap-2">
             {assignee && <MemberAvatar member={assignee} size="sm" />}
-            <TouchableOpacity
-              onPress={(e) => { e.stopPropagation(); onComplete(); }}
-              className="bg-green-100 rounded-lg px-3 py-1.5"
-            >
-              <Text className="text-green-700 text-xs font-semibold">Done</Text>
-            </TouchableOpacity>
+            <CompleteButton struck={struck} onPress={onComplete} />
           </View>
         </View>
       </Card>
@@ -154,7 +162,7 @@ function ProjectAdjacentCard({
 }
 
 // ── Standalone Task Card ──────────────────────────────────────────────────────
-function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress: () => void; onComplete: () => void }) {
+function StandaloneTaskCard({ task, onPress, onComplete, struck }: { task: Task; onPress: () => void; onComplete: () => void; struck?: boolean }) {
   const { members } = useHouseholdStore();
   const assignee = task.assigned_member_id
     ? members.find((m) => m.id === task.assigned_member_id)
@@ -165,15 +173,15 @@ function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress
       <Card className="mb-3">
         <View className="flex-row items-start justify-between">
           <View className="flex-1 mr-2">
-            <Text className="text-base font-semibold text-gray-900">{task.title}</Text>
+            <Text className={`text-base font-semibold ${struck ? "text-gray-400 line-through" : "text-gray-900"}`}>{task.title}</Text>
             {task.notes ? (
-              <Text className="text-sm text-gray-500 mt-0.5" numberOfLines={2}>{task.notes}</Text>
+              <Text className={`text-sm mt-0.5 ${struck ? "text-gray-300 line-through" : "text-gray-500"}`} numberOfLines={2}>{task.notes}</Text>
             ) : null}
             {task.due_date && (
               <View className="mt-1.5">
                 <Badge
                   label={taskBadgeLabel(task.due_date)}
-                  variant={dueTierToVariant(task.due_date)}
+                  variant={struck ? "default" : dueTierToVariant(task.due_date)}
                   size="sm"
                 />
               </View>
@@ -181,12 +189,7 @@ function StandaloneTaskCard({ task, onPress, onComplete }: { task: Task; onPress
           </View>
           <View className="items-end gap-2">
             {assignee && <MemberAvatar member={assignee} size="sm" />}
-            <TouchableOpacity
-              onPress={(e) => { e.stopPropagation(); onComplete(); }}
-              className="bg-green-100 rounded-lg px-3 py-1.5"
-            >
-              <Text className="text-green-700 text-xs font-semibold">Done</Text>
-            </TouchableOpacity>
+            <CompleteButton struck={struck} onPress={onComplete} />
           </View>
         </View>
       </Card>
@@ -210,7 +213,10 @@ export default function TasksScreen() {
   const { memberFilter: ownerFilter, toggleMember: toggleOwnerFilter } = useFilterStore();
   const [filterDue, setFilterDue] = useState<"overdue" | "due_soon" | null>(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const taskActiveFilterCount = (ownerFilter.length > 0 ? 1 : 0) + (filterDue ? 1 : 0);
+  const hideCompleted = useFilterStore((s) => s.hideCompleted["tasks"] ?? false);
+  const toggleHideCompleted = useFilterStore((s) => s.toggleHideCompleted);
+  const struckIds = useCompletedStore((s) => s.ids);
+  const taskActiveFilterCount = (ownerFilter.length > 0 ? 1 : 0) + (filterDue ? 1 : 0) + (hideCompleted ? 1 : 0);
   const [searchQuery, setSearchQuery] = useState("");
 
   const currentMember = members.find((m) => m.user_id === user?.id);
@@ -636,8 +642,10 @@ export default function TasksScreen() {
     );
   };
 
-  // Direct-complete from card (no modal involved)
+  // Direct-complete / uncomplete from card (no modal involved). Tapping the
+  // button crosses the item off (struck-through); tapping again reverses it.
   const handleCardCompleteLowLift = async (task: RecurringTask) => {
+    if (struckIds[task.id]) { await runUncomplete(task.id); return; }
     await notificationSuccess();
     if (!currentMember) return;
     try {
@@ -648,6 +656,7 @@ export default function TasksScreen() {
   };
 
   const handleCardCompletePA = async (task: ProjectTask) => {
+    if (struckIds[task.id]) { await runUncomplete(task.id); return; }
     await notificationSuccess();
     try {
       await completeProjectTask.mutateAsync({ task, completedByMemberId: currentMember?.id ?? null });
@@ -657,6 +666,7 @@ export default function TasksScreen() {
   };
 
   const handleCardCompleteStandalone = async (task: Task) => {
+    if (struckIds[task.id]) { await runUncomplete(task.id); return; }
     await notificationSuccess();
     if (!household) return;
     try {
@@ -677,6 +687,7 @@ export default function TasksScreen() {
 
   // Apply owner + due filter + personal task visibility + search
   const visibleRecurring = recurringTasks.filter((t) => {
+    if (hideCompleted && struckIds[t.id]) return false;
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
     if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !isOverdue(t.next_due_date)) return false;
@@ -686,6 +697,7 @@ export default function TasksScreen() {
   });
 
   const visibleProjectTasks = projectTasks.filter((t) => {
+    if (hideCompleted && struckIds[t.id]) return false;
     const personal = (t as any).is_personal ?? false;
     if (!isVisible(t.assigned_member_id, personal)) return false;
     if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
@@ -696,6 +708,7 @@ export default function TasksScreen() {
   });
 
   const visibleStandalone = standaloneTasks.filter((t) => {
+    if (hideCompleted && struckIds[t.id]) return false;
     if (!isVisible(t.assigned_member_id, t.is_personal)) return false;
     if (ownerFilter.length > 0 && !(t.assigned_member_id ? ownerFilter.includes(t.assigned_member_id) : ownerFilter.includes("__unassigned__"))) return false;
     if (filterDue === "overdue" && !(t.due_date && isOverdue(t.due_date))) return false;
@@ -831,6 +844,16 @@ export default function TasksScreen() {
               <Text className={`text-xs font-semibold ${filterDue === "due_soon" ? "text-white" : "text-gray-600"}`}>Due Soon</Text>
             </TouchableOpacity>
           </View>
+
+          <Text className="text-xs font-semibold text-gray-500 mb-2 mt-3">Crossed off</Text>
+          <TouchableOpacity
+            onPress={() => toggleHideCompleted("tasks")}
+            className={`self-start px-3 py-1 rounded-full border flex-row items-center ${hideCompleted ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+          >
+            <Text className={`text-xs font-semibold ${hideCompleted ? "text-white" : "text-gray-600"}`}>
+              {hideCompleted ? "✓ " : ""}Crossed-off items are invisible
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
       )}
@@ -848,7 +871,7 @@ export default function TasksScreen() {
                   Recurring
                 </Text>
                 {sortedRecurring.map((task) => (
-                  <LowLiftCard key={task.id} task={task} onPress={() => openLowLiftEdit(task)} onComplete={() => handleCardCompleteLowLift(task)} />
+                  <LowLiftCard key={task.id} task={task} struck={!!struckIds[task.id]} onPress={() => openLowLiftEdit(task)} onComplete={() => handleCardCompleteLowLift(task)} />
                 ))}
               </>
             )}
@@ -862,6 +885,7 @@ export default function TasksScreen() {
                   <StandaloneTaskCard
                     key={task.id}
                     task={task}
+                    struck={!!struckIds[task.id]}
                     onPress={() => openStandaloneEdit(task)}
                     onComplete={() => handleCardCompleteStandalone(task)}
                   />
@@ -894,6 +918,7 @@ export default function TasksScreen() {
                     key={task.id}
                     task={task as any}
                     projectTitle={(task as any).project_title}
+                    struck={!!struckIds[task.id]}
                     onPress={() => openPAEdit(task as any)}
                     onComplete={() => handleCardCompletePA(task)}
                   />

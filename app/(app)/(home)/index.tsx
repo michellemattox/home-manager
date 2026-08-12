@@ -12,6 +12,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useHouseholdStore } from "@/stores/householdStore";
 import { useAuthStore } from "@/stores/authStore";
 import { useFilterStore } from "@/stores/filterStore";
+import { useCompletedStore, runUncomplete } from "@/stores/completedStore";
 import { useProjects } from "@/hooks/useProjects";
 import { useRecurringTasks, useCompleteRecurringTask } from "@/hooks/useRecurringTasks";
 import { useTasks, useCompleteTask, useCompletedTasks } from "@/hooks/useTasks";
@@ -158,26 +159,36 @@ function tierStyle(dateStr: string) {
   return TIER_STYLES[dueTier(dateStr) ?? "default"];
 }
 
+// Shared Home Done / Undo button. Tapping toggles completion.
+function HomeCompleteButton({ struck, onPress }: { struck?: boolean; onPress: () => void }) {
+  return (
+    <TouchableOpacity
+      onPress={(e) => { e.stopPropagation(); onPress(); }}
+      className={`rounded-lg px-3 py-1.5 ${struck ? "bg-green-600" : "bg-green-100"}`}
+    >
+      <Text className={`text-xs font-semibold ${struck ? "text-white" : "text-green-700"}`}>
+        {struck ? "✓ Undo" : "Done"}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 function RecurringTaskRow({
   task,
   onComplete,
   onPress,
-}: { task: RecurringTask; onComplete: () => void; onPress: () => void }) {
+  struck,
+}: { task: RecurringTask; onComplete: () => void; onPress: () => void; struck?: boolean }) {
   const style = tierStyle(task.next_due_date);
   return (
-    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${style.bg}`}>
+    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${struck ? "bg-gray-50 border-gray-200" : style.bg}`}>
       <View className="flex-row items-center">
         <View className="flex-1 mr-2">
-          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
+          <Text className={`text-sm font-semibold ${struck ? "text-gray-400 line-through" : "text-gray-900"}`} numberOfLines={1}>{task.title}</Text>
           <Text className="text-[10px] text-gray-400 mt-0.5 uppercase font-semibold">Task</Text>
-          <Text className={`text-xs mt-0.5 ${style.dateColor}`}>{taskBadgeLabel(task.next_due_date, (task as any).time_of_day)}</Text>
+          <Text className={`text-xs mt-0.5 ${struck ? "text-gray-300 line-through" : style.dateColor}`}>{taskBadgeLabel(task.next_due_date, (task as any).time_of_day)}</Text>
         </View>
-        <TouchableOpacity
-          onPress={(e) => { e.stopPropagation(); onComplete(); }}
-          className="bg-green-100 rounded-lg px-3 py-1.5"
-        >
-          <Text className="text-green-700 text-xs font-semibold">Done</Text>
-        </TouchableOpacity>
+        <HomeCompleteButton struck={struck} onPress={onComplete} />
       </View>
     </TouchableOpacity>
   );
@@ -187,24 +198,20 @@ function OneOffTaskRow({
   task,
   onPress,
   onComplete,
-}: { task: Task; onPress: () => void; onComplete: () => void }) {
+  struck,
+}: { task: Task; onPress: () => void; onComplete: () => void; struck?: boolean }) {
   const style = task.due_date ? tierStyle(task.due_date) : TIER_STYLES.default;
   return (
-    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${style.bg}`}>
+    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${struck ? "bg-gray-50 border-gray-200" : style.bg}`}>
       <View className="flex-row items-center">
         <View className="flex-1 mr-2">
-          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{task.title}</Text>
+          <Text className={`text-sm font-semibold ${struck ? "text-gray-400 line-through" : "text-gray-900"}`} numberOfLines={1}>{task.title}</Text>
           <Text className="text-[10px] text-gray-400 mt-0.5 uppercase font-semibold">Task</Text>
           {task.due_date && (
-            <Text className={`text-xs mt-0.5 ${style.dateColor}`}>{taskBadgeLabel(task.due_date)}</Text>
+            <Text className={`text-xs mt-0.5 ${struck ? "text-gray-300 line-through" : style.dateColor}`}>{taskBadgeLabel(task.due_date)}</Text>
           )}
         </View>
-        <TouchableOpacity
-          onPress={(e) => { e.stopPropagation(); onComplete(); }}
-          className="bg-green-100 rounded-lg px-3 py-1.5"
-        >
-          <Text className="text-green-700 text-xs font-semibold">Done</Text>
-        </TouchableOpacity>
+        <HomeCompleteButton struck={struck} onPress={onComplete} />
       </View>
     </TouchableOpacity>
   );
@@ -217,6 +224,7 @@ function ChecklistItemRow({
   sourceType,
   onPress,
   onComplete,
+  struck,
 }: {
   title: string;
   parentTitle: string;
@@ -224,23 +232,19 @@ function ChecklistItemRow({
   sourceType: "Project" | "Activity";
   onPress: () => void;
   onComplete: () => void;
+  struck?: boolean;
 }) {
   const style = tierStyle(dueDate);
   return (
-    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${style.bg}`}>
+    <TouchableOpacity onPress={onPress} className={`border rounded-xl p-3 mb-2 ${struck ? "bg-gray-50 border-gray-200" : style.bg}`}>
       <View className="flex-row items-center">
         <View className="flex-1 mr-2">
-          <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>{title}</Text>
-          <Text className="text-xs text-gray-500 mt-0.5" numberOfLines={1}>{parentTitle}</Text>
+          <Text className={`text-sm font-semibold ${struck ? "text-gray-400 line-through" : "text-gray-900"}`} numberOfLines={1}>{title}</Text>
+          <Text className={`text-xs mt-0.5 ${struck ? "text-gray-300 line-through" : "text-gray-500"}`} numberOfLines={1}>{parentTitle}</Text>
           <Text className="text-[10px] text-gray-400 mt-0.5 uppercase font-semibold">{sourceType}</Text>
-          <Text className={`text-xs mt-0.5 ${style.dateColor}`}>{taskBadgeLabel(dueDate)}</Text>
+          <Text className={`text-xs mt-0.5 ${struck ? "text-gray-300 line-through" : style.dateColor}`}>{taskBadgeLabel(dueDate)}</Text>
         </View>
-        <TouchableOpacity
-          onPress={(e) => { e.stopPropagation(); onComplete(); }}
-          className="bg-green-100 rounded-lg px-3 py-1.5"
-        >
-          <Text className="text-green-700 text-xs font-semibold">Done</Text>
-        </TouchableOpacity>
+        <HomeCompleteButton struck={struck} onPress={onComplete} />
       </View>
     </TouchableOpacity>
   );
@@ -420,6 +424,9 @@ export default function HomeScreen() {
   const currentMember = members.find((m) => m.user_id === user?.id);
 
   const { memberFilter: selectedMembers, toggleMember } = useFilterStore();
+  const hideCompleted = useFilterStore((s) => s.hideCompleted["home"] ?? false);
+  const toggleHideCompleted = useFilterStore((s) => s.toggleHideCompleted);
+  const struckIds = useCompletedStore((s) => s.ids);
 
   const { data: projects, isLoading: loadingProjects } = useProjects(household?.id);
   const { data: tasks, isLoading: loadingTasks } = useRecurringTasks(household?.id);
@@ -685,10 +692,13 @@ export default function HomeScreen() {
     return getItemTime(a) - getItemTime(b);
   };
 
-  const filteredRecurring = (tasks ?? []).filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
-  const filteredOneOff = oneOffTasks.filter((t) => isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
-  const filteredProjectTasks = allProjectTasks.filter((t) => t.due_date && isVisible(t.assigned_member_id, (t as any).is_personal) && matchesMember(t.assigned_member_id));
-  const filteredTripTasks = allTripTasks.filter((t) => t.due_date && matchesMember(t.assigned_member_id));
+  // When "Crossed-off items are invisible" is on, drop items the user just
+  // checked off (tracked in completedStore) from the Home dashboard.
+  const showItem = (id: string) => !(hideCompleted && struckIds[id]);
+  const filteredRecurring = (tasks ?? []).filter((t) => showItem(t.id) && isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
+  const filteredOneOff = oneOffTasks.filter((t) => showItem(t.id) && isVisible(t.assigned_member_id, t.is_personal) && matchesMember(t.assigned_member_id));
+  const filteredProjectTasks = allProjectTasks.filter((t) => showItem(t.id) && t.due_date && isVisible(t.assigned_member_id, (t as any).is_personal) && matchesMember(t.assigned_member_id));
+  const filteredTripTasks = allTripTasks.filter((t) => showItem(t.id) && t.due_date && matchesMember(t.assigned_member_id));
 
   function buildTierItems(
     recurringFilter: (t: RecurringTask) => boolean,
@@ -769,7 +779,9 @@ export default function HomeScreen() {
     })
     .sort((a, b) => a.nextDue.getTime() - b.nextDue.getTime());
 
+  // Tapping Done crosses the item off (struck-through); tapping again reverses.
   const handleCompleteRecurring = async (task: RecurringTask) => {
+    if (struckIds[task.id]) { await runUncomplete(task.id); return; }
     await notificationSuccess();
     if (!currentMember) return;
     try {
@@ -780,6 +792,7 @@ export default function HomeScreen() {
   };
 
   const handleCompleteOneOff = async (task: Task) => {
+    if (struckIds[task.id]) { await runUncomplete(task.id); return; }
     await notificationSuccess();
     try {
       await completeOneOff.mutateAsync({ id: task.id, householdId: household!.id });
@@ -789,6 +802,7 @@ export default function HomeScreen() {
   };
 
   const handleCompleteProjectTask = async (task: ProjectTask) => {
+    if (struckIds[task.id]) { await runUncomplete(task.id); return; }
     await notificationSuccess();
     if (!currentMember) return;
     try {
@@ -799,6 +813,7 @@ export default function HomeScreen() {
   };
 
   const handleCompleteTripTask = async (task: TripTask) => {
+    if (struckIds[task.id]) { await runUncomplete(task.id); return; }
     await notificationSuccess();
     if (!currentMember) return;
     try {
@@ -841,6 +856,7 @@ export default function HomeScreen() {
           <RecurringTaskRow
             key={`rt-${t.id}-${index}`}
             task={t}
+            struck={!!struckIds[t.id]}
             onPress={() => router.push(`/(app)/(tasks)?openTaskId=${t.id}`)}
             onComplete={() => handleCompleteRecurring(t)}
           />
@@ -852,6 +868,7 @@ export default function HomeScreen() {
           <OneOffTaskRow
             key={`oo-${t.id}-${index}`}
             task={t}
+            struck={!!struckIds[t.id]}
             onPress={() => router.push(`/(app)/(tasks)?openStandaloneId=${t.id}`)}
             onComplete={() => handleCompleteOneOff(t)}
           />
@@ -866,6 +883,7 @@ export default function HomeScreen() {
             parentTitle={(t as any).project_title ?? "Project"}
             dueDate={t.due_date!}
             sourceType="Project"
+            struck={!!struckIds[t.id]}
             onPress={() => router.push(`/(app)/(projects)/${t.project_id}`)}
             onComplete={() => handleCompleteProjectTask(t)}
           />
@@ -880,6 +898,7 @@ export default function HomeScreen() {
             parentTitle={(t as any).trip_title ?? "Trip"}
             dueDate={t.due_date!}
             sourceType="Activity"
+            struck={!!struckIds[t.id]}
             onPress={() => router.push(`/(app)/(activity)/${t.trip_id}`)}
             onComplete={() => handleCompleteTripTask(t)}
           />
@@ -927,6 +946,18 @@ export default function HomeScreen() {
               </TouchableOpacity>
             );
           })}
+        </View>
+
+        {/* Crossed-off visibility toggle */}
+        <View className="flex-row mt-2">
+          <TouchableOpacity
+            onPress={() => toggleHideCompleted("home")}
+            className={`px-3 py-1 rounded-full border flex-row items-center ${hideCompleted ? "bg-gray-700 border-gray-700" : "bg-white border-gray-300"}`}
+          >
+            <Text className={`text-xs font-semibold ${hideCompleted ? "text-white" : "text-gray-600"}`}>
+              {hideCompleted ? "✓ " : ""}Crossed-off items are invisible
+            </Text>
+          </TouchableOpacity>
         </View>
 
         {/* Stats Row */}

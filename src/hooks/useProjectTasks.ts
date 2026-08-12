@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
-import { useUndoStore } from "@/stores/undoStore";
+import { useCompletedStore } from "@/stores/completedStore";
 import type { ProjectTask } from "@/types/app.types";
 
 export function useAddProjectTask() {
@@ -101,51 +101,66 @@ export function useCompleteProjectChecklistItem() {
       completedByMemberId: string | null;
     }) => ({ task, completedByMemberId }),
     onSuccess: ({ task, completedByMemberId }) => {
-      const allTasksKey = ["all_project_tasks"] as const;
-      const allTasks = qc.getQueryData<ProjectTask[]>(allTasksKey);
-      const index = allTasks?.findIndex((t) => t.id === task.id) ?? -1;
-
-      // Optimistically remove from all project tasks cache
-      qc.setQueryData(allTasksKey, (old: ProjectTask[] | undefined) =>
-        old ? old.filter((t) => t.id !== task.id) : old
-      );
-
-      useUndoStore.getState().schedule({
-        label: "Task completed",
-        restore: () => {
-          qc.setQueryData(allTasksKey, (old: ProjectTask[] | undefined) => {
-            if (!old) return old;
-            const arr = [...old];
-            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, task);
-            return arr;
-          });
-        },
-        execute: async () => {
-          const { error: archiveError } = await supabase
-            .from("completed_checklist_items")
-            .insert({
-              source_type: "project",
-              source_id: task.project_id,
-              original_task_id: task.id,
-              title: task.title,
-              checklist_name: task.checklist_name ?? "General",
-              assigned_member_id: task.assigned_member_id,
-              due_date: task.due_date,
-              completed_by: completedByMemberId,
-            });
-          if (archiveError) throw archiveError;
-
-          const { error: deleteError } = await supabase
-            .from("project_tasks")
-            .delete()
-            .eq("id", task.id);
-          if (deleteError) throw deleteError;
-
-          qc.invalidateQueries({ queryKey: ["project", task.project_id] });
-          qc.invalidateQueries({ queryKey: ["completed_checklist", "project", task.project_id] });
-          qc.invalidateQueries({ queryKey: allTasksKey });
-        },
+      // Cross-off pattern: keep the checklist item visible (struck-through via
+      // completedStore) instead of a 2-second undo bar. We archive + delete the
+      // original row immediately but do NOT invalidate the Tasks-tab
+      // ["all_project_tasks"] list, so the struck row stays until the next
+      // refetch. The project detail screen's own Completed section is still
+      // refreshed via the ["project"] / ["completed_checklist"] invalidations.
+      useCompletedStore.getState().markCompleted(task.id, async () => {
+        // Reverse: re-create the original task and delete the archive row.
+        const { error: reinsertErr } = await supabase.from("project_tasks").insert({
+          project_id: task.project_id,
+          title: task.title,
+          checklist_name: task.checklist_name ?? "General",
+          assigned_member_id: task.assigned_member_id,
+          due_date: task.due_date,
+          is_completed: false,
+          sort_order: 9999,
+        });
+        if (reinsertErr) throw reinsertErr;
+        await supabase
+          .from("completed_checklist_items")
+          .delete()
+          .eq("original_task_id", task.id)
+          .eq("source_type", "project");
+        qc.invalidateQueries({ queryKey: ["project", task.project_id] });
+        qc.invalidateQueries({ queryKey: ["completed_checklist", "project", task.project_id] });
+        qc.invalidateQueries({ queryKey: ["all_project_tasks"] });
       });
+
+      (async () => {
+        const { error: archiveError } = await supabase
+          .from("completed_checklist_items")
+          .insert({
+            source_type: "project",
+            source_id: task.project_id,
+            original_task_id: task.id,
+            title: task.title,
+            checklist_name: task.checklist_name ?? "General",
+            assigned_member_id: task.assigned_member_id,
+            due_date: task.due_date,
+            completed_by: completedByMemberId,
+          });
+        if (archiveError) {
+          console.error(archiveError);
+          useCompletedStore.getState().unmark(task.id);
+          return;
+        }
+
+        const { error: deleteError } = await supabase
+          .from("project_tasks")
+          .delete()
+          .eq("id", task.id);
+        if (deleteError) {
+          console.error(deleteError);
+          useCompletedStore.getState().unmark(task.id);
+          return;
+        }
+
+        qc.invalidateQueries({ queryKey: ["project", task.project_id] });
+        qc.invalidateQueries({ queryKey: ["completed_checklist", "project", task.project_id] });
+      })();
     },
   });
 }

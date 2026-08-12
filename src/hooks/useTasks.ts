@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/lib/supabase";
 import { useUndoStore } from "@/stores/undoStore";
+import { useCompletedStore } from "@/stores/completedStore";
 import type { Task } from "@/types/app.types";
 
 export function useTasks(householdId: string | undefined) {
@@ -94,35 +95,32 @@ export function useCompleteTask() {
       householdId: string;
     }) => ({ id, householdId }),
     onSuccess: ({ id, householdId }) => {
-      const queryKey = ["tasks", householdId] as const;
-      const items = qc.getQueryData<Task[]>(queryKey);
-      const item = items?.find((t) => t.id === id);
-      const index = items?.findIndex((t) => t.id === id) ?? -1;
-
-      // Optimistically remove from active tasks
-      qc.setQueryData(queryKey, (old: Task[] | undefined) =>
-        old ? old.filter((t) => t.id !== id) : old
-      );
-
-      useUndoStore.getState().schedule({
-        label: "Task completed",
-        restore: () =>
-          qc.setQueryData(queryKey, (old: Task[] | undefined) => {
-            if (!old || !item) return old;
-            const arr = [...old];
-            arr.splice(Math.min(index < 0 ? arr.length : index, arr.length), 0, item);
-            return arr;
-          }),
-        execute: async () => {
-          const { error } = await supabase
-            .from("tasks")
-            .update({ is_completed: true, completed_at: new Date().toISOString() })
-            .eq("id", id);
-          if (error) throw error;
-          qc.invalidateQueries({ queryKey });
-          qc.invalidateQueries({ queryKey: ["tasks_completed", householdId] });
-        },
+      // Cross-off pattern: keep the item in the active list (rendered
+      // struck-through via completedStore) instead of hiding it behind a
+      // 2-second undo bar. We deliberately do NOT invalidate the active
+      // ["tasks"] query here so the struck row stays visible until the next
+      // real refetch (pull-to-refresh / focus), when it drops off naturally.
+      useCompletedStore.getState().markCompleted(id, async () => {
+        const { error } = await supabase
+          .from("tasks")
+          .update({ is_completed: false, completed_at: null })
+          .eq("id", id);
+        if (error) throw error;
+        qc.invalidateQueries({ queryKey: ["tasks_completed", householdId] });
       });
+
+      supabase
+        .from("tasks")
+        .update({ is_completed: true, completed_at: new Date().toISOString() })
+        .eq("id", id)
+        .then(({ error }) => {
+          if (error) {
+            console.error(error);
+            useCompletedStore.getState().unmark(id);
+          } else {
+            qc.invalidateQueries({ queryKey: ["tasks_completed", householdId] });
+          }
+        });
     },
   });
 }
