@@ -67,14 +67,21 @@ All Supabase queries go through hooks in `src/hooks/`. Every hook follows the sa
 - Mutations call `queryClient.invalidateQueries` on success to refresh dependent data
 - `queryKey` arrays always include `householdId` so data is scoped per household
 
-### Undo Pattern
-Destructive actions (completing tasks, deleting items) use an optimistic undo pattern via `src/stores/undoStore.ts`:
+### Undo Pattern (deletes)
+**Deletions** use an optimistic undo pattern via `src/stores/undoStore.ts`:
 1. Optimistically remove item from the query cache
 2. Schedule the real DB operation on a 2-second delay
 3. Show `UndoToast` — if tapped, restore the item to cache and cancel the DB write
 4. If a second delete arrives before the timer, the first one flushes immediately
 
-Used in: `useRecurringTasks`, `useProjectTasks`, `useTasks`, `useGoals`, `useGarden`, `useServices`, `useIdeas`, `useTrips`.
+Used by the delete hooks in `useRecurringTasks`, `useProjectTasks`, `useTasks`, `useGoals`, `useGarden`, `useServices`, `useIdeas`, `useTrips`.
+
+### Cross-Off Pattern (completions)
+**Completing** a task no longer uses the 2-second undo bar. Checking a task off keeps it visible with a **strikethrough** and writes to the DB immediately; tapping the button again ("✓ Undo") reverses the write. Managed by `src/stores/completedStore.ts` (session-only, not persisted):
+- `markCompleted(id, undo)` flags the item crossed-off and registers how to reverse it; `runUncomplete(id)` runs that reversal on a second tap.
+- The completion hooks (`useCompleteTask`, `useCompleteRecurringTask`, `useCompleteProjectChecklistItem`, `useCompleteTripChecklistItem`) deliberately **do not invalidate the active list query**, so the struck row stays until the next real refetch (pull-to-refresh / focus), when it drops off (or, for recurring, reappears with its advanced due date). They still invalidate dependent queries (completed lists, project/trip detail).
+- Screens read `useCompletedStore((s) => s.ids)` to render struck rows and pass a `struck` prop to the task cards (Tasks tab: `LowLiftCard`/`StandaloneTaskCard`/`ProjectAdjacentCard`; Home: `RecurringTaskRow`/`OneOffTaskRow`/`ChecklistItemRow`). `useOverdueOrDueTodayCount` excludes struck ids.
+- **Per-tab "Crossed-off items are invisible" filter**: `filterStore.hideCompleted` is a `Record<tabKey, boolean>` (persisted, each tab independent — keys `"tasks"`, `"home"`). When on, struck items are filtered out of that tab's lists. The project/trip **detail** screens keep their own pre-existing "Completed" section (struck-through + tap-to-uncomplete) and simply archive immediately now.
 
 ### Completed Checklist Items
 When project/trip checklist items are marked done, they're archived to `completed_checklist_items` (not just toggled). The `useCompleteProjectChecklistItem` and `useCompleteTripChecklistItem` hooks handle archival. `useUncompleteChecklistItem` restores them to their original table with all metadata (owner, due date, checklist name).
