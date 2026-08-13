@@ -365,6 +365,29 @@ export function useDeleteCropHarvest() {
   });
 }
 
+// ── Watering (area-based) ─────────────────────────────────────────────────────
+// Reads/deletes reuse useGardenWatering / useDeleteGardenWateringLog from
+// useGarden.ts (keyed ["garden_watering", householdId]). This inserts one log
+// per selected garden so "individual / several / all gardens" all work.
+export function useLogWatering() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ householdId, areaIds, water_date, method, duration_min, amount_gal, notes }: {
+      householdId: string; areaIds: string[]; water_date: string; method: string;
+      duration_min: number | null; amount_gal: number | null; notes: string | null;
+    }) => {
+      const rows = areaIds.map((area_id) => ({
+        household_id: householdId, area_id, plot_id: null, zone_id: null,
+        water_date, method, duration_min, amount_gal, notes,
+      }));
+      const { error } = await supabase.from("garden_watering_logs").insert(rows);
+      if (error) throw error;
+      return householdId;
+    },
+    onSuccess: (householdId) => qc.invalidateQueries({ queryKey: ["garden_watering", householdId] }),
+  });
+}
+
 // ── Carry-over history choices (once per crop) ────────────────────────────────
 export function useGardenHistoryChoices(householdId: string | undefined) {
   return useQuery({

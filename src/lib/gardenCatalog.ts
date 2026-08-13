@@ -159,6 +159,63 @@ export const MATERIAL_CATALOG: MaterialDef[] = [
   { material: "other", label: "Other" },
 ];
 
+// ── Watering schedule ───────────────────────────────────────────────────────
+// Target: water every 3 days, tightening to every 2 when it's been hot (>85°F).
+// Significant rain counts as a watering for every garden. All editable here.
+export const WATERING = {
+  intervalDays: 3,
+  hotIntervalDays: 2,
+  hotThresholdF: 85,
+  rainWateringMm: 5,
+  /** Look back this many days of weather to decide if it's "been hot". */
+  hotLookbackDays: 3,
+};
+
+type Weatherish = { log_date: string; rainfall_mm: number | null; temp_high_f: number | null };
+
+const dayMs = 86400000;
+const parseDay = (d: string) => new Date(d + "T12:00:00");
+export const todayISO = () => new Date().toISOString().slice(0, 10);
+export const daysBetween = (from: string, to: string) =>
+  Math.round((parseDay(to).getTime() - parseDay(from).getTime()) / dayMs);
+export const addDaysISO = (d: string, n: number) =>
+  new Date(parseDay(d).getTime() + n * dayMs).toISOString().slice(0, 10);
+
+/** Dates (YYYY-MM-DD) where rainfall was heavy enough to count as a watering. */
+export function significantRainDates(weather: Weatherish[]): string[] {
+  return weather.filter((w) => (w.rainfall_mm ?? 0) >= WATERING.rainWateringMm).map((w) => w.log_date);
+}
+
+/** Has a recent day hit the hot threshold? (tightens the interval to 2 days) */
+export function isHotRecently(weather: Weatherish[], today = todayISO()): boolean {
+  return weather.some(
+    (w) => (w.temp_high_f ?? 0) >= WATERING.hotThresholdF && daysBetween(w.log_date, today) <= WATERING.hotLookbackDays && daysBetween(w.log_date, today) >= 0
+  );
+}
+
+export type WaterStatus = {
+  lastWatered: string | null;
+  intervalDays: number;
+  nextDue: string | null;
+  /** >0 overdue by N days, 0 due today, <0 days remaining. 999 = never watered. */
+  daysOverdue: number;
+  due: boolean;
+  hot: boolean;
+};
+
+/** Compute a garden's watering status from its own waterings + shared rain days. */
+export function computeWaterStatus(
+  areaWaterDates: string[], rainDates: string[], hot: boolean, today = todayISO()
+): WaterStatus {
+  const intervalDays = hot ? WATERING.hotIntervalDays : WATERING.intervalDays;
+  const all = [...areaWaterDates, ...rainDates].filter(Boolean).sort();
+  const lastWatered = all.length ? all[all.length - 1] : null;
+  if (!lastWatered) return { lastWatered: null, intervalDays, nextDue: null, daysOverdue: 999, due: true, hot };
+  const nextDue = addDaysISO(lastWatered, intervalDays);
+  const daysOverdue = daysBetween(nextDue, today);
+  return { lastWatered, intervalDays, nextDue, daysOverdue, due: daysOverdue >= 0, hot };
+}
+
 // ── Geometry / capacity helpers ─────────────────────────────────────────────
 export const inchesToFeet = (inch: number) => inch / 12;
 export const feetToInches = (ft: number) => ft * 12;

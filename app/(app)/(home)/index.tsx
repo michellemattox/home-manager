@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -39,6 +39,9 @@ import {
 } from "@/hooks/useGardenAdvisor";
 import { useHomeRealtime } from "@/hooks/useRealtimeInvalidate";
 import { useSeasonScore } from "@/hooks/useSeasonScore";
+import { useGardenAreas, useLogWatering } from "@/hooks/useGardenMap";
+import { useGardenWatering, useGardenWeatherLogs } from "@/hooks/useGarden";
+import { significantRainDates, isHotRecently, computeWaterStatus, todayISO } from "@/lib/gardenCatalog";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 
 function greeting() {
@@ -445,6 +448,21 @@ export default function HomeScreen() {
   const { data: wowUpdates = [] } = useWowUpdates(household?.id);
   const generateWow = useGenerateWow();
   const [generatingWow, setGeneratingWow] = useState(false);
+
+  // Gardens due for watering (surfaced as a task-like card on Home)
+  const { data: gardenAreas = [] } = useGardenAreas(household?.id);
+  const { data: wateringLogs = [] } = useGardenWatering(household?.id);
+  const { data: gardenWeather = [] } = useGardenWeatherLogs(household?.id);
+  const logWatering = useLogWatering();
+  const wateringDue = useMemo(() => {
+    const todayW = todayISO();
+    const rainDates = significantRainDates(gardenWeather);
+    const hot = isHotRecently(gardenWeather, todayW);
+    return gardenAreas.filter((a) => {
+      const dates = wateringLogs.filter((l) => (l as any).area_id === a.id).map((l) => l.water_date);
+      return computeWaterStatus(dates, rainDates, hot, todayW).due;
+    });
+  }, [gardenAreas, wateringLogs, gardenWeather]);
 
   // Garden Advisor
   const { data: advisorRecs = [] } = useGardenAdvisorRecs(household?.id);
@@ -1006,6 +1024,29 @@ export default function HomeScreen() {
 
         {/* Weekly Business Review (Monday 4pm PT snapshot) */}
         <WeeklyBusinessReview />
+
+        {/* Gardens due for watering */}
+        {wateringDue.length > 0 && (
+          <View className="mb-4 bg-white border border-sky-200 rounded-2xl overflow-hidden">
+            <TouchableOpacity onPress={() => router.push("/(app)/(garden)/watering")} className="bg-sky-600 px-4 py-2.5 flex-row items-center justify-between">
+              <Text className="text-white font-bold text-sm">💧 Needs water ({wateringDue.length})</Text>
+              <Text className="text-sky-100 text-xs">View →</Text>
+            </TouchableOpacity>
+            <View className="p-3 gap-2">
+              {wateringDue.map((a) => (
+                <View key={a.id} className="flex-row items-center gap-3">
+                  <Text className="text-lg">🌱</Text>
+                  <Text className="flex-1 text-sm font-semibold text-gray-800">{a.name}</Text>
+                  <TouchableOpacity
+                    onPress={() => household && logWatering.mutate({ householdId: household.id, areaIds: [a.id], water_date: todayISO(), method: "hand", duration_min: null, amount_gal: null, notes: null })}
+                    className="bg-blue-600 rounded-lg px-3 py-1.5">
+                    <Text className="text-white text-xs font-semibold">Watered</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
 
         {/* Needs Attention (Overdue) */}
         {hasAlerts && (

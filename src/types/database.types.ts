@@ -971,6 +971,7 @@ export type Database = {
       garden_watering_logs: {
         Row: {
           amount_gal: number | null
+          area_id: string | null
           created_at: string
           duration_min: number | null
           household_id: string
@@ -983,6 +984,7 @@ export type Database = {
         }
         Insert: {
           amount_gal?: number | null
+          area_id?: string | null
           created_at?: string
           duration_min?: number | null
           household_id: string
@@ -995,6 +997,7 @@ export type Database = {
         }
         Update: {
           amount_gal?: number | null
+          area_id?: string | null
           created_at?: string
           duration_min?: number | null
           household_id?: string
