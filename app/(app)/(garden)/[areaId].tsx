@@ -498,15 +498,37 @@ function BuildDrawer({
 function NumField({ label, value, unit, onChange }: { label: string; value: number | null; unit: string; onChange: (v: number) => void }) {
   const [text, setText] = useState(String(value ?? ""));
   React.useEffect(() => { setText(String(value ?? "")); }, [value]);
+  // Commit on blur/submit AND on every valid keystroke — react-native-web does
+  // not fire onEndEditing reliably, so relying on it alone dropped edits.
+  const commit = (raw: string) => { const n = parseFloat(raw); if (!isNaN(n)) onChange(n); };
   return (
     <View className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1 flex-1">
       <Text className="text-[9px] uppercase tracking-wide text-gray-400 font-bold">{label}</Text>
       <View className="flex-row items-center">
-        <TextInput value={text} onChangeText={setText} onEndEditing={() => { const n = parseFloat(text); if (!isNaN(n)) onChange(n); }}
-          keyboardType="decimal-pad" className="flex-1 text-base font-bold text-gray-900 py-0" />
+        <TextInput
+          value={text}
+          onChangeText={setText}
+          onBlur={() => commit(text)}
+          onSubmitEditing={() => commit(text)}
+          onEndEditing={() => commit(text)}
+          keyboardType="decimal-pad"
+          className="flex-1 text-base font-bold text-gray-900 py-0" />
         <Text className="text-[10px] text-gray-400">{unit}</Text>
       </View>
     </View>
+  );
+}
+
+// Text field that commits on blur/submit (RNW-safe, unlike onEndEditing).
+function TextField({ value, placeholder, onCommit }: { value: string; placeholder: string; onCommit: (v: string | null) => void }) {
+  const [text, setText] = useState(value);
+  React.useEffect(() => { setText(value); }, [value]);
+  const commit = () => onCommit(text.trim() || null);
+  return (
+    <TextInput
+      value={text} onChangeText={setText} placeholder={placeholder}
+      onBlur={commit} onSubmitEditing={commit} onEndEditing={commit}
+      className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" />
   );
 }
 
@@ -637,9 +659,8 @@ function Inspector({
 
       {selected?.type === "crop" && crop && (
         <View className="mb-3">
-          <TextInput defaultValue={crop.variety ?? ""} placeholder="Variety (optional)"
-            onEndEditing={(e) => onSaveCrop({ variety: e.nativeEvent.text || null })}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" />
+          <TextField value={crop.variety ?? ""} placeholder="Variety (optional)"
+            onCommit={(v) => onSaveCrop({ variety: v })} />
           <CropHarvestPanel crop={crop} />
         </View>
       )}
