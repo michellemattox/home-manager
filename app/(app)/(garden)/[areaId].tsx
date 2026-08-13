@@ -66,6 +66,7 @@ export default function GardenAreaScreen() {
   const [viewportH, setViewportH] = useState(0);
   const [scrollY, setScrollY] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [dragging, setDragging] = useState(false);
   const [carry, setCarry] = useState<{ cropId: string; cropName: string } | null>(null);
   const [supDel, setSupDel] = useState<{ id: string; count: number } | null>(null);
 
@@ -319,7 +320,10 @@ export default function GardenAreaScreen() {
     return false;
   })();
 
-  const adjustZoom = (factor: number) => setZoom((z) => Math.max(0.4, Math.min(3, z * factor)));
+  // Cap at 1 = fit-to-width, so the canvas never overflows sideways (no need for
+  // a nested horizontal scroll, which broke vertical scrolling). Zoom out to see
+  // more of a tall plot at once.
+  const adjustZoom = (factor: number) => setZoom((z) => Math.max(0.35, Math.min(1, z * factor)));
 
   // The bottom (or top) panel — inspector when something is selected, else the
   // build drawer. Rendered above or below the canvas per `panelAtTop`.
@@ -378,24 +382,23 @@ export default function GardenAreaScreen() {
       <ScrollView
         className="flex-1"
         contentContainerStyle={{ padding: 12 }}
-        scrollEnabled={!selected}
+        scrollEnabled={!dragging}
         scrollEventThrottle={16}
         onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
         onLayout={(e) => { setViewportW(e.nativeEvent.layout.width); setViewportH(e.nativeEvent.layout.height); }}
       >
-        <ScrollView horizontal scrollEnabled={!selected} showsHorizontalScrollIndicator={false}>
-          {scale > 0 && (
-            <View style={{ height: canvasHeight }}>
-              <GardenCanvas
-                area={area} beds={beds} hardscape={hardscape} supports={supports} crops={crops}
-                scale={scale} selected={selected} draft={polyDraft}
-                onSelectElement={(s) => { setSelected(s); setTool(null); }}
-                onCanvasPress={handleCanvasPress}
-                onMoveElement={handleMove}
-              />
-            </View>
-          )}
-        </ScrollView>
+        {scale > 0 && (
+          <View style={{ height: canvasHeight }}>
+            <GardenCanvas
+              area={area} beds={beds} hardscape={hardscape} supports={supports} crops={crops}
+              scale={scale} selected={selected} draft={polyDraft}
+              onSelectElement={(s) => { setSelected(s); setTool(null); }}
+              onCanvasPress={handleCanvasPress}
+              onMoveElement={handleMove}
+              onDragStateChange={setDragging}
+            />
+          </View>
+        )}
         <Text className="text-white/50 text-xs mt-2 text-center">
           {polyDraft.length > 0 ? `Tap to add corners (${polyDraft.length}) · then Finish. `
             : tool === "bed" && bedShape === "polygon" ? "Tap the map to start drawing corners. "

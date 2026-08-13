@@ -68,10 +68,11 @@ function SupportGlyph({ support, w, h, color }: { support: GardenSupport; w: num
 
 // A single element wrapper that supports tap-to-select and drag-to-move.
 function DraggableElement({
-  selected, interactive, scale, xFt, yFt, onSelect, onMove, style, children,
+  selected, interactive, scale, xFt, yFt, onSelect, onMove, onDragStart, onDragEnd, style, children,
 }: {
   selected: boolean; interactive: boolean; scale: number; xFt: number; yFt: number;
   onSelect: () => void; onMove?: (xFt: number, yFt: number) => void;
+  onDragStart?: () => void; onDragEnd?: () => void;
   style: any; children: React.ReactNode;
 }) {
   const pan = React.useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
@@ -79,20 +80,25 @@ function DraggableElement({
 
   // Recreated each render so it closes over fresh xFt/yFt/scale (a handful of
   // elements, so the cost is negligible and it avoids stale-closure bugs).
-  const shouldDrag = (_e: any, g: any) => draggable && (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3);
   const responder = PanResponder.create({
-    onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: shouldDrag,
-    // Capture the move before an ancestor ScrollView can claim it as a scroll.
-    onMoveShouldSetPanResponderCapture: shouldDrag,
+    // Grab a SELECTED element on touch so a drag wins over the surrounding
+    // ScrollView — which stays scrollable the rest of the time.
+    onStartShouldSetPanResponderCapture: () => draggable,
+    onStartShouldSetPanResponder: () => draggable,
+    onMoveShouldSetPanResponder: () => draggable,
+    onMoveShouldSetPanResponderCapture: () => draggable,
     onPanResponderTerminationRequest: () => false,
+    onPanResponderGrant: () => { onDragStart?.(); },
     onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
     onPanResponderRelease: (_e, g) => {
       pan.extractOffset();
       pan.setValue({ x: 0, y: 0 });
       pan.setOffset({ x: 0, y: 0 });
-      onMove?.(xFt + g.dx / scale, yFt + g.dy / scale);
+      onDragEnd?.();
+      // A near-zero move is a tap on the already-selected element — no-op.
+      if (Math.abs(g.dx) > 2 || Math.abs(g.dy) > 2) onMove?.(xFt + g.dx / scale, yFt + g.dy / scale);
     },
+    onPanResponderTerminate: () => { onDragEnd?.(); },
   });
 
   return (
@@ -109,7 +115,7 @@ function DraggableElement({
 
 export function GardenCanvas({
   area, beds, hardscape, supports, crops, scale,
-  selected, interactive = true, onSelectElement, onCanvasPress, onMoveElement, draft,
+  selected, interactive = true, onSelectElement, onCanvasPress, onMoveElement, onDragStateChange, draft,
 }: {
   area: GardenArea;
   beds: GardenBed[];
@@ -122,12 +128,17 @@ export function GardenCanvas({
   onSelectElement?: (sel: Selected) => void;
   onCanvasPress?: (xFt: number, yFt: number) => void;
   onMoveElement?: (type: "bed" | "hardscape" | "support" | "crop", id: string, xFt: number, yFt: number) => void;
+  /** Fires true when a drag begins and false when it ends, so the screen can
+   *  temporarily freeze scrolling during the drag only. */
+  onDragStateChange?: (active: boolean) => void;
   /** In-progress polygon vertices (feet) while drawing a bed. */
   draft?: { x: number; y: number }[];
 }) {
   const W = area.width_ft * scale;
   const H = area.length_ft * scale;
   const isSel = (type: string, id: string) => selected?.type === type && selected.id === id;
+  const dragStart = () => onDragStateChange?.(true);
+  const dragEnd = () => onDragStateChange?.(false);
 
   return (
     <View style={{ width: W, height: H, backgroundColor: "#4b6a36", borderRadius: 10, overflow: "hidden" }}>
@@ -151,7 +162,7 @@ export function GardenCanvas({
         return (
           <DraggableElement key={h.id} selected={sel} interactive={interactive} scale={scale}
             xFt={h.x_ft} yFt={h.y_ft} onSelect={() => onSelectElement?.({ type: "hardscape", id: h.id })}
-            onMove={(x, y) => onMoveElement?.("hardscape", h.id, x, y)}
+            onMove={(x, y) => onMoveElement?.("hardscape", h.id, x, y)} onDragStart={dragStart} onDragEnd={dragEnd}
             style={{ position: "absolute", ...box }}>
             <View style={{
               flex: 1, backgroundColor: st.bg, borderRadius: h.shape === "circle" ? 999 : 4,
@@ -174,7 +185,7 @@ export function GardenCanvas({
         return (
           <DraggableElement key={b.id} selected={sel} interactive={interactive} scale={scale}
             xFt={b.x_ft} yFt={b.y_ft} onSelect={() => onSelectElement?.({ type: "bed", id: b.id })}
-            onMove={(x, y) => onMoveElement?.("bed", b.id, x, y)}
+            onMove={(x, y) => onMoveElement?.("bed", b.id, x, y)} onDragStart={dragStart} onDragEnd={dragEnd}
             style={{ position: "absolute", ...box }}>
             {poly && poly.length >= 3 ? (
               <Svg width={box.width} height={box.height}>
@@ -212,7 +223,7 @@ export function GardenCanvas({
         return (
           <DraggableElement key={s.id} selected={sel} interactive={interactive} scale={scale}
             xFt={s.x_ft} yFt={s.y_ft} onSelect={() => onSelectElement?.({ type: "support", id: s.id })}
-            onMove={(x, y) => onMoveElement?.("support", s.id, x, y)}
+            onMove={(x, y) => onMoveElement?.("support", s.id, x, y)} onDragStart={dragStart} onDragEnd={dragEnd}
             style={{ position: "absolute", ...box }}>
             <View style={{ flex: 1, borderRadius: 4, borderWidth: sel ? 2 : 0, borderColor: GREEN }}>
               <SupportGlyph support={s} w={box.width} h={box.height} color={color} />
@@ -232,7 +243,7 @@ export function GardenCanvas({
         return (
           <DraggableElement key={c.id} selected={sel} interactive={interactive} scale={scale}
             xFt={c.x_ft} yFt={c.y_ft} onSelect={() => onSelectElement?.({ type: "crop", id: c.id })}
-            onMove={(x, y) => onMoveElement?.("crop", c.id, x, y)}
+            onMove={(x, y) => onMoveElement?.("crop", c.id, x, y)} onDragStart={dragStart} onDragEnd={dragEnd}
             style={{ position: "absolute", left: c.x_ft * scale - size / 2, top: c.y_ft * scale - size / 2, width: size, height: size }}>
             <View style={{
               flex: 1, borderRadius: 999,
