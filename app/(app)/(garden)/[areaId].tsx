@@ -62,12 +62,17 @@ export default function GardenAreaScreen() {
   const [supportChoice, setSupportChoice] = useState<SupportDef>(SUPPORT_CATALOG[0]);
   const [materialChoice, setMaterialChoice] = useState<HardscapeMaterial>("gravel");
   const [selected, setSelected] = useState<Selected>(null);
-  const [expanded, setExpanded] = useState(false);
-  const [canvasW, setCanvasW] = useState(0);
+  const [viewportW, setViewportW] = useState(0);
+  const [viewportH, setViewportH] = useState(0);
+  const [scrollY, setScrollY] = useState(0);
+  const [zoom, setZoom] = useState(1);
   const [carry, setCarry] = useState<{ cropId: string; cropName: string } | null>(null);
   const [supDel, setSupDel] = useState<{ id: string; count: number } | null>(null);
 
-  const scale = area && canvasW ? canvasW / area.width_ft : 0;
+  // Fit-to-width at zoom 1 (minus the 12px content padding each side); zoom
+  // scales from there. Zoom out to see the whole plot, in for detail.
+  const baseScale = area && viewportW ? (viewportW - 24) / area.width_ft : 0;
+  const scale = baseScale * zoom;
 
   const selectedBed = selected?.type === "bed" ? beds.find((b) => b.id === selected.id) : undefined;
   const selectedSupport = selected?.type === "support" ? supports.find((s) => s.id === selected.id) : undefined;
@@ -291,20 +296,94 @@ export default function GardenAreaScreen() {
   }
 
   const canvasHeight = area.length_ft * scale;
+  const contentH = canvasHeight + 24; // vertical padding
+
+  // On-screen center-Y (px from top of the scroll viewport) of the selected item.
+  const PAD = 12;
+  const selCenterY = (() => {
+    if (!selected || !scale) return null;
+    if (selected.type === "crop") { const c = crops.find((x) => x.id === selected.id); return c ? c.y_ft * scale : null; }
+    const el = selected.type === "bed" ? beds.find((b) => b.id === selected.id)
+      : selected.type === "hardscape" ? hardscape.find((h) => h.id === selected.id)
+      : supports.find((s) => s.id === selected.id);
+    return el ? (el.y_ft + (el.length_ft ?? 0) / 2) * scale : null;
+  })();
+
+  // Flip the panel to the TOP when you're working at the bottom of the garden:
+  // if the selected item sits in the lower half of the viewport, or (no
+  // selection) you've scrolled to the bottom of a plot taller than the screen.
+  const panelAtTop = (() => {
+    if (!viewportH) return false;
+    if (selCenterY != null) return PAD + selCenterY - scrollY > viewportH * 0.5;
+    if (contentH > viewportH) return scrollY + viewportH >= contentH - 8;
+    return false;
+  })();
+
+  const adjustZoom = (factor: number) => setZoom((z) => Math.max(0.4, Math.min(3, z * factor)));
+
+  // The bottom (or top) panel — inspector when something is selected, else the
+  // build drawer. Rendered above or below the canvas per `panelAtTop`.
+  const panelNode = selected ? (
+    <Inspector
+      atTop={panelAtTop}
+      selected={selected}
+      bed={selectedBed} support={selectedSupport} hardscape={selectedHard} crop={selectedCrop}
+      crops={crops} cropChoice={cropChoice} rowEndsCount={rowEnds.length}
+      onClose={() => setSelected(null)}
+      onSaveBed={(u) => selectedBed && updateBed.mutate({ id: selectedBed.id, areaId: area.id, updates: u })}
+      onSaveSupport={(u) => selectedSupport && updateSupport.mutate({ id: selectedSupport.id, areaId: area.id, updates: u })}
+      onSaveHard={(u) => selectedHard && updateHard.mutate({ id: selectedHard.id, areaId: area.id, updates: u })}
+      onSaveCrop={(u) => selectedCrop && updateCrop.mutate({ id: selectedCrop.id, areaId: area.id, updates: u })}
+      onFillBed={fillBed} onFillRow={fillRow}
+      cropSiblingCount={cropSiblings.length}
+      onFillRowCrop={fillRowFromCrop} onFillBedCrop={fillBedFromCrop}
+      onDelete={() => handleDelete()}
+    />
+  ) : (
+    <BuildDrawer
+      atTop={panelAtTop}
+      tool={tool} setTool={setTool}
+      cropChoice={cropChoice} setCropChoice={setCropChoice}
+      supportChoice={supportChoice} setSupportChoice={setSupportChoice}
+      materialChoice={materialChoice} setMaterialChoice={setMaterialChoice}
+      bedShape={bedShape} setBedShape={setBedShape}
+    />
+  );
 
   return (
     <SafeAreaView className="flex-1 bg-[#1f2417]" edges={["top"]}>
       {/* Header */}
       <View className="flex-row items-center justify-between px-4 py-3">
         <Pressable onPress={() => router.back()} hitSlop={10}><Text className="text-green-300 font-bold">‹ Garden</Text></Pressable>
-        <Text className="text-white font-extrabold" numberOfLines={1}>{area.name}</Text>
-        <Pressable onPress={() => setExpanded(true)} hitSlop={10}><Text className="text-green-300 font-bold">⤢ Expand</Text></Pressable>
+        <Text className="text-white font-extrabold flex-1 text-center" numberOfLines={1}>{area.name}</Text>
+        <View className="flex-row items-center gap-2">
+          <Text className="text-white/70 text-xs font-bold">Zoom</Text>
+          <Pressable onPress={() => adjustZoom(1 / 1.25)} hitSlop={8}
+            className="w-7 h-7 rounded-full bg-white/15 items-center justify-center">
+            <Text className="text-white text-lg font-bold" style={{ marginTop: -2 }}>−</Text>
+          </Pressable>
+          <Pressable onPress={() => adjustZoom(1.25)} hitSlop={8}
+            className="w-7 h-7 rounded-full bg-white/15 items-center justify-center">
+            <Text className="text-white text-lg font-bold" style={{ marginTop: -2 }}>+</Text>
+          </Pressable>
+        </View>
       </View>
 
+      {/* Panel flips to the top when working at the bottom of the garden */}
+      {panelAtTop && panelNode}
+
       {/* Canvas — freeze scrolling while an item is selected so a drag moves the
-          item instead of panning the page. Tap empty ground to deselect + scroll. */}
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 12 }} scrollEnabled={!selected}>
-        <View onLayout={(e) => setCanvasW(e.nativeEvent.layout.width)}>
+          item instead of panning the page. Tap empty ground to deselect + scroll.
+          Nested horizontal scroll lets you pan sideways when zoomed in. */}
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{ padding: 12 }}
+        scrollEnabled={!selected}
+        scrollEventThrottle={16}
+        onScroll={(e) => setScrollY(e.nativeEvent.contentOffset.y)}
+        onLayout={(e) => { setViewportW(e.nativeEvent.layout.width); setViewportH(e.nativeEvent.layout.height); }}
+      >
+        <ScrollView horizontal scrollEnabled={!selected} showsHorizontalScrollIndicator={false}>
           {scale > 0 && (
             <View style={{ height: canvasHeight }}>
               <GardenCanvas
@@ -316,7 +395,7 @@ export default function GardenAreaScreen() {
               />
             </View>
           )}
-        </View>
+        </ScrollView>
         <Text className="text-white/50 text-xs mt-2 text-center">
           {polyDraft.length > 0 ? `Tap to add corners (${polyDraft.length}) · then Finish. `
             : tool === "bed" && bedShape === "polygon" ? "Tap the map to start drawing corners. "
@@ -342,34 +421,7 @@ export default function GardenAreaScreen() {
         </View>
       )}
 
-      {/* Inspector (when something selected) */}
-      {selected && (
-        <Inspector
-          selected={selected}
-          bed={selectedBed} support={selectedSupport} hardscape={selectedHard} crop={selectedCrop}
-          crops={crops} cropChoice={cropChoice} rowEndsCount={rowEnds.length}
-          onClose={() => setSelected(null)}
-          onSaveBed={(u) => selectedBed && updateBed.mutate({ id: selectedBed.id, areaId: area.id, updates: u })}
-          onSaveSupport={(u) => selectedSupport && updateSupport.mutate({ id: selectedSupport.id, areaId: area.id, updates: u })}
-          onSaveHard={(u) => selectedHard && updateHard.mutate({ id: selectedHard.id, areaId: area.id, updates: u })}
-          onSaveCrop={(u) => selectedCrop && updateCrop.mutate({ id: selectedCrop.id, areaId: area.id, updates: u })}
-          onFillBed={fillBed} onFillRow={fillRow}
-          cropSiblingCount={cropSiblings.length}
-          onFillRowCrop={fillRowFromCrop} onFillBedCrop={fillBedFromCrop}
-          onDelete={() => handleDelete()}
-        />
-      )}
-
-      {/* Build drawer (when nothing selected) */}
-      {!selected && (
-        <BuildDrawer
-          tool={tool} setTool={setTool}
-          cropChoice={cropChoice} setCropChoice={setCropChoice}
-          supportChoice={supportChoice} setSupportChoice={setSupportChoice}
-          materialChoice={materialChoice} setMaterialChoice={setMaterialChoice}
-          bedShape={bedShape} setBedShape={setBedShape}
-        />
-      )}
+      {!panelAtTop && panelNode}
 
       {/* Carry-over prompt */}
       <Modal visible={!!carry} transparent animationType="fade" onRequestClose={() => resolveCarry("declined")}>
@@ -413,12 +465,6 @@ export default function GardenAreaScreen() {
           </View>
         </View>
       </Modal>
-
-      {/* Expanded hop-around map */}
-      <ExpandedMap
-        visible={expanded} onClose={() => setExpanded(false)}
-        area={area} beds={beds} hardscape={hardscape} supports={supports} crops={crops}
-      />
     </SafeAreaView>
   );
 
@@ -441,9 +487,10 @@ export default function GardenAreaScreen() {
 
 // ── Build drawer ────────────────────────────────────────────────────────────────
 function BuildDrawer({
-  tool, setTool, cropChoice, setCropChoice, supportChoice, setSupportChoice, materialChoice, setMaterialChoice,
+  atTop, tool, setTool, cropChoice, setCropChoice, supportChoice, setSupportChoice, materialChoice, setMaterialChoice,
   bedShape, setBedShape,
 }: {
+  atTop: boolean;
   tool: Tool; setTool: (t: Tool) => void;
   cropChoice: CropDef; setCropChoice: (c: CropDef) => void;
   supportChoice: SupportDef; setSupportChoice: (s: SupportDef) => void;
@@ -462,7 +509,7 @@ function BuildDrawer({
     { key: "path", label: "🪨 Path" }, { key: "bed", label: "▭ Bed" },
   ];
   return (
-    <View className="bg-white rounded-t-2xl px-3 pt-3 pb-5 border-t border-gray-200">
+    <View className={`bg-white px-3 pt-3 pb-5 border-gray-200 ${atTop ? "rounded-b-2xl border-b" : "rounded-t-2xl border-t"}`}>
       <View className="flex-row gap-2 mb-3">
         {tabs.map((t) => (
           <Pressable key={t.key} onPress={() => setTool(tool === t.key ? null : t.key)}
@@ -637,10 +684,11 @@ function CropHarvestPanel({ crop }: { crop: GardenCrop }) {
 }
 
 function Inspector({
-  selected, bed, support, hardscape, crop, crops, cropChoice, rowEndsCount,
+  atTop, selected, bed, support, hardscape, crop, crops, cropChoice, rowEndsCount,
   cropSiblingCount, onFillRowCrop, onFillBedCrop,
   onClose, onSaveBed, onSaveSupport, onSaveHard, onSaveCrop, onFillBed, onFillRow, onDelete,
 }: {
+  atTop: boolean;
   selected: Selected; bed?: GardenBed; support?: GardenSupport; hardscape?: any; crop?: GardenCrop;
   crops: GardenCrop[]; cropChoice: CropDef; rowEndsCount: number;
   cropSiblingCount: number; onFillRowCrop: () => void; onFillBedCrop: () => void;
@@ -659,7 +707,7 @@ function Inspector({
     ? plantsThatFit(bedAreaSqFt(bed as any), cropChoice.spacingIn) : 0;
 
   return (
-    <View className="bg-white rounded-t-2xl px-4 pt-3 pb-5 border-t border-gray-200">
+    <View className={`bg-white px-4 pt-3 pb-5 border-gray-200 ${atTop ? "rounded-b-2xl border-b" : "rounded-t-2xl border-t"}`}>
       <View className="flex-row items-center justify-between mb-3">
         <Text className="text-base font-extrabold">{title}</Text>
         <Pressable onPress={onClose} hitSlop={8}><Text className="text-gray-400 font-bold">Done</Text></Pressable>
