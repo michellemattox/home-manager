@@ -2,7 +2,7 @@ import React from "react";
 import { View, Text, Pressable, PanResponder, Animated } from "react-native";
 import Svg, { Circle, Line, Rect, Polygon, Polyline } from "react-native-svg";
 import type { GardenArea, GardenBed, GardenHardscape, GardenSupport, GardenCrop } from "@/types/app.types";
-import { cropEmoji, findSupport } from "@/lib/gardenCatalog";
+import { cropEmoji, cropSpacingIn, findSupport } from "@/lib/gardenCatalog";
 
 // Garden Map v2 canvas. Purely presentational: renders an area's beds,
 // hardscape, supports and plant markers positioned in FEET, scaled to pixels.
@@ -79,9 +79,13 @@ function DraggableElement({
 
   // Recreated each render so it closes over fresh xFt/yFt/scale (a handful of
   // elements, so the cost is negligible and it avoids stale-closure bugs).
+  const shouldDrag = (_e: any, g: any) => draggable && (Math.abs(g.dx) > 3 || Math.abs(g.dy) > 3);
   const responder = PanResponder.create({
     onStartShouldSetPanResponder: () => false,
-    onMoveShouldSetPanResponder: (_e, g) => draggable && (Math.abs(g.dx) > 4 || Math.abs(g.dy) > 4),
+    onMoveShouldSetPanResponder: shouldDrag,
+    // Capture the move before an ancestor ScrollView can claim it as a scroll.
+    onMoveShouldSetPanResponderCapture: shouldDrag,
+    onPanResponderTerminationRequest: () => false,
     onPanResponderMove: Animated.event([null, { dx: pan.x, dy: pan.y }], { useNativeDriver: false }),
     onPanResponderRelease: (_e, g) => {
       pan.extractOffset();
@@ -217,21 +221,26 @@ export function GardenCanvas({
         );
       })}
 
-      {/* Crops — one marker per plant, positioned by center */}
+      {/* Crops — one marker per plant. Size = the plant's mature spread (its
+          spacing, in feet) scaled to pixels, so a tomato fills its cage and a
+          marigold stays small; the footprint circle makes spacing legible.
+          A floor keeps tiny plants tappable. */}
       {crops.map((c) => {
         const sel = isSel("crop", c.id);
-        const size = Math.max(Math.min(scale * 0.9, 30), 16);
+        const spreadFt = (c.spacing_in ?? cropSpacingIn(c.plant_name)) / 12;
+        const size = Math.max(spreadFt * scale * 0.9, 16);
         return (
           <DraggableElement key={c.id} selected={sel} interactive={interactive} scale={scale}
             xFt={c.x_ft} yFt={c.y_ft} onSelect={() => onSelectElement?.({ type: "crop", id: c.id })}
             onMove={(x, y) => onMoveElement?.("crop", c.id, x, y)}
             style={{ position: "absolute", left: c.x_ft * scale - size / 2, top: c.y_ft * scale - size / 2, width: size, height: size }}>
             <View style={{
-              flex: 1, borderRadius: 999, backgroundColor: "rgba(255,255,255,0.15)",
+              flex: 1, borderRadius: 999,
+              backgroundColor: sel ? "rgba(34,197,94,0.30)" : "rgba(255,255,255,0.15)",
               alignItems: "center", justifyContent: "center",
-              borderWidth: sel ? 2 : 0, borderColor: "#fff",
+              borderWidth: sel ? 2 : 0, borderColor: GREEN,
             }}>
-              <Text style={{ fontSize: size * 0.6 }}>{cropEmoji(c.plant_name)}</Text>
+              <Text style={{ fontSize: Math.max(size * 0.62, 12) }}>{cropEmoji(c.plant_name)}</Text>
             </View>
           </DraggableElement>
         );

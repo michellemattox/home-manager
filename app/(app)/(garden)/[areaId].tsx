@@ -301,8 +301,9 @@ export default function GardenAreaScreen() {
         <Pressable onPress={() => setExpanded(true)} hitSlop={10}><Text className="text-green-300 font-bold">⤢ Expand</Text></Pressable>
       </View>
 
-      {/* Canvas */}
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 12 }}>
+      {/* Canvas — freeze scrolling while an item is selected so a drag moves the
+          item instead of panning the page. Tap empty ground to deselect + scroll. */}
+      <ScrollView className="flex-1" contentContainerStyle={{ padding: 12 }} scrollEnabled={!selected}>
         <View onLayout={(e) => setCanvasW(e.nativeEvent.layout.width)}>
           {scale > 0 && (
             <View style={{ height: canvasHeight }}>
@@ -449,6 +450,13 @@ function BuildDrawer({
   materialChoice: HardscapeMaterial; setMaterialChoice: (m: HardscapeMaterial) => void;
   bedShape: "rect" | "circle" | "polygon"; setBedShape: (s: "rect" | "circle" | "polygon") => void;
 }) {
+  const [plantQuery, setPlantQuery] = useState("");
+  const plants = useMemo(() => {
+    const q = plantQuery.trim().toLowerCase();
+    return [...CROP_CATALOG]
+      .filter((c) => c.name.toLowerCase().includes(q))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [plantQuery]);
   const tabs: { key: Tool; label: string }[] = [
     { key: "plant", label: "🌱 Plants" }, { key: "vertical", label: "▲ Vertical" },
     { key: "path", label: "🪨 Path" }, { key: "bed", label: "▭ Bed" },
@@ -465,16 +473,27 @@ function BuildDrawer({
       </View>
 
       {tool === "plant" && (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pr-2">
-          {CROP_CATALOG.map((c) => (
-            <Pressable key={c.name} onPress={() => setCropChoice(c)}
-              className={`px-3 py-2 rounded-xl border ${cropChoice.name === c.name ? "bg-green-100 border-green-500" : "bg-gray-50 border-gray-200"}`}>
-              <Text className="text-center text-lg">{c.emoji}</Text>
-              <Text className="text-[11px] font-semibold text-gray-700">{c.name}</Text>
-              <Text className="text-[9px] text-gray-400 text-center">{c.spacingIn}"</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        <View>
+          <TextInput
+            value={plantQuery} onChangeText={setPlantQuery}
+            placeholder="Search plants…" placeholderTextColor="#9ca3af"
+            autoCorrect={false} autoCapitalize="none"
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-2" />
+          {plants.length === 0 ? (
+            <Text className="text-gray-400 text-xs px-1 py-2">No plants match “{plantQuery}”.</Text>
+          ) : (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pr-2">
+              {plants.map((c) => (
+                <Pressable key={c.name} onPress={() => setCropChoice(c)}
+                  className={`px-3 py-2 rounded-xl border ${cropChoice.name === c.name ? "bg-green-100 border-green-500" : "bg-gray-50 border-gray-200"}`}>
+                  <Text className="text-center text-lg">{c.emoji}</Text>
+                  <Text className="text-[11px] font-semibold text-gray-700">{c.name}</Text>
+                  <Text className="text-[9px] text-gray-400 text-center">{c.spacingIn}"</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          )}
+        </View>
       )}
       {tool === "vertical" && (
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-2 pr-2">
