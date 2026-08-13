@@ -16,7 +16,7 @@ import {
 } from "@/hooks/useGardenMap";
 import {
   CROP_CATALOG, SUPPORT_CATALOG, MATERIAL_CATALOG, type CropDef, type SupportDef,
-  type HardscapeMaterial, cropEmoji, normalizeCropKey,
+  type HardscapeMaterial, cropEmoji, cropSpacingIn, normalizeCropKey,
   bedAreaSqFt, plantsThatFit, findSupport, pointInPolygon, pointsBBox,
 } from "@/lib/gardenCatalog";
 import type { GardenArea, GardenBed, GardenSupport, GardenCrop } from "@/types/app.types";
@@ -202,10 +202,12 @@ export default function GardenAreaScreen() {
   }
 
   // ── Fill bed / row ────────────────────────────────────────────────────────────
-  function fillBed() {
-    if (!area || !householdId || !selectedBed) return;
-    const b = selectedBed;
-    const spacingFt = cropChoice.spacingIn / 12;
+  const spacingFor = (name: string, override?: number | null) => override ?? cropSpacingIn(name);
+
+  // Fill a bed's footprint with a crop on a spacing grid (rect / circle / polygon).
+  function placeFillBed(b: GardenBed, name: string, family: string | null, spacingIn: number) {
+    if (!area || !householdId) return;
+    const spacingFt = spacingIn / 12;
     if (spacingFt <= 0 || !b.width_ft || !b.length_ft) return;
     const poly = b.shape === "polygon" && b.points ? (b.points as unknown as { x: number; y: number }[]) : null;
     const cr = b.width_ft / 2, cx = b.x_ft + cr, cy = b.y_ft + cr;
@@ -222,27 +224,21 @@ export default function GardenAreaScreen() {
     if (rows.length === 0) return;
     createCrops.mutate(rows.map((p) => ({
       area_id: area.id, household_id: householdId, bed_id: b.id,
-      plant_name: cropChoice.name, plant_family: cropChoice.family, spacing_in: cropChoice.spacingIn,
+      plant_name: name, plant_family: family, spacing_in: spacingIn,
       x_ft: p.x_ft, y_ft: p.y_ft, date_planted: new Date().toISOString().slice(0, 10),
     })));
   }
 
-  // Crops of the chosen type already in the selected bed become the "book-ends".
-  const rowEnds = useMemo(() => {
-    if (!selectedBed) return [] as GardenCrop[];
-    return crops.filter((c) => c.bed_id === selectedBed.id && normalizeCropKey(c.plant_name) === normalizeCropKey(cropChoice.name));
-  }, [crops, selectedBed, cropChoice]);
-
-  function fillRow() {
-    if (!area || !householdId || rowEnds.length < 2) return;
-    // Use the two furthest-apart plants of this crop as the row's ends.
-    let a = rowEnds[0], b = rowEnds[0], best = -1;
-    for (let i = 0; i < rowEnds.length; i++)
-      for (let j = i + 1; j < rowEnds.length; j++) {
-        const d = Math.hypot(rowEnds[i].x_ft - rowEnds[j].x_ft, rowEnds[i].y_ft - rowEnds[j].y_ft);
-        if (d > best) { best = d; a = rowEnds[i]; b = rowEnds[j]; }
+  // Fill between the two furthest-apart "book-end" plants at the given spacing.
+  function placeFillRow(ends: GardenCrop[], name: string, family: string | null, spacingIn: number, bedId: string | null) {
+    if (!area || !householdId || ends.length < 2) return;
+    let a = ends[0], b = ends[0], best = -1;
+    for (let i = 0; i < ends.length; i++)
+      for (let j = i + 1; j < ends.length; j++) {
+        const d = Math.hypot(ends[i].x_ft - ends[j].x_ft, ends[i].y_ft - ends[j].y_ft);
+        if (d > best) { best = d; a = ends[i]; b = ends[j]; }
       }
-    const spacingFt = cropChoice.spacingIn / 12;
+    const spacingFt = spacingIn / 12;
     const dist = Math.hypot(b.x_ft - a.x_ft, b.y_ft - a.y_ft);
     const n = Math.floor(dist / spacingFt);
     if (n < 2) return;
@@ -253,11 +249,38 @@ export default function GardenAreaScreen() {
     }
     if (pts.length === 0) return;
     createCrops.mutate(pts.map((p) => ({
-      area_id: area.id, household_id: householdId, bed_id: selectedBed!.id,
-      plant_name: cropChoice.name, plant_family: cropChoice.family, spacing_in: cropChoice.spacingIn,
+      area_id: area.id, household_id: householdId, bed_id: bedId,
+      plant_name: name, plant_family: family, spacing_in: spacingIn,
       x_ft: p.x_ft, y_ft: p.y_ft, date_planted: new Date().toISOString().slice(0, 10),
     })));
   }
+
+  // Plants of the drawer's chosen crop already in the selected bed → row book-ends.
+  const rowEnds = useMemo(() => {
+    if (!selectedBed) return [] as GardenCrop[];
+    return crops.filter((c) => c.bed_id === selectedBed.id && normalizeCropKey(c.plant_name) === normalizeCropKey(cropChoice.name));
+  }, [crops, selectedBed, cropChoice]);
+
+  // Same-crop siblings sharing a selected plant's bed context (bed or open ground).
+  const cropSiblings = useMemo(() => {
+    if (!selectedCrop) return [] as GardenCrop[];
+    const key = normalizeCropKey(selectedCrop.plant_name);
+    return crops.filter((c) => normalizeCropKey(c.plant_name) === key && (c.bed_id ?? null) === (selectedCrop.bed_id ?? null));
+  }, [crops, selectedCrop]);
+
+  const fillBed = () => selectedBed && placeFillBed(selectedBed, cropChoice.name, cropChoice.family, cropChoice.spacingIn);
+  const fillRow = () => placeFillRow(rowEnds, cropChoice.name, cropChoice.family, cropChoice.spacingIn, selectedBed?.id ?? null);
+
+  const fillRowFromCrop = () => {
+    if (!selectedCrop) return;
+    placeFillRow(cropSiblings, selectedCrop.plant_name, selectedCrop.plant_family,
+      spacingFor(selectedCrop.plant_name, selectedCrop.spacing_in), selectedCrop.bed_id);
+  };
+  const fillBedFromCrop = () => {
+    if (!selectedCrop?.bed_id) return;
+    const b = beds.find((bb) => bb.id === selectedCrop.bed_id);
+    if (b) placeFillBed(b, selectedCrop.plant_name, selectedCrop.plant_family, spacingFor(selectedCrop.plant_name, selectedCrop.spacing_in));
+  };
 
   if (!area) {
     return (
@@ -330,6 +353,8 @@ export default function GardenAreaScreen() {
           onSaveHard={(u) => selectedHard && updateHard.mutate({ id: selectedHard.id, areaId: area.id, updates: u })}
           onSaveCrop={(u) => selectedCrop && updateCrop.mutate({ id: selectedCrop.id, areaId: area.id, updates: u })}
           onFillBed={fillBed} onFillRow={fillRow}
+          cropSiblingCount={cropSiblings.length}
+          onFillRowCrop={fillRowFromCrop} onFillBedCrop={fillBedFromCrop}
           onDelete={() => handleDelete()}
         />
       )}
@@ -594,10 +619,12 @@ function CropHarvestPanel({ crop }: { crop: GardenCrop }) {
 
 function Inspector({
   selected, bed, support, hardscape, crop, crops, cropChoice, rowEndsCount,
+  cropSiblingCount, onFillRowCrop, onFillBedCrop,
   onClose, onSaveBed, onSaveSupport, onSaveHard, onSaveCrop, onFillBed, onFillRow, onDelete,
 }: {
   selected: Selected; bed?: GardenBed; support?: GardenSupport; hardscape?: any; crop?: GardenCrop;
   crops: GardenCrop[]; cropChoice: CropDef; rowEndsCount: number;
+  cropSiblingCount: number; onFillRowCrop: () => void; onFillBedCrop: () => void;
   onClose: () => void;
   onSaveBed: (u: Partial<GardenBed>) => void; onSaveSupport: (u: Partial<GardenSupport>) => void;
   onSaveHard: (u: any) => void; onSaveCrop: (u: Partial<GardenCrop>) => void;
@@ -661,6 +688,22 @@ function Inspector({
         <View className="mb-3">
           <TextField value={crop.variety ?? ""} placeholder="Variety (optional)"
             onCommit={(v) => onSaveCrop({ variety: v })} />
+          <View className="flex-row gap-2 mb-3">
+            {crop.bed_id && (
+              <Pressable onPress={onFillBedCrop} className="flex-1 items-center bg-green-600 rounded-xl py-3">
+                <Text className="text-white font-bold text-sm">⚡ Fill bed</Text>
+              </Pressable>
+            )}
+            <Pressable onPress={onFillRowCrop} disabled={cropSiblingCount < 2}
+              className={`flex-1 items-center rounded-xl py-3 ${cropSiblingCount < 2 ? "bg-gray-200" : "bg-green-700"}`}>
+              <Text className={`font-bold text-sm ${cropSiblingCount < 2 ? "text-gray-400" : "text-white"}`}>↔ Fill row</Text>
+            </Pressable>
+          </View>
+          {cropSiblingCount < 2 && (
+            <Text className="text-[11px] text-gray-400 mb-2">
+              Place a second {crop.plant_name} {crop.bed_id ? "in this bed" : "on the map"} to fill a row between them.
+            </Text>
+          )}
           <CropHarvestPanel crop={crop} />
         </View>
       )}
