@@ -127,10 +127,16 @@ export function GardenCanvas({
 
   return (
     <View style={{ width: W, height: H, backgroundColor: "#4b6a36", borderRadius: 10, overflow: "hidden" }}>
-      {/* Background captures taps on empty ground */}
+      {/* Background captures taps on empty ground. Explicit size (not `inset`)
+          so react-native-web keeps it full-canvas and tappable. */}
       <Pressable
-        onPress={(e) => onCanvasPress?.(e.nativeEvent.locationX / scale, e.nativeEvent.locationY / scale)}
-        style={{ position: "absolute", inset: 0 }}
+        onPress={(e) => {
+          const ne: any = e.nativeEvent;
+          const lx = ne.locationX ?? ne.offsetX ?? 0;
+          const ly = ne.locationY ?? ne.offsetY ?? 0;
+          onCanvasPress?.(lx / scale, ly / scale);
+        }}
+        style={{ position: "absolute", top: 0, left: 0, width: W, height: H }}
       />
 
       {/* Hardscape (drawn first, ordered by z_index which the query already sorts) */}
