@@ -12,11 +12,12 @@ import {
   useGardenSupports, useCreateGardenSupport, useUpdateGardenSupport, useDeleteGardenSupport,
   useGardenCrops, useCreateGardenCrop, useCreateGardenCrops, useUpdateGardenCrop, useDeleteGardenCrop,
   useGardenHistoryChoices, useRecordHistoryChoice,
+  useCropHarvests, useAddCropHarvest, useDeleteCropHarvest,
 } from "@/hooks/useGardenMap";
 import {
   CROP_CATALOG, SUPPORT_CATALOG, MATERIAL_CATALOG, type CropDef, type SupportDef,
-  type HardscapeMaterial, cropEmoji, cropSpacingIn, normalizeCropKey,
-  bedAreaSqFt, plantsThatFit, findSupport,
+  type HardscapeMaterial, cropEmoji, normalizeCropKey,
+  bedAreaSqFt, plantsThatFit, findSupport, pointInPolygon, pointsBBox,
 } from "@/lib/gardenCatalog";
 import type { GardenArea, GardenBed, GardenSupport, GardenCrop } from "@/types/app.types";
 
@@ -55,6 +56,8 @@ export default function GardenAreaScreen() {
   const recordChoice = useRecordHistoryChoice();
 
   const [tool, setTool] = useState<Tool>(null);
+  const [bedShape, setBedShape] = useState<"rect" | "circle" | "polygon">("rect");
+  const [polyDraft, setPolyDraft] = useState<{ x: number; y: number }[]>([]);
   const [cropChoice, setCropChoice] = useState<CropDef>(CROP_CATALOG[0]);
   const [supportChoice, setSupportChoice] = useState<SupportDef>(SUPPORT_CATALOG[0]);
   const [materialChoice, setMaterialChoice] = useState<HardscapeMaterial>("gravel");
@@ -79,6 +82,17 @@ export default function GardenAreaScreen() {
     const y = round1(clamp(yFt, 0, area.length_ft));
 
     if (tool === "bed") {
+      if (bedShape === "polygon") { setPolyDraft((pts) => [...pts, { x, y }]); return; }
+      if (bedShape === "circle") {
+        const d = Math.min(3, area.width_ft, area.length_ft);
+        const bed = await createBed.mutateAsync({
+          area_id: area.id, household_id: householdId, name: `Bed ${beds.length + 1}`,
+          shape: "circle", x_ft: clamp(x, 0, area.width_ft - d), y_ft: clamp(y, 0, area.length_ft - d),
+          width_ft: d, length_ft: d,
+        });
+        setSelected({ type: "bed", id: bed.id });
+        return;
+      }
       const w = Math.min(4, area.width_ft), l = Math.min(8, area.length_ft);
       const bed = await createBed.mutateAsync({
         area_id: area.id, household_id: householdId, name: `Bed ${beds.length + 1}`,
@@ -114,11 +128,26 @@ export default function GardenAreaScreen() {
   }
 
   function bedAt(x: number, y: number): GardenBed | undefined {
-    return beds.find((b) =>
-      b.shape !== "polygon" &&
-      x >= b.x_ft && x <= b.x_ft + (b.width_ft ?? 0) &&
-      y >= b.y_ft && y <= b.y_ft + (b.length_ft ?? 0)
-    );
+    return beds.find((b) => {
+      if (b.shape === "polygon" && b.points) return pointInPolygon(x, y, b.points as unknown as { x: number; y: number }[]);
+      if (b.shape === "circle") {
+        const r = (b.width_ft ?? 0) / 2;
+        return Math.hypot(x - (b.x_ft + r), y - (b.y_ft + r)) <= r;
+      }
+      return x >= b.x_ft && x <= b.x_ft + (b.width_ft ?? 0) && y >= b.y_ft && y <= b.y_ft + (b.length_ft ?? 0);
+    });
+  }
+
+  async function finishPolygon() {
+    if (!area || !householdId || polyDraft.length < 3) { setPolyDraft([]); return; }
+    const bb = pointsBBox(polyDraft);
+    const bed = await createBed.mutateAsync({
+      area_id: area.id, household_id: householdId, name: `Bed ${beds.length + 1}`,
+      shape: "polygon", points: polyDraft as any,
+      x_ft: round1(bb.x), y_ft: round1(bb.y), width_ft: round1(bb.width), length_ft: round1(bb.height),
+    });
+    setPolyDraft([]);
+    setSelected({ type: "bed", id: bed.id });
   }
 
   // Offer the once-per-crop carry-over prompt if old data exists for this crop.
@@ -157,7 +186,16 @@ export default function GardenAreaScreen() {
     if (!area) return;
     const x = round1(clamp(xFt, 0, area.width_ft));
     const y = round1(clamp(yFt, 0, area.length_ft));
-    if (type === "bed") updateBed.mutate({ id, areaId: area.id, updates: { x_ft: x, y_ft: y } });
+    if (type === "bed") {
+      const b = beds.find((bb) => bb.id === id);
+      if (b?.shape === "polygon" && b.points) {
+        const dx = x - b.x_ft, dy = y - b.y_ft;
+        const shifted = (b.points as unknown as { x: number; y: number }[]).map((p) => ({ x: round1(p.x + dx), y: round1(p.y + dy) }));
+        updateBed.mutate({ id, areaId: area.id, updates: { x_ft: x, y_ft: y, points: shifted as any } });
+      } else {
+        updateBed.mutate({ id, areaId: area.id, updates: { x_ft: x, y_ft: y } });
+      }
+    }
     else if (type === "hardscape") updateHard.mutate({ id, areaId: area.id, updates: { x_ft: x, y_ft: y } });
     else if (type === "support") updateSupport.mutate({ id, areaId: area.id, updates: { x_ft: x, y_ft: y } });
     else if (type === "crop") updateCrop.mutate({ id, areaId: area.id, updates: { x_ft: x, y_ft: y, bed_id: bedAt(x, y)?.id ?? null } });
@@ -169,10 +207,16 @@ export default function GardenAreaScreen() {
     const b = selectedBed;
     const spacingFt = cropChoice.spacingIn / 12;
     if (spacingFt <= 0 || !b.width_ft || !b.length_ft) return;
+    const poly = b.shape === "polygon" && b.points ? (b.points as unknown as { x: number; y: number }[]) : null;
+    const cr = b.width_ft / 2, cx = b.x_ft + cr, cy = b.y_ft + cr;
+    const accept = (x: number, y: number) =>
+      poly ? pointInPolygon(x, y, poly)
+      : b.shape === "circle" ? Math.hypot(x - cx, y - cy) <= cr - spacingFt / 4
+      : true;
     const rows: { x_ft: number; y_ft: number }[] = [];
     for (let y = b.y_ft + spacingFt / 2; y <= b.y_ft + b.length_ft - spacingFt / 2 + 0.001; y += spacingFt) {
       for (let x = b.x_ft + spacingFt / 2; x <= b.x_ft + b.width_ft - spacingFt / 2 + 0.001; x += spacingFt) {
-        rows.push({ x_ft: round1(x), y_ft: round1(y) });
+        if (accept(x, y)) rows.push({ x_ft: round1(x), y_ft: round1(y) });
       }
     }
     if (rows.length === 0) return;
@@ -241,7 +285,7 @@ export default function GardenAreaScreen() {
             <View style={{ height: canvasHeight }}>
               <GardenCanvas
                 area={area} beds={beds} hardscape={hardscape} supports={supports} crops={crops}
-                scale={scale} selected={selected}
+                scale={scale} selected={selected} draft={polyDraft}
                 onSelectElement={(s) => { setSelected(s); setTool(null); }}
                 onCanvasPress={handleCanvasPress}
                 onMoveElement={handleMove}
@@ -250,10 +294,29 @@ export default function GardenAreaScreen() {
           )}
         </View>
         <Text className="text-white/50 text-xs mt-2 text-center">
-          {tool ? `Tap the map to place a ${tool === "plant" ? cropChoice.name : tool}. ` : "Tap an item to select · drag to move. "}
+          {polyDraft.length > 0 ? `Tap to add corners (${polyDraft.length}) · then Finish. `
+            : tool === "bed" && bedShape === "polygon" ? "Tap the map to start drawing corners. "
+            : tool ? `Tap the map to place a ${tool === "plant" ? cropChoice.name : tool}. `
+            : "Tap an item to select · drag to move. "}
           {area.width_ft}×{area.length_ft} ft
         </Text>
       </ScrollView>
+
+      {/* Polygon drawing bar */}
+      {polyDraft.length > 0 && (
+        <View className="flex-row gap-2 px-4 py-3 bg-white border-t border-gray-200">
+          <Pressable onPress={() => setPolyDraft([])} className="flex-1 items-center bg-gray-100 rounded-xl py-3">
+            <Text className="text-gray-600 font-bold">Cancel</Text>
+          </Pressable>
+          <Pressable onPress={() => setPolyDraft((p) => p.slice(0, -1))} className="flex-1 items-center bg-gray-100 rounded-xl py-3">
+            <Text className="text-gray-600 font-bold">Undo point</Text>
+          </Pressable>
+          <Pressable onPress={finishPolygon} disabled={polyDraft.length < 3}
+            className={`flex-1 items-center rounded-xl py-3 ${polyDraft.length < 3 ? "bg-gray-200" : "bg-green-600"}`}>
+            <Text className={`font-bold ${polyDraft.length < 3 ? "text-gray-400" : "text-white"}`}>Finish ({polyDraft.length})</Text>
+          </Pressable>
+        </View>
+      )}
 
       {/* Inspector (when something selected) */}
       {selected && (
@@ -278,6 +341,7 @@ export default function GardenAreaScreen() {
           cropChoice={cropChoice} setCropChoice={setCropChoice}
           supportChoice={supportChoice} setSupportChoice={setSupportChoice}
           materialChoice={materialChoice} setMaterialChoice={setMaterialChoice}
+          bedShape={bedShape} setBedShape={setBedShape}
         />
       )}
 
@@ -352,11 +416,13 @@ export default function GardenAreaScreen() {
 // ── Build drawer ────────────────────────────────────────────────────────────────
 function BuildDrawer({
   tool, setTool, cropChoice, setCropChoice, supportChoice, setSupportChoice, materialChoice, setMaterialChoice,
+  bedShape, setBedShape,
 }: {
   tool: Tool; setTool: (t: Tool) => void;
   cropChoice: CropDef; setCropChoice: (c: CropDef) => void;
   supportChoice: SupportDef; setSupportChoice: (s: SupportDef) => void;
   materialChoice: HardscapeMaterial; setMaterialChoice: (m: HardscapeMaterial) => void;
+  bedShape: "rect" | "circle" | "polygon"; setBedShape: (s: "rect" | "circle" | "polygon") => void;
 }) {
   const tabs: { key: Tool; label: string }[] = [
     { key: "plant", label: "🌱 Plants" }, { key: "vertical", label: "▲ Vertical" },
@@ -406,7 +472,23 @@ function BuildDrawer({
           ))}
         </ScrollView>
       )}
-      {tool === "bed" && <Text className="text-gray-500 text-xs px-1">Tap the map to drop a 4×8 ft bed, then select it to resize or rename.</Text>}
+      {tool === "bed" && (
+        <View>
+          <View className="flex-row gap-2 mb-2">
+            {([["rect", "▭ Rectangle"], ["circle", "◯ Circle / pot"], ["polygon", "⬡ Draw shape"]] as const).map(([s, label]) => (
+              <Pressable key={s} onPress={() => setBedShape(s)}
+                className={`flex-1 items-center py-2 rounded-xl border ${bedShape === s ? "bg-green-100 border-green-500" : "bg-gray-50 border-gray-200"}`}>
+                <Text className={`text-xs font-bold ${bedShape === s ? "text-green-700" : "text-gray-600"}`}>{label}</Text>
+              </Pressable>
+            ))}
+          </View>
+          <Text className="text-gray-500 text-xs px-1">
+            {bedShape === "polygon" ? "Tap the map to drop corners for an L-shape or any outline, then Finish."
+              : bedShape === "circle" ? "Tap the map to drop a round container; select it to resize."
+              : "Tap the map to drop a 4×8 ft bed; select it to resize or rename."}
+          </Text>
+        </View>
+      )}
       {!tool && <Text className="text-gray-400 text-xs px-1 text-center">Pick a tab, then tap the map to build.</Text>}
     </View>
   );
@@ -424,6 +506,66 @@ function NumField({ label, value, unit, onChange }: { label: string; value: numb
           keyboardType="decimal-pad" className="flex-1 text-base font-bold text-gray-900 py-0" />
         <Text className="text-[10px] text-gray-400">{unit}</Text>
       </View>
+    </View>
+  );
+}
+
+const HARVEST_UNITS = ["lbs", "oz", "count", "bunches", "bags"];
+
+function CropHarvestPanel({ crop }: { crop: GardenCrop }) {
+  const { data: harvests = [] } = useCropHarvests(crop.id);
+  const addHarvest = useAddCropHarvest();
+  const delHarvest = useDeleteCropHarvest();
+  const [qty, setQty] = useState("");
+  const [unit, setUnit] = useState("lbs");
+
+  const total = harvests.reduce((s, h) => s + (h.quantity_value ?? 0), 0);
+  const primaryUnit = harvests[0]?.quantity_unit ?? unit;
+
+  function log() {
+    const q = parseFloat(qty);
+    addHarvest.mutate({
+      household_id: crop.household_id, crop_id: crop.id, crop_name: crop.plant_name,
+      date: new Date().toISOString().slice(0, 10),
+      quantity_value: isNaN(q) ? null : q, quantity_unit: unit,
+    });
+    setQty("");
+  }
+
+  return (
+    <View className="bg-gray-50 border border-gray-200 rounded-xl p-3">
+      <View className="flex-row items-center justify-between mb-2">
+        <Text className="text-xs font-extrabold uppercase tracking-wide text-gray-500">Harvests</Text>
+        {harvests.length > 0 && (
+          <Text className="text-xs font-mono text-gray-600">{total} {primaryUnit} · {harvests.length} log{harvests.length === 1 ? "" : "s"}</Text>
+        )}
+      </View>
+
+      <View className="flex-row items-center gap-2 mb-2">
+        <TextInput value={qty} onChangeText={setQty} keyboardType="decimal-pad" placeholder="Qty"
+          className="w-16 bg-white border border-gray-200 rounded-lg px-2 py-2 text-sm" />
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerClassName="gap-1.5">
+          {HARVEST_UNITS.map((u) => (
+            <Pressable key={u} onPress={() => setUnit(u)}
+              className={`px-2.5 py-2 rounded-lg border ${unit === u ? "bg-green-100 border-green-500" : "bg-white border-gray-200"}`}>
+              <Text className={`text-xs font-semibold ${unit === u ? "text-green-700" : "text-gray-600"}`}>{u}</Text>
+            </Pressable>
+          ))}
+        </ScrollView>
+        <Pressable onPress={log} className="bg-green-600 rounded-lg px-3 py-2"><Text className="text-white font-bold text-sm">Log</Text></Pressable>
+      </View>
+
+      {harvests.slice(0, 5).map((h) => (
+        <View key={h.id} className="flex-row items-center justify-between py-1 border-t border-gray-100">
+          <Text className="text-xs text-gray-600">{h.date}</Text>
+          <View className="flex-row items-center gap-3">
+            <Text className="text-xs font-mono text-gray-700">{h.quantity_value ?? "—"} {h.quantity_unit}</Text>
+            <Pressable onPress={() => delHarvest.mutate({ id: h.id, cropId: crop.id })} hitSlop={8}>
+              <Text className="text-red-400 text-xs">✕</Text>
+            </Pressable>
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -497,7 +639,8 @@ function Inspector({
         <View className="mb-3">
           <TextInput defaultValue={crop.variety ?? ""} placeholder="Variety (optional)"
             onEndEditing={(e) => onSaveCrop({ variety: e.nativeEvent.text || null })}
-            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm" />
+            className="bg-gray-50 border border-gray-200 rounded-lg px-3 py-2 text-sm mb-3" />
+          <CropHarvestPanel crop={crop} />
         </View>
       )}
 

@@ -250,34 +250,40 @@ export type Database = {
       garden_harvests: {
         Row: {
           created_at: string
+          crop_id: string | null
+          crop_name: string | null
           date: string
           household_id: string
           id: string
           notes: string | null
-          planting_id: string
-          plot_id: string
+          planting_id: string | null
+          plot_id: string | null
           quantity_unit: string | null
           quantity_value: number | null
         }
         Insert: {
           created_at?: string
+          crop_id?: string | null
+          crop_name?: string | null
           date?: string
           household_id: string
           id?: string
           notes?: string | null
-          planting_id: string
-          plot_id: string
+          planting_id?: string | null
+          plot_id?: string | null
           quantity_unit?: string | null
           quantity_value?: number | null
         }
         Update: {
           created_at?: string
+          crop_id?: string | null
+          crop_name?: string | null
           date?: string
           household_id?: string
           id?: string
           notes?: string | null
-          planting_id?: string
-          plot_id?: string
+          planting_id?: string | null
+          plot_id?: string | null
           quantity_unit?: string | null
           quantity_value?: number | null
         }

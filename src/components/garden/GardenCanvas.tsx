@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text, Pressable, PanResponder, Animated } from "react-native";
-import Svg, { Circle, Line, Rect, Path } from "react-native-svg";
+import Svg, { Circle, Line, Rect, Polygon, Polyline } from "react-native-svg";
 import type { GardenArea, GardenBed, GardenHardscape, GardenSupport, GardenCrop } from "@/types/app.types";
 import { cropEmoji, findSupport } from "@/lib/gardenCatalog";
 
@@ -105,7 +105,7 @@ function DraggableElement({
 
 export function GardenCanvas({
   area, beds, hardscape, supports, crops, scale,
-  selected, interactive = true, onSelectElement, onCanvasPress, onMoveElement,
+  selected, interactive = true, onSelectElement, onCanvasPress, onMoveElement, draft,
 }: {
   area: GardenArea;
   beds: GardenBed[];
@@ -118,6 +118,8 @@ export function GardenCanvas({
   onSelectElement?: (sel: Selected) => void;
   onCanvasPress?: (xFt: number, yFt: number) => void;
   onMoveElement?: (type: "bed" | "hardscape" | "support" | "crop", id: string, xFt: number, yFt: number) => void;
+  /** In-progress polygon vertices (feet) while drawing a bed. */
+  draft?: { x: number; y: number }[];
 }) {
   const W = area.width_ft * scale;
   const H = area.length_ft * scale;
@@ -158,26 +160,36 @@ export function GardenCanvas({
       {beds.map((b) => {
         const box = elementBox(b, scale);
         const sel = isSel("bed", b.id);
+        const poly = b.shape === "polygon" ? (b.points as unknown as { x: number; y: number }[] | null) : null;
         return (
           <DraggableElement key={b.id} selected={sel} interactive={interactive} scale={scale}
             xFt={b.x_ft} yFt={b.y_ft} onSelect={() => onSelectElement?.({ type: "bed", id: b.id })}
             onMove={(x, y) => onMoveElement?.("bed", b.id, x, y)}
             style={{ position: "absolute", ...box }}>
-            <View style={{
-              flex: 1, backgroundColor: "#6b4e2f", borderRadius: b.shape === "circle" ? 999 : 6,
-              borderWidth: 3, borderColor: sel ? GREEN : (b.frame_color || "#B0764A"),
-            }}>
-              {box.width > 50 && (
-                <Text style={{ position: "absolute", top: 3, left: 5, fontSize: 9, fontWeight: "700", color: "#fbefe0" }} numberOfLines={1}>
-                  {b.name}
-                </Text>
-              )}
-              {box.width > 60 && b.width_ft && b.length_ft ? (
-                <Text style={{ position: "absolute", bottom: 3, right: 5, fontSize: 8, color: "#f3e6d6" }}>
-                  {b.width_ft}×{b.length_ft} ft
-                </Text>
-              ) : null}
-            </View>
+            {poly && poly.length >= 3 ? (
+              <Svg width={box.width} height={box.height}>
+                <Polygon
+                  points={poly.map((p) => `${(p.x - b.x_ft) * scale},${(p.y - b.y_ft) * scale}`).join(" ")}
+                  fill="#6b4e2f" stroke={sel ? GREEN : (b.frame_color || "#B0764A")} strokeWidth={3}
+                />
+              </Svg>
+            ) : (
+              <View style={{
+                flex: 1, backgroundColor: "#6b4e2f", borderRadius: b.shape === "circle" ? 999 : 6,
+                borderWidth: 3, borderColor: sel ? GREEN : (b.frame_color || "#B0764A"),
+              }}>
+                {box.width > 50 && (
+                  <Text style={{ position: "absolute", top: 3, left: 5, fontSize: 9, fontWeight: "700", color: "#fbefe0" }} numberOfLines={1}>
+                    {b.name}
+                  </Text>
+                )}
+                {box.width > 60 && b.width_ft && b.length_ft ? (
+                  <Text style={{ position: "absolute", bottom: 3, right: 5, fontSize: 8, color: "#f3e6d6" }}>
+                    {b.width_ft}×{b.length_ft} ft
+                  </Text>
+                ) : null}
+              </View>
+            )}
           </DraggableElement>
         );
       })}
@@ -218,6 +230,21 @@ export function GardenCanvas({
           </DraggableElement>
         );
       })}
+
+      {/* In-progress polygon while drawing a bed */}
+      {draft && draft.length > 0 && (
+        <View pointerEvents="none" style={{ position: "absolute", left: 0, top: 0, width: W, height: H }}>
+          <Svg width={W} height={H}>
+            <Polyline
+              points={draft.map((p) => `${p.x * scale},${p.y * scale}`).join(" ")}
+              fill="rgba(107,78,47,0.35)" stroke={GREEN} strokeWidth={2} strokeDasharray="5,4"
+            />
+            {draft.map((p, i) => (
+              <Circle key={i} cx={p.x * scale} cy={p.y * scale} r={4} fill="#fff" stroke={GREEN} strokeWidth={2} />
+            ))}
+          </Svg>
+        </View>
+      )}
     </View>
   );
 }

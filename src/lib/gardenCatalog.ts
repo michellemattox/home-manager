@@ -195,6 +195,24 @@ export function fitAlongRow(lengthFt: number, spacingIn: number): number {
   return Math.max(1, Math.floor(feetToInches(lengthFt) / spacingIn) + 1);
 }
 
+/** Ray-casting point-in-polygon test. `poly` is a ring of {x,y} in feet. */
+export function pointInPolygon(x: number, y: number, poly: { x: number; y: number }[]): boolean {
+  let inside = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const xi = poly[i].x, yi = poly[i].y, xj = poly[j].x, yj = poly[j].y;
+    const intersect = (yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+/** Axis-aligned bounding box of a set of points. */
+export function pointsBBox(pts: { x: number; y: number }[]) {
+  const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+  const minX = Math.min(...xs), minY = Math.min(...ys);
+  return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
+}
+
 /** How many plants ring a circular support of the given diameter (feet). */
 export function fitAroundRing(diameterFt: number, spacingIn: number): number {
   if (spacingIn <= 0) return 1;

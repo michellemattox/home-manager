@@ -320,6 +320,51 @@ export function useDeleteGardenCrop() {
   });
 }
 
+// ── Per-crop harvests (garden_harvests linked by crop_id) ─────────────────────
+type HarvestInsert = Database["public"]["Tables"]["garden_harvests"]["Insert"];
+export type GardenHarvestRow = Database["public"]["Tables"]["garden_harvests"]["Row"];
+
+export function useCropHarvests(cropId: string | undefined) {
+  return useQuery({
+    queryKey: ["garden_crop_harvests", cropId],
+    queryFn: async () => {
+      if (!cropId) return [];
+      const { data, error } = await supabase
+        .from("garden_harvests").select("*").eq("crop_id", cropId)
+        .order("date", { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as GardenHarvestRow[];
+    },
+    enabled: !!cropId,
+  });
+}
+
+export function useAddCropHarvest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (h: HarvestInsert & { crop_id: string }) => {
+      const { data, error } = await supabase.from("garden_harvests").insert(h).select().single();
+      if (error) throw error;
+      return data as GardenHarvestRow;
+    },
+    onSuccess: (row) => {
+      qc.invalidateQueries({ queryKey: ["garden_crop_harvests", row.crop_id] });
+      qc.invalidateQueries({ queryKey: ["garden_all_harvests", row.household_id] });
+    },
+  });
+}
+
+export function useDeleteCropHarvest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id }: { id: string; cropId: string }) => {
+      const { error } = await supabase.from("garden_harvests").delete().eq("id", id);
+      if (error) throw error;
+    },
+    onSuccess: (_d, { cropId }) => qc.invalidateQueries({ queryKey: ["garden_crop_harvests", cropId] }),
+  });
+}
+
 // ── Carry-over history choices (once per crop) ────────────────────────────────
 export function useGardenHistoryChoices(householdId: string | undefined) {
   return useQuery({
