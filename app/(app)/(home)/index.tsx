@@ -41,7 +41,8 @@ import { useHomeRealtime } from "@/hooks/useRealtimeInvalidate";
 import { useSeasonScore } from "@/hooks/useSeasonScore";
 import { useGardenAreas, useLogWatering } from "@/hooks/useGardenMap";
 import { useGardenWatering, useGardenWeatherLogs } from "@/hooks/useGarden";
-import { significantRainDates, isHotRecently, computeWaterStatus, todayISO } from "@/lib/gardenCatalog";
+import { significantRainDates, isHotRecently, computeWaterStatus, todayISO, type WaterStatus } from "@/lib/gardenCatalog";
+import type { GardenArea } from "@/types/app.types";
 import { useAppRefresh } from "@/hooks/useAppRefresh";
 
 function greeting() {
@@ -458,10 +459,12 @@ export default function HomeScreen() {
     const todayW = todayISO();
     const rainDates = significantRainDates(gardenWeather);
     const hot = isHotRecently(gardenWeather, todayW);
-    return gardenAreas.filter((a) => {
-      const dates = wateringLogs.filter((l) => (l as any).area_id === a.id).map((l) => l.water_date);
-      return computeWaterStatus(dates, rainDates, hot, todayW).due;
-    });
+    return gardenAreas
+      .map((a) => {
+        const dates = wateringLogs.filter((l) => (l as any).area_id === a.id).map((l) => l.water_date);
+        return { area: a, status: computeWaterStatus(dates, rainDates, hot, todayW) };
+      })
+      .filter((x) => x.status.due);
   }, [gardenAreas, wateringLogs, gardenWeather]);
 
   // Garden Advisor
@@ -676,7 +679,8 @@ export default function HomeScreen() {
     | { kind: "oneoff"; data: Task }
     | { kind: "project"; data: ProjectTask }
     | { kind: "trip"; data: TripTask }
-    | { kind: "projectCard"; data: ProjectWithOwners };
+    | { kind: "projectCard"; data: ProjectWithOwners }
+    | { kind: "watering"; data: { area: GardenArea; status: WaterStatus } };
 
   const getItemTime = (item: HomeItem): number => {
     switch (item.kind) {
@@ -685,6 +689,7 @@ export default function HomeScreen() {
       case "project": return parseTimeToMinutes((item.data as any).due_time);
       case "trip": return parseTimeToMinutes((item.data as any).due_time);
       case "projectCard": return parseTimeToMinutes(null);
+      case "watering": return parseTimeToMinutes(null);
     }
   };
 
@@ -697,6 +702,7 @@ export default function HomeScreen() {
       case "project": return (item.data as any).due_date ?? "";
       case "trip": return (item.data as any).due_date ?? "";
       case "projectCard": return (item.data as any).expected_date ?? "";
+      case "watering": return item.data.status.nextDue ?? todayISO();
     }
   };
 
@@ -732,8 +738,15 @@ export default function HomeScreen() {
     return items.sort(sortItems);
   }
 
+  // Gardens due for watering flow into the task tiers: overdue by 1+ days →
+  // Needs Attention, due today → Due Today.
+  const wateringItems: HomeItem[] = wateringDue.map(({ area, status }) => ({ kind: "watering", data: { area, status } }));
+  const overdueWatering = wateringItems.filter((w) => w.kind === "watering" && w.data.status.daysOverdue > 0);
+  const dueTodayWatering = wateringItems.filter((w) => w.kind === "watering" && w.data.status.daysOverdue === 0);
+
   const overdueItems = [
     ...overdueProjects.map((p): HomeItem => ({ kind: "projectCard", data: p })),
+    ...overdueWatering,
     ...buildTierItems(
       (t) => isOverdue(t.next_due_date),
       (t) => !!t.due_date && isOverdue(t.due_date),
@@ -744,6 +757,7 @@ export default function HomeScreen() {
 
   const dueTodayItems = [
     ...dueTodayProjects.map((p): HomeItem => ({ kind: "projectCard", data: p })),
+    ...dueTodayWatering,
     ...buildTierItems(
       (t) => isDueToday(t.next_due_date),
       (t) => !!t.due_date && isDueToday(t.due_date),
@@ -816,6 +830,19 @@ export default function HomeScreen() {
       await completeOneOff.mutateAsync({ id: task.id, householdId: household!.id });
     } catch (e: any) {
       showAlert("Error", e.message);
+    }
+  };
+
+  const handleWaterGarden = async (areaId: string) => {
+    if (!household) return;
+    await notificationSuccess();
+    try {
+      await logWatering.mutateAsync({
+        householdId: household.id, areaIds: [areaId], water_date: todayISO(),
+        method: "hand", duration_min: null, amount_gal: null, notes: null,
+      });
+    } catch (e: any) {
+      showAlert("Couldn't log watering", e.message ?? "Please try again.");
     }
   };
 
@@ -922,6 +949,35 @@ export default function HomeScreen() {
           />
         );
       }
+      case "watering": {
+        const { area, status } = item.data;
+        const overdue = status.daysOverdue > 0;
+        return (
+          <TouchableOpacity
+            key={`water-${area.id}-${index}`}
+            onPress={() => router.push("/(app)/(garden)/watering")}
+            className={`border rounded-xl p-3 mb-2 ${overdue ? "bg-red-50 border-red-200" : "bg-sky-50 border-sky-200"}`}
+          >
+            <View className="flex-row items-center">
+              <View className="flex-1 mr-2">
+                <Text className="text-sm font-semibold text-gray-900" numberOfLines={1}>💧 Water {area.name}</Text>
+                <Text className="text-[10px] text-gray-400 mt-0.5 uppercase font-semibold">Garden</Text>
+                <Text className={`text-xs mt-0.5 ${overdue ? "text-red-600" : "text-sky-700"}`}>
+                  {status.lastWatered === null ? "Never watered"
+                    : overdue ? `Overdue ${status.daysOverdue}d · every ${status.intervalDays}d`
+                    : `Due today · every ${status.intervalDays}d`}
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={(e) => { e.stopPropagation(); handleWaterGarden(area.id); }}
+                className="bg-blue-600 rounded-lg px-3 py-1.5"
+              >
+                <Text className="text-white text-xs font-semibold">Watered</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableOpacity>
+        );
+      }
     }
   };
 
@@ -1024,29 +1080,6 @@ export default function HomeScreen() {
 
         {/* Weekly Business Review (Monday 4pm PT snapshot) */}
         <WeeklyBusinessReview />
-
-        {/* Gardens due for watering */}
-        {wateringDue.length > 0 && (
-          <View className="mb-4 bg-white border border-sky-200 rounded-2xl overflow-hidden">
-            <TouchableOpacity onPress={() => router.push("/(app)/(garden)/watering")} className="bg-sky-600 px-4 py-2.5 flex-row items-center justify-between">
-              <Text className="text-white font-bold text-sm">💧 Needs water ({wateringDue.length})</Text>
-              <Text className="text-sky-100 text-xs">View →</Text>
-            </TouchableOpacity>
-            <View className="p-3 gap-2">
-              {wateringDue.map((a) => (
-                <View key={a.id} className="flex-row items-center gap-3">
-                  <Text className="text-lg">🌱</Text>
-                  <Text className="flex-1 text-sm font-semibold text-gray-800">{a.name}</Text>
-                  <TouchableOpacity
-                    onPress={() => household && logWatering.mutate({ householdId: household.id, areaIds: [a.id], water_date: todayISO(), method: "hand", duration_min: null, amount_gal: null, notes: null })}
-                    className="bg-blue-600 rounded-lg px-3 py-1.5">
-                    <Text className="text-white text-xs font-semibold">Watered</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          </View>
-        )}
 
         {/* Needs Attention (Overdue) */}
         {hasAlerts && (
