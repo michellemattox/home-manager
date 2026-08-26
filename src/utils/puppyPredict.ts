@@ -182,9 +182,16 @@ function stdev(xs: number[]): number {
 
 // ── Daily report ─────────────────────────────────────────────────────────────
 
+/** One thing that happened, potty or meal, for the merged day timeline. */
+export type DayEvent =
+  | { type: "potty"; at: string; log: FosterPottyLog }
+  | { type: "feeding"; at: string; log: FosterFeedingLog };
+
 export interface DaySummary {
   day: string;            // YYYY-MM-DD (PT)
-  entries: FosterPottyLog[]; // chronological
+  /** Potty and feeding entries interleaved, newest first. */
+  timeline: DayEvent[];
+  entries: FosterPottyLog[]; // newest first
   feedings: FosterFeedingLog[];
   pee: number;            // #1 + #3
   poop: number;           // #2 + #3
@@ -195,6 +202,11 @@ export interface DaySummary {
 /**
  * The last `days` calendar days (PT), most recent first. Days with no entries
  * are included as empty rows so a gap in the week is visible rather than hidden.
+ *
+ * Within a day everything is ordered newest-first so the latest activity is at
+ * the top of the report. Ordering is by when the event *happened*, not when it
+ * was typed in, so a back-dated entry drops into its real place in the day.
+ * Entries sharing a timestamp fall back to most-recently-added first.
  */
 export function buildDaySummaries(
   pottyLogs: FosterPottyLog[],
@@ -216,14 +228,15 @@ export function buildDaySummaries(
   const out: DaySummary[] = [];
   for (let i = 0; i < days; i++) {
     const day = ptDay(new Date(now.getTime() - i * 86400000));
-    const entries = (byDay.get(day) ?? []).sort(
-      (a, b) => +new Date(a.occurred_at) - +new Date(b.occurred_at)
-    );
-    const feedings = (feedByDay.get(day) ?? []).sort(
-      (a, b) => +new Date(a.occurred_at) - +new Date(b.occurred_at)
-    );
+    const entries = (byDay.get(day) ?? []).sort(newestFirst);
+    const feedings = (feedByDay.get(day) ?? []).sort(newestFirst);
+    const timeline: DayEvent[] = [
+      ...entries.map((log) => ({ type: "potty" as const, at: log.occurred_at, log })),
+      ...feedings.map((log) => ({ type: "feeding" as const, at: log.occurred_at, log })),
+    ].sort((a, b) => newestFirst(a.log, b.log));
     out.push({
       day,
+      timeline,
       entries,
       feedings,
       pee: entries.filter((e) => matchesTarget(e.kind, "pee")).length,
@@ -235,6 +248,19 @@ export function buildDaySummaries(
     });
   }
   return out;
+}
+
+/**
+ * Newest first by event time, tie-broken by insert time so two entries logged
+ * for the same moment still have a stable, sensible order.
+ */
+function newestFirst(
+  a: { occurred_at: string; created_at?: string },
+  b: { occurred_at: string; created_at?: string }
+): number {
+  const d = +new Date(b.occurred_at) - +new Date(a.occurred_at);
+  if (d !== 0) return d;
+  return +new Date(b.created_at ?? 0) - +new Date(a.created_at ?? 0);
 }
 
 /** Whole days since the last inside accident. `null` = no accident on record. */

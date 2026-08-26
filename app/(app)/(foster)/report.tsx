@@ -344,30 +344,32 @@ function DayCard({
         </Text>
       </View>
 
-      {day.entries.length === 0 && day.feedings.length === 0 ? (
+      {day.timeline.length === 0 ? (
         <Text className="text-xs text-gray-400">No entries.</Text>
       ) : (
         <>
-          {day.entries.map((e) => {
-            const k = KIND_META[e.kind];
-            const l = LOC_META[e.location];
-            const accident = e.location === "inside";
-            return (
-              <EntryRow
-                key={e.id}
-                time={formatClock(e.occurred_at)}
-                emoji={k?.emoji ?? ""}
-                label={k?.label ?? e.kind}
-                trailing={`${l?.emoji ?? ""} ${(l?.label ?? "")
-                  .replace("Outside · ", "")
-                  .replace("Inside · ", "")}`}
-                trailingDanger={accident}
-                onEdit={() => onEdit({ type: "potty", log: e })}
-                onDelete={() => onDelete({ type: "potty", log: e })}
-              />
-            );
-          })}
-          {day.feedings.map((f) => {
+          {day.timeline.map((ev) => {
+            if (ev.type === "potty") {
+              const e = ev.log;
+              const k = KIND_META[e.kind];
+              const l = LOC_META[e.location];
+              const accident = e.location === "inside";
+              return (
+                <EntryRow
+                  key={e.id}
+                  time={formatClock(e.occurred_at)}
+                  emoji={k?.emoji ?? ""}
+                  label={k?.label ?? e.kind}
+                  trailing={`${l?.emoji ?? ""} ${(l?.label ?? "")
+                    .replace("Outside · ", "")
+                    .replace("Inside · ", "")}`}
+                  trailingDanger={accident}
+                  onEdit={() => onEdit({ type: "potty", log: e })}
+                  onDelete={() => onDelete({ type: "potty", log: e })}
+                />
+              );
+            }
+            const f = ev.log;
             const meta = FEED_META[f.kind];
             return (
               <EntryRow
@@ -382,7 +384,7 @@ function DayCard({
             );
           })}
           <Text className="text-[10px] text-gray-300 mt-1.5">
-            Tap an entry to edit its time or details.
+            Newest first. Tap an entry to edit its time or details.
           </Text>
         </>
       )}
