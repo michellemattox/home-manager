@@ -339,6 +339,7 @@ function DayCard({
         <Text className="text-sm font-bold text-gray-900 flex-1">{heading}</Text>
         <Text className="text-xs text-gray-500">
           💧 {day.pee}  💩 {day.poop}
+          {day.nothing > 0 ? `  ⭕ ${day.nothing}` : ""}
           {day.accidents > 0 ? `  🚨 ${day.accidents}` : ""}
         </Text>
       </View>

@@ -26,6 +26,15 @@ function matchesTarget(kind: PottyKind, target: PredictTarget): boolean {
   return kind === target || kind === "both";
 }
 
+/**
+ * Whether an entry records something actually coming out. A #0 is a trip
+ * outside where the puppy didn't go — worth logging, but it is not evidence
+ * about elimination timing, so it stays out of every count the model uses.
+ */
+function isElimination(kind: PottyKind): boolean {
+  return kind !== "nothing";
+}
+
 // ── Pacific-time helpers ─────────────────────────────────────────────────────
 
 const partsFmt = new Intl.DateTimeFormat("en-CA", {
@@ -179,7 +188,8 @@ export interface DaySummary {
   feedings: FosterFeedingLog[];
   pee: number;            // #1 + #3
   poop: number;           // #2 + #3
-  accidents: number;      // location === "inside"
+  nothing: number;        // #0 — trips out with no result
+  accidents: number;      // an elimination with location === "inside"
 }
 
 /**
@@ -218,7 +228,10 @@ export function buildDaySummaries(
       feedings,
       pee: entries.filter((e) => matchesTarget(e.kind, "pee")).length,
       poop: entries.filter((e) => matchesTarget(e.kind, "poop")).length,
-      accidents: entries.filter((e) => e.location === "inside").length,
+      nothing: entries.filter((e) => e.kind === "nothing").length,
+      accidents: entries.filter(
+        (e) => e.location === "inside" && isElimination(e.kind)
+      ).length,
     });
   }
   return out;
@@ -230,7 +243,7 @@ export function daysSinceLastAccident(
   now: Date = new Date()
 ): number | null {
   const last = pottyLogs
-    .filter((l) => l.location === "inside")
+    .filter((l) => l.location === "inside" && isElimination(l.kind))
     .sort((a, b) => +new Date(b.occurred_at) - +new Date(a.occurred_at))[0];
   if (!last) return null;
   const a = ptDay(last.occurred_at);
@@ -240,9 +253,15 @@ export function daysSinceLastAccident(
   );
 }
 
-/** Distinct PT days that have at least one potty entry — the model's sample size. */
+/**
+ * Distinct PT days with at least one *elimination* — the model's sample size.
+ * A day of nothing-but-#0 entries carries no information about when the puppy
+ * goes, so counting it would dilute every rate computed against it.
+ */
 export function loggedDayCount(pottyLogs: FosterPottyLog[]): number {
-  return new Set(pottyLogs.map((l) => ptDay(l.occurred_at))).size;
+  return new Set(
+    pottyLogs.filter((l) => isElimination(l.kind)).map((l) => ptDay(l.occurred_at))
+  ).size;
 }
 
 // ── Typical-day windows ──────────────────────────────────────────────────────
@@ -275,7 +294,7 @@ export function typicalDayWindows(
   const events = pottyLogs
     .filter((l) => matchesTarget(l.kind, target))
     .map((l) => ({ ...ptDayAndMinutes(l.occurred_at) }));
-  const daysObserved = new Set(pottyLogs.map((l) => ptDay(l.occurred_at))).size;
+  const daysObserved = loggedDayCount(pottyLogs);
   if (daysObserved < MIN_DAYS_FOR_PREDICTION || events.length === 0) return [];
 
   const sorted = [...events].sort((a, b) => a.minutes - b.minutes);

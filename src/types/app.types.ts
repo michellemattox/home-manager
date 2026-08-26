@@ -293,8 +293,8 @@ export interface FosterPuppy {
   created_at: string;
 }
 
-/** pee = #1, poop = #2, both = #3 */
-export type PottyKind = "pee" | "poop" | "both";
+/** nothing = #0 (went out, didn't go), pee = #1, poop = #2, both = #3 */
+export type PottyKind = "nothing" | "pee" | "poop" | "both";
 export type PottyLocation = "walk" | "backyard" | "inside";
 
 export interface FosterPottyLog {
@@ -324,6 +324,7 @@ export interface FosterFeedingLog {
 }
 
 export const POTTY_KINDS: { value: PottyKind; label: string; emoji: string; color: string; bg: string }[] = [
+  { value: "nothing", label: "#0 · Nothing", emoji: "⭕", color: "#6b7280", bg: "#f9fafb" },
   { value: "pee",  label: "#1 · Pee",  emoji: "💧", color: "#ca8a04", bg: "#fefce8" },
   { value: "poop", label: "#2 · Poop", emoji: "💩", color: "#92400e", bg: "#fef3c7" },
   { value: "both", label: "#3 · Both", emoji: "✌️", color: "#7c3aed", bg: "#f5f3ff" },
