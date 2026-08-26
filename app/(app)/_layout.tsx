@@ -140,6 +140,7 @@ export default function AppLayout() {
       {/* Hidden tabs — Goals + Garden are now Home buttons, others moved into */}
       {/* Projects sub-tabs or Home settings */}
       <Tabs.Screen name="(goals)" options={{ href: null }} />
+      <Tabs.Screen name="(foster)" options={{ href: null }} />
       <Tabs.Screen name="(garden)" options={{ href: null }} />
       <Tabs.Screen name="(travel)" options={{ href: null }} />
       <Tabs.Screen name="(services)" options={{ href: null }} />

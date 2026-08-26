@@ -91,6 +91,14 @@ export function useGlobalRealtime(householdId: string | undefined) {
           qc.invalidateQueries({ queryKey: ["trip"] });
         })
 
+      // ── Foster Puppy ─────────────────────────────────────────────────────────
+      .on("postgres_changes", { event: "*", schema: "public", table: "foster_puppies", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["foster_puppies", householdId] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "foster_potty_logs", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["foster_potty_logs"] }))
+      .on("postgres_changes", { event: "*", schema: "public", table: "foster_feeding_logs", filter: hf },
+        () => qc.invalidateQueries({ queryKey: ["foster_feeding_logs"] }))
+
       // ── Vendors ──────────────────────────────────────────────────────────────
       .on("postgres_changes", { event: "*", schema: "public", table: "preferred_vendors", filter: hf },
         () => qc.invalidateQueries({ queryKey: ["preferred_vendors", householdId] }))

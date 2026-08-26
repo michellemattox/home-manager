@@ -276,3 +276,67 @@ export function guessFamilyFromName(name: string): string {
   if (/carrot|dill|parsley|cilantro|fennel|parsnip|celery/.test(n)) return "Apiaceae";
   return "Other";
 }
+
+// ── Foster Puppy (migration 060) ──────────────────────────────────────────────
+
+export interface FosterPuppy {
+  id: string;
+  household_id: string;
+  name: string;
+  dob: string | null;
+  dob_is_estimate: boolean;
+  arrival_date: string;
+  active: boolean;
+  departed_on: string | null;
+  is_current: boolean;
+  notes: string | null;
+  created_at: string;
+}
+
+/** pee = #1, poop = #2, both = #3 */
+export type PottyKind = "pee" | "poop" | "both";
+export type PottyLocation = "walk" | "backyard" | "inside";
+
+export interface FosterPottyLog {
+  id: string;
+  household_id: string;
+  puppy_id: string;
+  kind: PottyKind;
+  location: PottyLocation;
+  occurred_at: string;
+  notes: string | null;
+  logged_by_member_id: string | null;
+  created_at: string;
+}
+
+export type FeedingKind = "food" | "water" | "both";
+
+export interface FosterFeedingLog {
+  id: string;
+  household_id: string;
+  puppy_id: string;
+  kind: FeedingKind;
+  amount: string | null;
+  occurred_at: string;
+  notes: string | null;
+  logged_by_member_id: string | null;
+  created_at: string;
+}
+
+export const POTTY_KINDS: { value: PottyKind; label: string; emoji: string; color: string; bg: string }[] = [
+  { value: "pee",  label: "#1 · Pee",  emoji: "💧", color: "#ca8a04", bg: "#fefce8" },
+  { value: "poop", label: "#2 · Poop", emoji: "💩", color: "#92400e", bg: "#fef3c7" },
+  { value: "both", label: "#3 · Both", emoji: "✌️", color: "#7c3aed", bg: "#f5f3ff" },
+];
+
+export const POTTY_LOCATIONS: { value: PottyLocation; label: string; emoji: string }[] = [
+  { value: "walk",     label: "Outside · Walk",     emoji: "🦮" },
+  { value: "backyard", label: "Outside · Backyard", emoji: "🌳" },
+  { value: "inside",   label: "Inside · Accident",  emoji: "🚨" },
+];
+
+export const FEEDING_KINDS: { value: FeedingKind; label: string; emoji: string }[] = [
+  { value: "food",  label: "Food",  emoji: "🍽" },
+  { value: "water", label: "Water", emoji: "💦" },
+  { value: "both",  label: "Both",  emoji: "🍽💦" },
+];

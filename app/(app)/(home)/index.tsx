@@ -20,6 +20,8 @@ import { useServiceRecords } from "@/hooks/useServices";
 import { useAllProjectTasks, useCompleteProjectChecklistItem } from "@/hooks/useProjectTasks";
 import { useAllTripTasks, useCompleteTripChecklistItem, useTrips } from "@/hooks/useTrips";
 import { useGoals } from "@/hooks/useGoals";
+import { useCurrentPuppy } from "@/hooks/useFosterPuppy";
+import { PuppyLogModal } from "@/components/foster/PuppyLogModal";
 import { useIdeas } from "@/hooks/useIdeas";
 import { isOverdue, isDueSoon, isDueToday, isDueTomorrow, dueTier, daysUntilDue, formatDate, formatDateShort, taskBadgeLabel, parseTimeToMinutes } from "@/utils/dateUtils";
 import { centsToDisplay } from "@/utils/currencyUtils";
@@ -441,6 +443,11 @@ export default function HomeScreen() {
   const { data: allTripTasks = [] } = useAllTripTasks(household?.id);
   const { data: trips = [] } = useTrips(household?.id);
   const { data: goals = [] } = useGoals(household?.id);
+
+  // Foster Puppy — when a current puppy is set, the Home pill opens the log
+  // dialog directly instead of routing to the profile screen.
+  const currentPuppy = useCurrentPuppy(household?.id);
+  const [showPuppyLog, setShowPuppyLog] = useState(false);
   const { data: ideas = [] } = useIdeas(household?.id);
   const completeRecurring = useCompleteRecurringTask();
   const completeOneOff = useCompleteTask();
@@ -1078,6 +1085,27 @@ export default function HomeScreen() {
           </TouchableOpacity>
         </View>
 
+        {/* Foster Puppy — one tap to the potty log when a puppy is current */}
+        <View className="flex-row gap-2 mt-2">
+          <TouchableOpacity
+            onPress={() =>
+              currentPuppy ? setShowPuppyLog(true) : router.push("/(app)/(foster)")
+            }
+            className={`flex-1 flex-row items-center justify-center gap-1.5 px-3 py-1.5 rounded-full border ${
+              currentPuppy ? "border-amber-300 bg-amber-50" : "border-gray-300 bg-white"
+            }`}
+          >
+            <Text style={{ fontSize: 14 }}>🐶</Text>
+            <Text
+              className={`text-xs font-semibold ${
+                currentPuppy ? "text-amber-800" : "text-gray-700"
+              }`}
+            >
+              {currentPuppy ? `Potty Log · ${currentPuppy.name}` : "Foster Puppy"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         {/* Weekly Business Review (Monday 4pm PT snapshot) */}
         <WeeklyBusinessReview />
 
@@ -1289,6 +1317,15 @@ export default function HomeScreen() {
           </ScrollView>
         </SafeAreaView>
       </Modal>
+
+      {/* Foster Puppy log dialog */}
+      {currentPuppy && (
+        <PuppyLogModal
+          visible={showPuppyLog}
+          puppy={currentPuppy}
+          onClose={() => setShowPuppyLog(false)}
+        />
+      )}
     </SafeAreaView>
   );
 }
