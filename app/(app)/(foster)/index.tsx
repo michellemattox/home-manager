@@ -29,7 +29,7 @@ import { PuppyLogModal } from "@/components/foster/PuppyLogModal";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateSlash, getTodayPT } from "@/utils/dateUtils";
 import { computeAge } from "@/utils/puppyPredict";
-import type { FosterPuppy } from "@/types/app.types";
+import { HANDOFF_FIELDS, type FosterPuppy } from "@/types/app.types";
 
 export default function FosterPuppyScreen() {
   const household = useHouseholdStore((s) => s.household);
@@ -52,7 +52,11 @@ export default function FosterPuppyScreen() {
   const [dob, setDob] = useState("");
   const [dobEstimate, setDobEstimate] = useState(false);
   const [arrival, setArrival] = useState(getTodayPT());
-  const [notes, setNotes] = useState("");
+  // Keyed by HANDOFF_FIELDS.key (includes the general "notes" field), so the
+  // form and the printed report card stay driven by the same list.
+  const [handoff, setHandoff] = useState<Record<string, string>>({});
+  const setField = (key: string, v: string) =>
+    setHandoff((prev) => ({ ...prev, [key]: v }));
 
   const active = useMemo(() => puppies.filter((p) => p.active), [puppies]);
   const departed = useMemo(() => puppies.filter((p) => !p.active), [puppies]);
@@ -64,7 +68,7 @@ export default function FosterPuppyScreen() {
     setDob("");
     setDobEstimate(false);
     setArrival(getTodayPT());
-    setNotes("");
+    setHandoff({});
     setShowForm(true);
   };
 
@@ -74,9 +78,17 @@ export default function FosterPuppyScreen() {
     setDob(p.dob ?? "");
     setDobEstimate(p.dob_is_estimate);
     setArrival(p.arrival_date);
-    setNotes(p.notes ?? "");
+    setHandoff(
+      Object.fromEntries(HANDOFF_FIELDS.map((f) => [f.key, (p[f.key] as string | null) ?? ""]))
+    );
     setShowForm(true);
   };
+
+  /** Trim every handoff field, storing empty ones as NULL. */
+  const handoffPayload = () =>
+    Object.fromEntries(
+      HANDOFF_FIELDS.map((f) => [f.key, (handoff[f.key] ?? "").trim() || null])
+    );
 
   const save = async () => {
     if (!household) return;
@@ -94,7 +106,7 @@ export default function FosterPuppyScreen() {
             dob: dob || null,
             dob_is_estimate: dobEstimate,
             arrival_date: arrival || getTodayPT(),
-            notes: notes.trim() || null,
+            ...handoffPayload(),
           },
         });
       } else {
@@ -104,7 +116,7 @@ export default function FosterPuppyScreen() {
           dob: dob || null,
           dob_is_estimate: dobEstimate,
           arrival_date: arrival || getTodayPT(),
-          notes: notes.trim() || null,
+          ...handoffPayload(),
           // A brand-new profile becomes the one the Home button logs against.
           makeCurrent: true,
         });
@@ -343,17 +355,29 @@ export default function FosterPuppyScreen() {
                 onChange={setArrival}
               />
 
-              <Text className="text-xs font-semibold text-gray-500 uppercase mb-1 mt-4">
-                Notes (optional)
-              </Text>
-              <TextInput
-                value={notes}
-                onChangeText={setNotes}
-                placeholder="Breed, rescue org, quirks…"
-                multiline
-                className="border border-gray-300 rounded-xl px-3 py-3 text-base bg-white h-20"
-                style={{ textAlignVertical: "top" }}
-              />
+              <View className="mt-5 mb-1 pt-4 border-t border-gray-100">
+                <Text className="text-sm font-bold text-gray-900">Handoff info</Text>
+                <Text className="text-xs text-gray-500 mt-0.5">
+                  What the next foster parent needs to know. All optional — everything
+                  filled in here prints onto the report card.
+                </Text>
+              </View>
+
+              {HANDOFF_FIELDS.map((f) => (
+                <View key={f.key} className="mt-3">
+                  <Text className="text-xs font-semibold text-gray-500 uppercase mb-1">
+                    {f.label}
+                  </Text>
+                  <TextInput
+                    value={handoff[f.key] ?? ""}
+                    onChangeText={(v) => setField(f.key, v)}
+                    placeholder={f.placeholder}
+                    multiline
+                    className="border border-gray-300 rounded-xl px-3 py-3 text-base bg-white h-20"
+                    style={{ textAlignVertical: "top" }}
+                  />
+                </View>
+              ))}
 
               <TouchableOpacity
                 onPress={save}

@@ -320,7 +320,29 @@ export function typicalDayWindows(
   const events = pottyLogs
     .filter((l) => matchesTarget(l.kind, target))
     .map((l) => ({ ...ptDayAndMinutes(l.occurred_at) }));
-  const daysObserved = loggedDayCount(pottyLogs);
+  return clusterIntoWindows(events, loggedDayCount(pottyLogs), target);
+}
+
+/**
+ * Typical meal times, clustered the same way as potty windows. Printed on the
+ * handoff report so the next foster can keep the puppy on its existing schedule
+ * — which is also what keeps the #2 timings predictable.
+ */
+export function typicalMealWindows(feedingLogs: FosterFeedingLog[]): TypicalWindow[] {
+  const meals = feedingLogs.filter((f) => f.kind === "food" || f.kind === "both");
+  const daysObserved = new Set(meals.map((f) => ptDay(f.occurred_at))).size;
+  return clusterIntoWindows(
+    meals.map((f) => ({ ...ptDayAndMinutes(f.occurred_at) })),
+    daysObserved,
+    "pee" // target is unused for meals; the field just carries through
+  );
+}
+
+function clusterIntoWindows(
+  events: { day: string; minutes: number }[],
+  daysObserved: number,
+  target: PredictTarget
+): TypicalWindow[] {
   if (daysObserved < MIN_DAYS_FOR_PREDICTION || events.length === 0) return [];
 
   const sorted = [...events].sort((a, b) => a.minutes - b.minutes);
@@ -567,4 +589,108 @@ export function predictNext(
     });
   }
   return out.sort((a, b) => +a.at - +b.at);
+}
+
+// ── Handoff report statistics ────────────────────────────────────────────────
+
+export interface HandoffStats {
+  daysCovered: number;        // days in the window with at least one elimination
+  totalPee: number;
+  totalPoop: number;
+  totalNothing: number;
+  totalAccidents: number;
+  peePerDay: number;
+  poopPerDay: number;
+  accidentsPerDay: number;
+  daysSinceAccident: number | null;
+  /** Accidents in the most recent half of the window vs the older half. */
+  accidentTrend: "improving" | "steady" | "worsening" | "none";
+  /** Longest stretch between eliminations, and the clock times it spanned. */
+  longestGapMin: number | null;
+  longestGapFrom: string | null;  // "10pm"
+  longestGapTo: string | null;    // "6:20am"
+}
+
+/**
+ * Summary figures for the handoff report card. Everything is derived from the
+ * same logs the on-screen report shows, over `days` calendar days (PT).
+ */
+export function handoffStats(
+  pottyLogs: FosterPottyLog[],
+  days: number,
+  now: Date = new Date()
+): HandoffStats {
+  const summaries = buildDaySummaries(pottyLogs, [], days, now);
+  const daysCovered = summaries.filter(
+    (d) => d.entries.some((e) => isElimination(e.kind))
+  ).length;
+
+  const totalPee = summaries.reduce((n, d) => n + d.pee, 0);
+  const totalPoop = summaries.reduce((n, d) => n + d.poop, 0);
+  const totalNothing = summaries.reduce((n, d) => n + d.nothing, 0);
+  const totalAccidents = summaries.reduce((n, d) => n + d.accidents, 0);
+  const per = (n: number) => (daysCovered > 0 ? n / daysCovered : 0);
+
+  // Trend: compare accidents in the recent half against the older half. Only
+  // meaningful once both halves actually contain logged days.
+  const half = Math.floor(summaries.length / 2);
+  const recent = summaries.slice(0, half);
+  const older = summaries.slice(half);
+  const loggedIn = (xs: DaySummary[]) =>
+    xs.filter((d) => d.entries.some((e) => isElimination(e.kind))).length;
+  const rate = (xs: DaySummary[]) => {
+    const n = loggedIn(xs);
+    return n > 0 ? xs.reduce((a, d) => a + d.accidents, 0) / n : null;
+  };
+  const rRecent = rate(recent);
+  const rOlder = rate(older);
+  let accidentTrend: HandoffStats["accidentTrend"] = "none";
+  if (totalAccidents === 0) accidentTrend = "none";
+  else if (rRecent == null || rOlder == null) accidentTrend = "steady";
+  else if (rRecent < rOlder - 0.1) accidentTrend = "improving";
+  else if (rRecent > rOlder + 0.1) accidentTrend = "worsening";
+  else accidentTrend = "steady";
+
+  // Longest stretch between eliminations — the "can they make it through the
+  // night?" figure. Gaps over 24h are treated as a logging break, not a record.
+  const times = pottyLogs
+    .filter((l) => isElimination(l.kind))
+    .map((l) => +new Date(l.occurred_at))
+    .filter((t) => t <= now.getTime() && t >= now.getTime() - days * 86400000)
+    .sort((a, b) => a - b);
+  let longestGapMin: number | null = null;
+  let longestGapFrom: string | null = null;
+  let longestGapTo: string | null = null;
+  for (let i = 1; i < times.length; i++) {
+    const gap = (times[i] - times[i - 1]) / MIN;
+    if (gap > 24 * 60) continue;
+    if (longestGapMin == null || gap > longestGapMin) {
+      longestGapMin = gap;
+      longestGapFrom = formatClock(new Date(times[i - 1]));
+      longestGapTo = formatClock(new Date(times[i]));
+    }
+  }
+
+  return {
+    daysCovered,
+    totalPee,
+    totalPoop,
+    totalNothing,
+    totalAccidents,
+    peePerDay: per(totalPee),
+    poopPerDay: per(totalPoop),
+    accidentsPerDay: per(totalAccidents),
+    daysSinceAccident: daysSinceLastAccident(pottyLogs, now),
+    accidentTrend,
+    longestGapMin,
+    longestGapFrom,
+    longestGapTo,
+  };
+}
+
+/** "8h 20m" — shared by the report card. */
+export function formatDuration(minutes: number): string {
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return h === 0 ? `${m}m` : m === 0 ? `${h}h` : `${h}h ${m}m`;
 }

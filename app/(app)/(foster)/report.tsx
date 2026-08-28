@@ -17,7 +17,9 @@ import { Card } from "@/components/ui/Card";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { NextLikelyCard } from "@/components/foster/NextLikelyCard";
 import { EntryEditModal, type EditTarget } from "@/components/foster/EntryEditModal";
-import { showConfirm } from "@/lib/alert";
+import { buildReportCardHtml, reportCardFilename, REPORT_CARD_DAYS } from "@/utils/puppyReportCard";
+import { printHtmlDocument } from "@/utils/printHtml";
+import { showAlert, showConfirm } from "@/lib/alert";
 import {
   buildDaySummaries,
   daysSinceLastAccident,
@@ -59,6 +61,25 @@ export default function FosterReportScreen() {
   const updatePotty = useUpdatePottyLog();
   const updateFeeding = useUpdateFeedingLog();
   const [editing, setEditing] = useState<EditTarget | null>(null);
+
+  // Print the handoff report card. The printed range is the full retention
+  // window (21 days), not the 7 days shown on screen.
+  const handlePrint = () => {
+    if (!puppy) return;
+    const html = buildReportCardHtml({
+      puppy,
+      pottyLogs,
+      feedingLogs,
+      days: REPORT_CARD_DAYS,
+    });
+    const res = printHtmlDocument(html, reportCardFilename(puppy));
+    if (!res.ok) {
+      showAlert(
+        "Couldn't open the report card",
+        `${res.reason ?? ""} Open the app in a browser to save it as a PDF.`.trim()
+      );
+    }
+  };
 
   const removeEntry = (t: EditTarget) => {
     if (t.type === "potty") deletePotty.mutate({ id: t.log.id, puppyId: t.log.puppy_id });
@@ -202,6 +223,19 @@ export default function FosterReportScreen() {
             </>
           )}
         </Card>
+
+        {/* Handoff report card — printable / save as PDF */}
+        <TouchableOpacity
+          onPress={handlePrint}
+          className="bg-gray-900 rounded-2xl py-3.5 items-center mb-1"
+        >
+          <Text className="text-white text-sm font-bold">
+            📄  Download Report Card (PDF)
+          </Text>
+        </TouchableOpacity>
+        <Text className="text-[11px] text-gray-400 text-center mb-4">
+          {`${REPORT_CARD_DAYS} days of history, ${puppy.name}'s routine and care notes — for the next foster. Choose “Save as PDF” in the print dialog.`}
+        </Text>
 
         {/* Day-by-day */}
         <Text className="text-xs font-semibold text-gray-500 uppercase mb-2">

@@ -290,8 +290,30 @@ export interface FosterPuppy {
   departed_on: string | null;
   is_current: boolean;
   notes: string | null;
+  // Handoff info (migration 062) — printed onto the report card.
+  vet_info: string | null;
+  medications: string | null;
+  allergies: string | null;
+  feeding_notes: string | null;
+  sleep_crate_notes: string | null;
+  behavior_notes: string | null;
   created_at: string;
 }
+
+/** The handoff fields, in the order they appear on the form and the printout. */
+export const HANDOFF_FIELDS: {
+  key: "vet_info" | "medications" | "allergies" | "feeding_notes" | "sleep_crate_notes" | "behavior_notes" | "notes";
+  label: string;
+  placeholder: string;
+}[] = [
+  { key: "vet_info",          label: "Vet",              placeholder: "Clinic name, phone, last visit" },
+  { key: "medications",       label: "Medications",      placeholder: "Name, dose, when — or 'none'" },
+  { key: "allergies",         label: "Allergies",        placeholder: "Foods, meds, reactions — or 'none known'" },
+  { key: "feeding_notes",     label: "Feeding",          placeholder: "Brand, amount per meal, how many meals, treats" },
+  { key: "sleep_crate_notes", label: "Sleep & crate",    placeholder: "Where they sleep, crate habits, overnight routine" },
+  { key: "behavior_notes",    label: "Behaviour & quirks", placeholder: "What scares them, what they love, leash manners, other pets" },
+  { key: "notes",             label: "Other notes",      placeholder: "Anything else the next foster should know" },
+];
 
 /** nothing = #0 (went out, didn't go), pee = #1, poop = #2, both = #3 */
 export type PottyKind = "nothing" | "pee" | "poop" | "both";
