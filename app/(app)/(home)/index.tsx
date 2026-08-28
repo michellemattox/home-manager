@@ -1101,7 +1101,7 @@ export default function HomeScreen() {
                 currentPuppy ? "text-amber-800" : "text-gray-700"
               }`}
             >
-              {currentPuppy ? `Potty Log · ${currentPuppy.name}` : "Foster Puppy"}
+              {currentPuppy ? `Puppy Behavior Log · ${currentPuppy.name}` : "Foster Puppy"}
             </Text>
           </TouchableOpacity>
         </View>

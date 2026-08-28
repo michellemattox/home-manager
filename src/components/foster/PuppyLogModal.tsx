@@ -31,7 +31,7 @@ interface PuppyLogModalProps {
 }
 
 /**
- * The one-tap dialog behind the Home "Potty Log" button. Opens on a menu with
+ * The one-tap dialog behind the Home "Puppy Behavior Log" button. Opens on a menu with
  * Log Potty / Log Food & Water, the next-likely projections, and a Daily Report
  * link at the bottom.
  */

@@ -195,7 +195,7 @@ export default function FosterPuppyScreen() {
                 <Badge label="Current" variant="warning" size="sm" />
               </View>
               <View className="bg-amber-500 rounded-xl py-3 items-center mt-3">
-                <Text className="text-white text-sm font-bold">Open Potty Log</Text>
+                <Text className="text-white text-sm font-bold">Open Puppy Behavior Log</Text>
               </View>
             </Card>
           </TouchableOpacity>
