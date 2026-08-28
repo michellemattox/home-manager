@@ -10,6 +10,8 @@ import {
   handoffStats,
   typicalDayWindows,
   typicalMealWindows,
+  mergeRoutine,
+  routineSpread,
   predictNext,
   loggedDayCount,
   computeAge,
@@ -19,7 +21,7 @@ import {
   formatDuration,
   ptDay,
   MIN_DAYS_FOR_PREDICTION,
-  type TypicalWindow,
+  type RoutineSlot,
 } from "./puppyPredict";
 import {
   POTTY_KINDS,
@@ -71,14 +73,33 @@ function dayHeading(day: string): string {
   });
 }
 
-function windowList(windows: TypicalWindow[]): string {
-  if (windows.length === 0) return "";
-  return windows
+function slotRows(slots: RoutineSlot[]): string {
+  return slots
     .map(
-      (w) => `<li><strong>${formatMinutes(w.startMin)} – ${formatMinutes(w.endMin)}</strong>
-        <span class="muted">on ${w.hits} of ${w.daysObserved} days</span></li>`
+      (s) => `<tr>
+        <td class="slot-time"><strong>${formatMinutes(s.startMin)} – ${formatMinutes(s.endMin)}</strong></td>
+        <td class="slot-what">${s.parts.map((p) => esc(p.label)).join(" &amp; ")}</td>
+        <td class="muted slot-freq">${s.parts
+          .map((p) =>
+            s.parts.length > 1
+              ? `${esc(p.label.replace(/ .*/, ""))} ${p.hits}/${p.daysObserved}`
+              : `${p.hits} of ${p.daysObserved} days`
+          )
+          .join(" · ")}</td>
+      </tr>`
     )
     .join("");
+}
+
+/** Honest one-liner for a target with no identifiable windows. */
+function spreadLine(pottyLogs: FosterPottyLog[], target: "pee" | "poop", name: string): string {
+  const sp = routineSpread(pottyLogs, target);
+  const what = target === "pee" ? "#1" : "#2";
+  if (!sp) return `<p class="muted">No ${what} logged yet.</p>`;
+  return `<p class="muted"><strong>${what}:</strong> about ${sp.perDay.toFixed(1)} a day, but at no
+    settled time yet — logged anywhere between ${formatMinutes(sp.earliestMin)} and
+    ${formatMinutes(sp.latestMin)} across ${sp.days} day${sp.days === 1 ? "" : "s"}.
+    Watch ${esc(name)} rather than the clock for this one.</p>`;
 }
 
 /** Ruled space for the next foster to write in. */
@@ -99,8 +120,8 @@ export function buildReportCardHtml(opts: {
   const age = computeAge(puppy.dob, now);
   const stats = handoffStats(pottyLogs, days, now);
   const summaries = buildDaySummaries(pottyLogs, feedingLogs, days, now);
-  const peeWindows = typicalDayWindows(pottyLogs, "pee");
-  const poopWindows = typicalDayWindows(pottyLogs, "poop");
+  const peeWindows = typicalDayWindows(pottyLogs, "pee", { relaxed: true });
+  const poopWindows = typicalDayWindows(pottyLogs, "poop", { relaxed: true });
   const mealWindows = typicalMealWindows(feedingLogs);
   const predictions = predictNext(pottyLogs, feedingLogs, age?.months ?? null, now);
   const modelDays = loggedDayCount(pottyLogs);
@@ -126,21 +147,37 @@ export function buildReportCardHtml(opts: {
 
   // ── Sections ───────────────────────────────────────────────────────────────
 
-  const routine =
-    peeWindows.length === 0 && poopWindows.length === 0
-      ? `<p class="muted">Not enough logged days yet to identify a repeating routine
-         (needs ${MIN_DAYS_FOR_PREDICTION}, has ${modelDays}).</p>`
-      : `
-        ${peeWindows.length ? `<h3>#1 — Pee</h3><ul>${windowList(peeWindows)}</ul>` : ""}
-        ${poopWindows.length ? `<h3>#2 — Poop</h3><ul>${windowList(poopWindows)}</ul>` : ""}
-        <p class="muted">These are the times ${esc(puppy.name)} usually went, measured
-        across ${modelDays} logged days. They travel with the puppy — the clock times
-        below do not.</p>`;
+  // One chronological day, #1 / #2 / meals merged — a trip where the puppy does
+  // both reads as a single row rather than the same time listed twice.
+  const slots = mergeRoutine([
+    { label: "#1 Pee", windows: peeWindows },
+    { label: "#2 Poop", windows: poopWindows },
+    { label: "Meal", windows: mealWindows },
+  ]);
 
-  const meals = mealWindows.length
-    ? `<ul>${windowList(mealWindows)}</ul>
-       <p class="muted">Keeping meals near these times keeps the #2 timings predictable.</p>`
-    : `<p class="muted">Not enough meal entries yet to identify a regular schedule.</p>`;
+  // A target with no window — or only a weak one — gets a plain-language line, so
+  // #2 is never silently absent and a 2-of-6 window is never mistaken for the
+  // whole picture.
+  const weak = (windows: { hits: number; daysObserved: number }[]) =>
+    windows.length === 0 ||
+    Math.max(...windows.map((w) => w.hits / w.daysObserved)) < 0.6;
+  const missing = [
+    weak(peeWindows) ? spreadLine(pottyLogs, "pee", puppy.name) : "",
+    weak(poopWindows) ? spreadLine(pottyLogs, "poop", puppy.name) : "",
+    mealWindows.length === 0
+      ? `<p class="muted"><strong>Meals:</strong> not enough logged yet to show a regular schedule.</p>`
+      : "",
+  ].join("");
+
+  const routine =
+    slots.length === 0
+      ? `<p class="muted">Not enough logged days yet to identify a repeating routine
+         (needs ${MIN_DAYS_FOR_PREDICTION}, has ${modelDays}).</p>${missing}`
+      : `<table class="routine">${slotRows(slots)}</table>
+         ${missing}
+         <p class="muted">The times ${esc(puppy.name)} usually goes, measured across
+         ${modelDays} logged days. This is the part that travels with the puppy —
+         the clock times further down do not.</p>`;
 
   const predictionRows = predictions.length
     ? predictions
@@ -229,6 +266,11 @@ export function buildReportCardHtml(opts: {
   .accident { color: #b91c1c; font-weight: 600; }
   .counts { float: right; font-weight: 400; color: #6b7280; font-size: 9.5pt; }
   .day { margin-bottom: 12px; }
+  table.routine td { padding: 5px 6px; border-bottom: 1px solid #f3f4f6; font-size: 10.5pt;
+                     vertical-align: top; }
+  td.slot-time { width: 130px; white-space: nowrap; }
+  td.slot-what { font-weight: 600; }
+  td.slot-freq { text-align: right; white-space: nowrap; }
   table.pred td { padding: 4px 6px; border-bottom: 1px solid #f3f4f6; font-size: 10pt; }
   .field { margin-bottom: 10px; }
   .field .label { font-size: 8.5pt; text-transform: uppercase; letter-spacing: .04em;
@@ -264,7 +306,7 @@ export function buildReportCardHtml(opts: {
     <div class="stat"><b>${stats.totalAccidents}</b><span>accidents</span></div>
     <div class="stat"><b>${
       stats.daysSinceAccident == null ? "—" : stats.daysSinceAccident
-    }</b><span>days since one</span></div>
+    }</b><span>days since last accident</span></div>
   </div>
   <p>Accidents are <strong>${trendLabel}</strong>.
   ${
@@ -284,11 +326,6 @@ export function buildReportCardHtml(opts: {
 <section>
   <h2>Expected daily routine</h2>
   ${routine}
-</section>
-
-<section>
-  <h2>Meal schedule</h2>
-  ${meals}
 </section>
 
 <section>

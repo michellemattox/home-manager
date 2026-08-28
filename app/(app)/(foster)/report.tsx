@@ -25,12 +25,15 @@ import {
   daysSinceLastAccident,
   loggedDayCount,
   typicalDayWindows,
+  typicalMealWindows,
+  mergeRoutine,
   computeAge,
   formatClock,
   formatMinutes,
   ptDay,
   MIN_DAYS_FOR_PREDICTION,
   type DaySummary,
+  type RoutineSlot,
 } from "@/utils/puppyPredict";
 import {
   POTTY_KINDS,
@@ -107,8 +110,17 @@ export default function FosterReportScreen() {
     [days]
   );
 
-  const peeWindows = useMemo(() => typicalDayWindows(pottyLogs, "pee"), [pottyLogs]);
-  const poopWindows = useMemo(() => typicalDayWindows(pottyLogs, "poop"), [pottyLogs]);
+  // Relaxed windows here too, so the screen and the printed report card can
+  // never disagree about the routine.
+  const slots = useMemo(
+    () =>
+      mergeRoutine([
+        { label: "#1 Pee", windows: typicalDayWindows(pottyLogs, "pee", { relaxed: true }) },
+        { label: "#2 Poop", windows: typicalDayWindows(pottyLogs, "poop", { relaxed: true }) },
+        { label: "Meal", windows: typicalMealWindows(feedingLogs) },
+      ]),
+    [pottyLogs, feedingLogs]
+  );
 
   if (!puppy) {
     return (
@@ -208,17 +220,18 @@ export default function FosterReportScreen() {
             <Text className="text-sm text-gray-500">
               {`Needs ${MIN_DAYS_FOR_PREDICTION} days of entries to spot a pattern — ${loggedDays} logged so far.`}
             </Text>
-          ) : peeWindows.length === 0 && poopWindows.length === 0 ? (
+          ) : slots.length === 0 ? (
             <Text className="text-sm text-gray-500">
               No repeating times yet — {puppy.name}'s schedule still looks random. Keep logging.
             </Text>
           ) : (
             <>
-              <WindowRow label="#1 Pee" emoji="💧" windows={peeWindows} />
-              <WindowRow label="#2 Poop" emoji="💩" windows={poopWindows} />
+              {slots.map((slot) => (
+                <SlotRow key={`${slot.startMin}-${slot.centerMin}`} slot={slot} />
+              ))}
               <Text className="text-[11px] text-gray-400 mt-2">
-                Windows are the times {puppy.name} usually goes, based on {loggedDays} days.
-                The fraction is how many of those days each window actually fired.
+                The times {puppy.name} usually goes, based on {loggedDays} logged days.
+                The fraction is how many of those days each one actually fired.
               </Text>
             </>
           )}
@@ -308,35 +321,26 @@ function Stat({
   );
 }
 
-function WindowRow({
-  label,
-  emoji,
-  windows,
-}: {
-  label: string;
-  emoji: string;
-  windows: ReturnType<typeof typicalDayWindows>;
-}) {
-  if (windows.length === 0) return null;
+/** One merged slot in the typical day — e.g. "7am · #1 Pee & #2 Poop". */
+function SlotRow({ slot }: { slot: RoutineSlot }) {
   return (
-    <View className="mb-2">
-      <Text className="text-xs font-semibold text-gray-700 mb-1">
-        {emoji} {label}
+    <View className="flex-row items-start py-1.5 border-b border-gray-50">
+      <Text className="text-xs font-semibold text-gray-800 w-[104px]">
+        {formatMinutes(slot.startMin)}–{formatMinutes(slot.endMin)}
       </Text>
-      <View className="flex-row flex-wrap gap-1.5">
-        {windows.map((w) => (
-          <View
-            key={`${w.target}-${w.centerMin}`}
-            className="px-2.5 py-1.5 rounded-lg bg-gray-100"
-          >
-            <Text className="text-xs font-semibold text-gray-800">
-              {formatMinutes(w.startMin)}–{formatMinutes(w.endMin)}
-            </Text>
-            <Text className="text-[10px] text-gray-500">
-              {w.hits}/{w.daysObserved} days
-            </Text>
-          </View>
-        ))}
+      <View className="flex-1">
+        <Text className="text-xs font-semibold text-gray-800">
+          {slot.parts.map((p) => p.label).join(" & ")}
+        </Text>
+        <Text className="text-[10px] text-gray-400">
+          {slot.parts
+            .map((p) =>
+              slot.parts.length > 1
+                ? `${p.label.split(" ")[0]} ${p.hits}/${p.daysObserved}`
+                : `${p.hits} of ${p.daysObserved} days`
+            )
+            .join(" · ")}
+        </Text>
       </View>
     </View>
   );

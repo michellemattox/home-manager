@@ -315,12 +315,26 @@ const MIN_HIT_RATE = 0.4;
  */
 export function typicalDayWindows(
   pottyLogs: FosterPottyLog[],
-  target: PredictTarget
+  target: PredictTarget,
+  opts: WindowOpts = {}
 ): TypicalWindow[] {
   const events = pottyLogs
     .filter((l) => matchesTarget(l.kind, target))
     .map((l) => ({ ...ptDayAndMinutes(l.occurred_at) }));
-  return clusterIntoWindows(events, loggedDayCount(pottyLogs), target);
+  return clusterIntoWindows(events, loggedDayCount(pottyLogs), target, opts);
+}
+
+export interface WindowOpts {
+  /**
+   * Fall back to any cluster seen on 2+ days when nothing clears the hit-rate
+   * bar. That bar suits #1, which happens six-odd times a day so its clusters
+   * accumulate hits quickly. #2 happens once or twice a day, so its clusters
+   * are inherently sparse and were being filtered out wholesale — a puppy that
+   * poops daily at a wandering time produced an empty routine at every sample
+   * size. Reports pass this; predictNext deliberately does not, so a weak
+   * window can never steer a projection.
+   */
+  relaxed?: boolean;
 }
 
 /**
@@ -334,14 +348,16 @@ export function typicalMealWindows(feedingLogs: FosterFeedingLog[]): TypicalWind
   return clusterIntoWindows(
     meals.map((f) => ({ ...ptDayAndMinutes(f.occurred_at) })),
     daysObserved,
-    "pee" // target is unused for meals; the field just carries through
+    "pee", // target is unused for meals; the field just carries through
+    { relaxed: true }
   );
 }
 
 function clusterIntoWindows(
   events: { day: string; minutes: number }[],
   daysObserved: number,
-  target: PredictTarget
+  target: PredictTarget,
+  opts: WindowOpts = {}
 ): TypicalWindow[] {
   if (daysObserved < MIN_DAYS_FOR_PREDICTION || events.length === 0) return [];
 
@@ -358,7 +374,7 @@ function clusterIntoWindows(
   }
   clusters.push(current);
 
-  return clusters
+  const all = clusters
     .map((c) => {
       const mins = c.map((e) => e.minutes);
       const center = mean(mins);
@@ -374,9 +390,37 @@ function clusterIntoWindows(
         hits,
         daysObserved,
       };
-    })
-    .filter((w) => w.hits / w.daysObserved >= MIN_HIT_RATE)
-    .sort((a, b) => a.centerMin - b.centerMin);
+    });
+
+  const byTime = (a: TypicalWindow, b: TypicalWindow) => a.centerMin - b.centerMin;
+  const strong = all.filter((w) => w.hits / w.daysObserved >= MIN_HIT_RATE);
+  if (strong.length > 0 || !opts.relaxed) return strong.sort(byTime);
+  // Nothing settled: surface anything that has at least repeated. Each window
+  // still carries its true hit count, so a weak pattern reads as a weak pattern.
+  return all.filter((w) => w.hits >= 2).sort(byTime);
+}
+
+/**
+ * Describes a target that has no identifiable windows at all — how often it
+ * happens and the spread of times seen — so a report can say something honest
+ * instead of printing nothing.
+ */
+export function routineSpread(
+  pottyLogs: FosterPottyLog[],
+  target: PredictTarget
+): { perDay: number; earliestMin: number; latestMin: number; days: number } | null {
+  const events = pottyLogs
+    .filter((l) => matchesTarget(l.kind, target))
+    .map((l) => ptDayAndMinutes(l.occurred_at));
+  const days = loggedDayCount(pottyLogs);
+  if (events.length === 0 || days === 0) return null;
+  const mins = events.map((e) => e.minutes);
+  return {
+    perDay: events.length / days,
+    earliestMin: Math.min(...mins),
+    latestMin: Math.max(...mins),
+    days,
+  };
 }
 
 // ── Next-likely prediction ───────────────────────────────────────────────────
@@ -693,4 +737,55 @@ export function formatDuration(minutes: number): string {
   const h = Math.floor(minutes / 60);
   const m = Math.round(minutes % 60);
   return h === 0 ? `${m}m` : m === 0 ? `${h}h` : `${h}h ${m}m`;
+}
+
+// ── Merged daily routine ─────────────────────────────────────────────────────
+
+export interface RoutineSlot {
+  startMin: number;
+  endMin: number;
+  centerMin: number;
+  /** What happens in this slot, in the order the sources were supplied. */
+  parts: { label: string; hits: number; daysObserved: number; order: number }[];
+}
+
+/** Windows whose centres sit this close describe the same moment in the day. */
+const SLOT_MERGE_MIN = 50;
+
+/**
+ * Collapse the separate #1 / #2 / meal windows into one chronological
+ * day-at-a-glance. The morning trip where a puppy does both used to print as
+ * two identical rows in two different lists; here it's one row reading
+ * "#1 Pee & #2 Poop".
+ */
+export function mergeRoutine(
+  sources: { label: string; windows: TypicalWindow[] }[]
+): RoutineSlot[] {
+  const flat = sources
+    .flatMap((s, order) => s.windows.map((w) => ({ ...w, label: s.label, order })))
+    .sort((a, b) => a.centerMin - b.centerMin);
+  if (flat.length === 0) return [];
+
+  const slots: RoutineSlot[] = [];
+  for (const w of flat) {
+    const open = slots[slots.length - 1];
+    if (open && Math.abs(w.centerMin - open.centerMin) <= SLOT_MERGE_MIN) {
+      open.startMin = Math.min(open.startMin, w.startMin);
+      open.endMin = Math.max(open.endMin, w.endMin);
+      open.parts.push({ label: w.label, hits: w.hits, daysObserved: w.daysObserved, order: w.order });
+      // Recentre on the parts so a chain of near-misses can't drift.
+      open.centerMin = (open.startMin + open.endMin) / 2;
+    } else {
+      slots.push({
+        startMin: w.startMin,
+        endMin: w.endMin,
+        centerMin: w.centerMin,
+        parts: [{ label: w.label, hits: w.hits, daysObserved: w.daysObserved, order: w.order }],
+      });
+    }
+  }
+  // Read a slot in a consistent order (#1, then #2, then Meal) however the
+  // windows happened to sort by centre.
+  for (const slot of slots) slot.parts.sort((a, b) => a.order - b.order);
+  return slots;
 }
