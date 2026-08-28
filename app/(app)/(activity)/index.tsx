@@ -83,11 +83,19 @@ export default function ActivityScreen() {
   }, [allTripTasks, searchQuery]);
 
   const tripMatches = (t: Trip) => {
-    // Member filter: include if assigned to a selected member, or marked "all" (household-wide).
+    // Member filter. Two things to get right here:
+    //  1. An unassigned trip (assigned_to NULL) is household-wide, not "belongs
+    //     to nobody" — every trip predating migration 022 is NULL, and the
+    //     detail screen already displays NULL as "All".
+    //  2. assigned_to stores a member's DISPLAY NAME, while memberFilter holds
+    //     member IDs, so they have to be resolved before comparing. Comparing
+    //     them directly never matched, which hid every person-assigned trip.
     if (memberFilter.length > 0) {
       const assigned = (t as any).assigned_to as string | null;
-      const ok = assigned === "all" || (assigned && memberFilter.includes(assigned));
-      if (!ok) return false;
+      if (assigned && assigned !== "all") {
+        const assignedId = members.find((m) => m.display_name === assigned)?.id;
+        if (!assignedId || !memberFilter.includes(assignedId)) return false;
+      }
     }
     if (!searchQuery.trim()) return true;
     if (matchesQuery(searchQuery, t.title, t.destination, (t as any).notes)) return true;

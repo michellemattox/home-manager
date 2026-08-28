@@ -57,6 +57,9 @@ export default function NewTripScreen() {
         destination: data.destination,
         departure_date: data.departureDate,
         return_date: data.returnDate,
+        // Explicit household-wide default. Leaving this unset wrote NULL, which
+        // then vanished from the Activity tab whenever a member filter was on.
+        assigned_to: "all",
         notes: data.notes ?? null,
         created_by: currentMember.id,
       });
