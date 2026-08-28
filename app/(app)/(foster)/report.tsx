@@ -117,9 +117,13 @@ export default function FosterReportScreen() {
       mergeRoutine([
         { label: "#1 Pee", windows: typicalDayWindows(pottyLogs, "pee", { relaxed: true }) },
         { label: "#2 Poop", windows: typicalDayWindows(pottyLogs, "poop", { relaxed: true }) },
-        { label: "Meal", windows: typicalMealWindows(feedingLogs) },
       ]),
-    [pottyLogs, feedingLogs]
+    [pottyLogs]
+  );
+  // Meals are shown on their own, not mixed into the potty routine.
+  const mealSlots = useMemo(
+    () => mergeRoutine([{ label: "Meal", windows: typicalMealWindows(feedingLogs) }]),
+    [feedingLogs]
   );
 
   if (!puppy) {
@@ -213,7 +217,7 @@ export default function FosterReportScreen() {
 
         {/* Typical day */}
         <Text className="text-xs font-semibold text-gray-500 uppercase mb-2 mt-2">
-          Typical Day
+          Typical Day · #1 & #2
         </Text>
         <Card className="mb-4">
           {loggedDays < MIN_DAYS_FOR_PREDICTION ? (
@@ -232,6 +236,27 @@ export default function FosterReportScreen() {
               <Text className="text-[11px] text-gray-400 mt-2">
                 The times {puppy.name} usually goes, based on {loggedDays} logged days.
                 The fraction is how many of those days each one actually fired.
+              </Text>
+            </>
+          )}
+        </Card>
+
+        {/* Meal times — kept separate from the potty routine */}
+        <Text className="text-xs font-semibold text-gray-500 uppercase mb-2">
+          Meal Times
+        </Text>
+        <Card className="mb-4">
+          {mealSlots.length === 0 ? (
+            <Text className="text-sm text-gray-500">
+              Not enough meals logged yet to show a regular schedule.
+            </Text>
+          ) : (
+            <>
+              {mealSlots.map((slot) => (
+                <SlotRow key={`meal-${slot.startMin}-${slot.centerMin}`} slot={slot} />
+              ))}
+              <Text className="text-[11px] text-gray-400 mt-2">
+                Meals near these times are what keep the #2 timings predictable.
               </Text>
             </>
           )}

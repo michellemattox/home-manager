@@ -147,13 +147,13 @@ export function buildReportCardHtml(opts: {
 
   // ── Sections ───────────────────────────────────────────────────────────────
 
-  // One chronological day, #1 / #2 / meals merged — a trip where the puppy does
-  // both reads as a single row rather than the same time listed twice.
+  // Potty only — a trip where the puppy does both reads as a single row rather
+  // than the same time listed twice. Meals are kept separate, below.
   const slots = mergeRoutine([
     { label: "#1 Pee", windows: peeWindows },
     { label: "#2 Poop", windows: poopWindows },
-    { label: "Meal", windows: mealWindows },
   ]);
+  const mealSlots = mergeRoutine([{ label: "Meal", windows: mealWindows }]);
 
   // A target with no window — or only a weak one — gets a plain-language line, so
   // #2 is never silently absent and a 2-of-6 window is never mistaken for the
@@ -164,10 +164,13 @@ export function buildReportCardHtml(opts: {
   const missing = [
     weak(peeWindows) ? spreadLine(pottyLogs, "pee", puppy.name) : "",
     weak(poopWindows) ? spreadLine(pottyLogs, "poop", puppy.name) : "",
-    mealWindows.length === 0
-      ? `<p class="muted"><strong>Meals:</strong> not enough logged yet to show a regular schedule.</p>`
-      : "",
   ].join("");
+
+  const meals = mealSlots.length
+    ? `<table class="routine">${slotRows(mealSlots)}</table>
+       <p class="muted">Keeping meals near these times is what keeps the #2 timings
+       predictable. Amounts and brand are under Feeding in the care notes.</p>`
+    : `<p class="muted">Not enough meals logged yet to show a regular schedule.</p>`;
 
   const routine =
     slots.length === 0
@@ -324,8 +327,13 @@ export function buildReportCardHtml(opts: {
 </section>
 
 <section>
-  <h2>Expected daily routine</h2>
+  <h2>Expected daily routine — #1 &amp; #2</h2>
   ${routine}
+</section>
+
+<section>
+  <h2>Meal schedule</h2>
+  ${meals}
 </section>
 
 <section>
