@@ -14,9 +14,15 @@ const BUCKET_BG = {
   activity: "#FADCDF",
 } as const;
 
-function memberName(members: any[], id: string | null): string {
-  if (!id) return "Unassigned";
-  return members.find((m) => m.id === id)?.display_name ?? "—";
+function memberName(members: any[], idOrName: string | null): string {
+  if (!idOrName) return "Unassigned";
+  const byId = members.find((m) => m.id === idOrName);
+  if (byId) return byId.display_name;
+  // trips.assigned_to stores a member's DISPLAY NAME, not an id, while every
+  // other caller passes an id. Looking up "Michelle" by id found nothing and
+  // rendered "—", making assigned trips look unassigned on the WBR.
+  const byName = members.find((m) => m.display_name === idOrName);
+  return byName ? byName.display_name : "—";
 }
 
 function Bucket({
