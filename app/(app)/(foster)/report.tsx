@@ -8,6 +8,7 @@ import {
   useFosterPuppies,
   useFosterPottyLogs,
   useFosterFeedingLogs,
+  useFosterWeightLogs,
   useDeletePottyLog,
   useDeleteFeedingLog,
   useUpdatePottyLog,
@@ -17,6 +18,7 @@ import { Card } from "@/components/ui/Card";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { NextLikelyCard } from "@/components/foster/NextLikelyCard";
 import { EntryEditModal, type EditTarget } from "@/components/foster/EntryEditModal";
+import { WeightHistoryModal } from "@/components/foster/WeightHistoryModal";
 import { buildReportCardHtml, reportCardFilename, REPORT_CARD_DAYS } from "@/utils/puppyReportCard";
 import { printHtmlDocument } from "@/utils/printHtml";
 import { showAlert, showConfirm } from "@/lib/alert";
@@ -35,6 +37,13 @@ import {
   type DaySummary,
   type RoutineSlot,
 } from "@/utils/puppyPredict";
+import {
+  summarizeGrowth,
+  growthHeadline,
+  formatLbs,
+  formatDelta,
+  shortDate,
+} from "@/utils/puppyGrowth";
 import {
   POTTY_KINDS,
   POTTY_LOCATIONS,
@@ -59,11 +68,14 @@ export default function FosterReportScreen() {
 
   const { data: pottyLogs = [] } = useFosterPottyLogs(puppy?.id);
   const { data: feedingLogs = [] } = useFosterFeedingLogs(puppy?.id);
+  // Weigh-ins are fetched for the whole stay, not the 21-day log window.
+  const { data: weightLogs = [] } = useFosterWeightLogs(puppy?.id);
   const deletePotty = useDeletePottyLog();
   const deleteFeeding = useDeleteFeedingLog();
   const updatePotty = useUpdatePottyLog();
   const updateFeeding = useUpdateFeedingLog();
   const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [showWeights, setShowWeights] = useState(false);
 
   // Print the handoff report card. The printed range is the full retention
   // window (21 days), not the 7 days shown on screen.
@@ -73,6 +85,7 @@ export default function FosterReportScreen() {
       puppy,
       pottyLogs,
       feedingLogs,
+      weightLogs,
       days: REPORT_CARD_DAYS,
     });
     const res = printHtmlDocument(html, reportCardFilename(puppy));
@@ -96,6 +109,7 @@ export default function FosterReportScreen() {
   );
   const sinceAccident = useMemo(() => daysSinceLastAccident(pottyLogs), [pottyLogs]);
   const loggedDays = useMemo(() => loggedDayCount(pottyLogs), [pottyLogs]);
+  const growth = useMemo(() => summarizeGrowth(weightLogs), [weightLogs]);
 
   const weekTotals = useMemo(
     () =>
@@ -206,6 +220,82 @@ export default function FosterReportScreen() {
           </Text>
         </Card>
 
+        {/* Growth — the whole stay, not the 7-day window: weigh-ins are sparse
+            and a week of history would usually show one point or none. */}
+        <Text className="text-xs font-semibold text-gray-500 uppercase mb-2">
+          Growth
+        </Text>
+        <Card className="mb-3">
+          {!growth.latest ? (
+            <Text className="text-sm text-gray-500">
+              No weigh-ins yet. Add one from the Puppy Behavior Log — ⚖️ Log Weigh-In.
+            </Text>
+          ) : (
+            <>
+              <View className="flex-row items-end">
+                <Text className="text-3xl font-bold text-gray-900">
+                  {formatLbs(growth.latest.weight_lbs)}
+                </Text>
+                {growth.sinceLast && (
+                  <Text
+                    className={`text-sm font-bold ml-3 mb-1 ${
+                      growth.sinceLast.flagged ? "text-red-600" : "text-emerald-700"
+                    }`}
+                  >
+                    {formatDelta(growth.sinceLast.deltaLbs)}
+                    {growth.sinceLast.days > 0 ? ` in ${growth.sinceLast.days}d` : ""}
+                  </Text>
+                )}
+              </View>
+              <Text className="text-xs text-gray-500 mt-0.5">
+                {`Weighed ${shortDate(growth.latest.weighed_on)}`}
+                {growth.latest.notes ? ` · ${growth.latest.notes}` : ""}
+              </Text>
+              <Text
+                className={`text-sm mt-3 ${
+                  growth.sinceLast?.flagged ? "text-red-700 font-semibold" : "text-gray-700"
+                }`}
+              >
+                {growthHeadline(growth, puppy)}
+              </Text>
+
+              {growth.entries.length > 1 && (
+                <View className="mt-3 pt-3 border-t border-gray-100">
+                  {growth.entries.slice(0, 6).map((w) => {
+                    const chg = growth.changes[w.id];
+                    return (
+                      <View key={w.id} className="flex-row items-center py-1">
+                        <Text className="text-xs text-gray-500 w-14">
+                          {shortDate(w.weighed_on)}
+                        </Text>
+                        <Text className="text-sm text-gray-900 flex-1">
+                          {formatLbs(w.weight_lbs)}
+                        </Text>
+                        {chg && (
+                          <Text
+                            className={`text-xs font-semibold ${
+                              chg.flagged ? "text-red-600" : "text-emerald-700"
+                            }`}
+                          >
+                            {formatDelta(chg.deltaLbs)}
+                          </Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+            </>
+          )}
+          <TouchableOpacity onPress={() => setShowWeights(true)} className="pt-3">
+            <Text className="text-xs font-semibold text-blue-600">
+              {growth.entries.length > 6
+                ? `All ${growth.entries.length} weigh-ins · edit or delete`
+                : "Edit weigh-ins"}
+            </Text>
+          </TouchableOpacity>
+        </Card>
+
         {/* Next likely */}
         <View className="mb-3">
           <NextLikelyCard
@@ -295,6 +385,14 @@ export default function FosterReportScreen() {
           />
         ))}
       </ScrollView>
+
+      {puppy && (
+        <WeightHistoryModal
+          visible={showWeights}
+          puppy={puppy}
+          onClose={() => setShowWeights(false)}
+        />
+      )}
 
       <EntryEditModal
         target={editing}

@@ -5,6 +5,7 @@ import type {
   FosterPuppy,
   FosterPottyLog,
   FosterFeedingLog,
+  FosterWeightLog,
   PottyKind,
   PottyLocation,
   FeedingKind,
@@ -348,5 +349,93 @@ export function useDeleteFeedingLog() {
     },
     onSuccess: (puppyId) =>
       qc.invalidateQueries({ queryKey: ["foster_feeding_logs", puppyId] }),
+  });
+}
+
+// ── Weigh-ins (migration 063) ────────────────────────────────────────────────
+// Unlike the potty/feeding queries, these are NOT capped to LOG_WINDOW_DAYS.
+// Weigh-ins are sparse and growth only reads across weeks, so the full stay is
+// fetched every time — a foster stay is tens of rows at most.
+
+/** Every weigh-in for the puppy, newest first. */
+export function useFosterWeightLogs(puppyId: string | undefined) {
+  return useQuery({
+    queryKey: ["foster_weight_logs", puppyId],
+    queryFn: async () => {
+      if (!puppyId) return [];
+      const { data, error } = await supabase
+        .from("foster_weight_logs")
+        .select("*")
+        .eq("puppy_id", puppyId)
+        .order("weighed_on", { ascending: false })
+        .order("created_at", { ascending: false });
+      if (error) throw error;
+      // numeric comes back as a number via supabase-js, but a string is possible
+      // depending on the driver path — normalise so arithmetic is always safe.
+      return (data ?? []).map((r: any) => ({
+        ...r,
+        weight_lbs: Number(r.weight_lbs),
+      })) as FosterWeightLog[];
+    },
+    enabled: !!puppyId,
+  });
+}
+
+export function useLogWeight() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async (entry: {
+      household_id: string;
+      puppy_id: string;
+      weight_lbs: number;
+      /** YYYY-MM-DD. Defaults to today PT when omitted. */
+      weighed_on?: string;
+      notes?: string | null;
+      logged_by_member_id?: string | null;
+    }) => {
+      const { data, error } = await supabase
+        .from("foster_weight_logs")
+        .insert({ weighed_on: getTodayPT(), ...entry })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as FosterWeightLog;
+    },
+    onSuccess: (data) =>
+      qc.invalidateQueries({ queryKey: ["foster_weight_logs", data.puppy_id] }),
+  });
+}
+
+export function useUpdateWeightLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      id,
+      puppyId,
+      updates,
+    }: {
+      id: string;
+      puppyId: string;
+      updates: Partial<Pick<FosterWeightLog, "weight_lbs" | "weighed_on" | "notes">>;
+    }) => {
+      const { error } = await supabase.from("foster_weight_logs").update(updates).eq("id", id);
+      if (error) throw error;
+      return puppyId;
+    },
+    onSuccess: (puppyId) =>
+      qc.invalidateQueries({ queryKey: ["foster_weight_logs", puppyId] }),
+  });
+}
+
+export function useDeleteWeightLog() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ id, puppyId }: { id: string; puppyId: string }) => {
+      const { error } = await supabase.from("foster_weight_logs").delete().eq("id", id);
+      if (error) throw error;
+      return puppyId;
+    },
+    onSuccess: (puppyId) =>
+      qc.invalidateQueries({ queryKey: ["foster_weight_logs", puppyId] }),
   });
 }

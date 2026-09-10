@@ -26,6 +26,8 @@ import { Badge } from "@/components/ui/Badge";
 import { DateInput } from "@/components/ui/DateInput";
 import { AppHeader } from "@/components/ui/AppHeader";
 import { PuppyLogModal } from "@/components/foster/PuppyLogModal";
+import { WeightHistoryModal } from "@/components/foster/WeightHistoryModal";
+import { PuppyWeightLine } from "@/components/foster/PuppyWeightLine";
 import { showAlert, showConfirm } from "@/lib/alert";
 import { formatDateSlash, getTodayPT } from "@/utils/dateUtils";
 import { computeAge } from "@/utils/puppyPredict";
@@ -46,6 +48,7 @@ export default function FosterPuppyScreen() {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<FosterPuppy | null>(null);
   const [logFor, setLogFor] = useState<FosterPuppy | null>(null);
+  const [weightFor, setWeightFor] = useState<FosterPuppy | null>(null);
 
   // Form fields
   const [name, setName] = useState("");
@@ -191,6 +194,10 @@ export default function FosterPuppyScreen() {
                   <Text className="text-xs text-gray-600 mt-0.5">
                     {describePuppy(current)}
                   </Text>
+                  <PuppyWeightLine
+                    puppy={current}
+                    onPress={() => setWeightFor(current)}
+                  />
                 </View>
                 <Badge label="Current" variant="warning" size="sm" />
               </View>
@@ -233,6 +240,7 @@ export default function FosterPuppyScreen() {
                   {p.is_current && <Badge label="Current" variant="warning" size="sm" />}
                 </View>
                 <Text className="text-xs text-gray-500 mt-0.5">{describePuppy(p)}</Text>
+                <PuppyWeightLine puppy={p} onPress={() => setWeightFor(p)} />
                 {!!p.notes && (
                   <Text className="text-xs text-gray-500 mt-1">{p.notes}</Text>
                 )}
@@ -402,6 +410,14 @@ export default function FosterPuppyScreen() {
 
       {logFor && (
         <PuppyLogModal visible={!!logFor} puppy={logFor} onClose={() => setLogFor(null)} />
+      )}
+
+      {weightFor && (
+        <WeightHistoryModal
+          visible={!!weightFor}
+          puppy={weightFor}
+          onClose={() => setWeightFor(null)}
+        />
       )}
     </SafeAreaView>
   );

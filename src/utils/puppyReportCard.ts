@@ -24,6 +24,13 @@ import {
   type RoutineSlot,
 } from "./puppyPredict";
 import {
+  summarizeGrowth,
+  growthHeadline,
+  formatLbs,
+  formatDelta,
+  shortDate,
+} from "./puppyGrowth";
+import {
   POTTY_KINDS,
   POTTY_LOCATIONS,
   FEEDING_KINDS,
@@ -31,6 +38,7 @@ import {
   type FosterPuppy,
   type FosterPottyLog,
   type FosterFeedingLog,
+  type FosterWeightLog,
 } from "@/types/app.types";
 
 const KIND = Object.fromEntries(POTTY_KINDS.map((k) => [k.value, k]));
@@ -111,10 +119,13 @@ export function buildReportCardHtml(opts: {
   puppy: FosterPuppy;
   pottyLogs: FosterPottyLog[];
   feedingLogs: FosterFeedingLog[];
+  /** Every weigh-in for the stay — not windowed like the potty/feeding logs. */
+  weightLogs?: FosterWeightLog[];
   days: number;
   now?: Date;
 }): string {
   const { puppy, pottyLogs, feedingLogs, days } = opts;
+  const weightLogs = opts.weightLogs ?? [];
   const now = opts.now ?? new Date();
 
   const age = computeAge(puppy.dob, now);
@@ -181,6 +192,34 @@ export function buildReportCardHtml(opts: {
          <p class="muted">The times ${esc(puppy.name)} usually goes, measured across
          ${modelDays} logged days. This is the part that travels with the puppy —
          the clock times further down do not.</p>`;
+
+  // ── Growth ─────────────────────────────────────────────────────────────────
+  // Every weigh-in for the stay, oldest first on the printout so the next foster
+  // reads it as a progression. A drop or a flat week is marked, without comment
+  // on whether it's a problem — that's the vet's call.
+  const growth = summarizeGrowth(weightLogs);
+  const growthRows = [...growth.entries]
+    .reverse()
+    .map((w) => {
+      const chg = growth.changes[w.id];
+      return `<tr>
+        <td class="time">${shortDate(w.weighed_on)}</td>
+        <td><strong>${formatLbs(w.weight_lbs)}</strong></td>
+        <td class="${chg?.flagged ? "accident" : "muted"}">${
+          chg ? `${formatDelta(chg.deltaLbs)}${chg.days > 0 ? ` in ${chg.days}d` : ""}` : "first"
+        }</td>
+        <td class="muted">${esc(w.notes ?? "")}</td>
+      </tr>`;
+    })
+    .join("");
+
+  const growthSection = !growth.latest
+    ? `<p class="muted">No weigh-ins recorded.</p>${writeIn(3)}`
+    : `<p><strong>${growthHeadline(growth, puppy)}</strong></p>
+       <table class="log">${growthRows}</table>
+       <p class="muted">Weights as entered by the foster — home scale unless a note
+       says otherwise. Rows marked in red are where ${esc(puppy.name)} lost weight or
+       held flat between weigh-ins.</p>`;
 
   const predictionRows = predictions.length
     ? predictions
@@ -297,6 +336,7 @@ export function buildReportCardHtml(opts: {
   </div>
   <div class="sub">
     With us since ${calendarDate(puppy.arrival_date)} (${withUs} day${withUs === 1 ? "" : "s"})
+    ${growth.latest ? `· ${formatLbs(growth.latest.weight_lbs)} as of ${shortDate(growth.latest.weighed_on)}` : ""}
     · Report covers the last ${days} days · Prepared ${longDate(now)}
   </div>
 </header>
@@ -324,6 +364,11 @@ export function buildReportCardHtml(opts: {
   } out of the last ${days}. ${stats.totalNothing} trip${
     stats.totalNothing === 1 ? " was" : "s were"
   } logged where nothing happened.</p>
+</section>
+
+<section>
+  <h2>Growth &amp; weigh-ins</h2>
+  ${growthSection}
 </section>
 
 <section>

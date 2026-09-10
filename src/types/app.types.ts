@@ -363,3 +363,18 @@ export const FEEDING_KINDS: { value: FeedingKind; label: string; emoji: string }
   { value: "water", label: "Water", emoji: "💦" },
   { value: "both",  label: "Both",  emoji: "🍽💦" },
 ];
+
+// ── Foster Puppy weigh-ins (migration 063) ───────────────────────────────────
+
+export interface FosterWeightLog {
+  id: string;
+  household_id: string;
+  puppy_id: string;
+  /** Decimal pounds. Postgres numeric arrives as a number through supabase-js. */
+  weight_lbs: number;
+  /** Calendar date (YYYY-MM-DD) — no time component by design. */
+  weighed_on: string;
+  notes: string | null;
+  logged_by_member_id: string | null;
+  created_at: string;
+}

@@ -5,8 +5,10 @@ import { useHouseholdStore } from "@/stores/householdStore";
 import {
   useFosterPottyLogs,
   useFosterFeedingLogs,
+  useFosterWeightLogs,
   useLogPotty,
   useLogFeeding,
+  useLogWeight,
 } from "@/hooks/useFosterPuppy";
 import { TimeAdjuster } from "./TimeAdjuster";
 import { NextLikelyCard } from "./NextLikelyCard";
@@ -21,8 +23,11 @@ import {
   type FeedingKind,
 } from "@/types/app.types";
 import { computeAge } from "@/utils/puppyPredict";
+import { DateInput } from "@/components/ui/DateInput";
+import { getTodayPT } from "@/utils/dateUtils";
+import { summarizeGrowth, formatLbs, formatDelta, shortDate } from "@/utils/puppyGrowth";
 
-type View_ = "menu" | "potty" | "feeding";
+type View_ = "menu" | "potty" | "feeding" | "weight";
 
 interface PuppyLogModalProps {
   visible: boolean;
@@ -32,8 +37,8 @@ interface PuppyLogModalProps {
 
 /**
  * The one-tap dialog behind the Home "Puppy Behavior Log" button. Opens on a menu with
- * Log Potty / Log Food & Water, the next-likely projections, and a Daily Report
- * link at the bottom.
+ * Log Potty / Log Food & Water / Log Weigh-In, the next-likely projections, and a
+ * Daily Report link at the bottom.
  */
 export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
   const household = useHouseholdStore((s) => s.household);
@@ -42,8 +47,10 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
 
   const { data: pottyLogs = [] } = useFosterPottyLogs(puppy.id);
   const { data: feedingLogs = [] } = useFosterFeedingLogs(puppy.id);
+  const { data: weightLogs = [] } = useFosterWeightLogs(puppy.id);
   const logPotty = useLogPotty();
   const logFeeding = useLogFeeding();
+  const logWeight = useLogWeight();
 
   // Potty form
   const [kind, setKind] = useState<PottyKind | null>(null);
@@ -55,7 +62,20 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
   const [amount, setAmount] = useState("");
   const [feedBackMin, setFeedBackMin] = useState(0);
 
+  // Weigh-in form. The date defaults to today (PT) but stays editable so a vet
+  // weight from earlier in the week lands on the day it was actually taken.
+  const [weight, setWeight] = useState("");
+  const [weighedOn, setWeighedOn] = useState(getTodayPT());
+  const [weightNote, setWeightNote] = useState("");
+
   const age = useMemo(() => computeAge(puppy.dob), [puppy.dob]);
+  const growth = useMemo(() => summarizeGrowth(weightLogs), [weightLogs]);
+
+  // Accepts "4.4" or "4.4 lbs"; rejects anything that isn't a positive number.
+  const weightLbs = useMemo(() => {
+    const n = Number(weight.trim().replace(/[^0-9.]/g, ""));
+    return Number.isFinite(n) && n > 0 && n < 400 ? n : null;
+  }, [weight]);
 
   const reset = () => {
     setView("menu");
@@ -65,6 +85,9 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
     setFeedKind(null);
     setAmount("");
     setFeedBackMin(0);
+    setWeight("");
+    setWeighedOn(getTodayPT());
+    setWeightNote("");
   };
 
   const close = () => {
@@ -106,6 +129,23 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
     }
   };
 
+  const saveWeight = async () => {
+    if (!household || weightLbs == null) return;
+    try {
+      await logWeight.mutateAsync({
+        household_id: household.id,
+        puppy_id: puppy.id,
+        weight_lbs: weightLbs,
+        weighed_on: weighedOn || getTodayPT(),
+        notes: weightNote.trim() || null,
+        logged_by_member_id: currentMember?.id ?? null,
+      });
+      close();
+    } catch (e: any) {
+      showAlert("Couldn't save", e?.message ?? "Please try again.");
+    }
+  };
+
   const goReport = () => {
     close();
     router.push("/(app)/(foster)/report");
@@ -131,7 +171,13 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
             )}
             <View className="flex-1">
               <Text className="text-base font-semibold text-gray-900">
-                {view === "potty" ? "Log Potty" : view === "feeding" ? "Log Food & Water" : puppy.name}
+                {view === "potty"
+                  ? "Log Potty"
+                  : view === "feeding"
+                    ? "Log Food & Water"
+                    : view === "weight"
+                      ? "Log Weigh-In"
+                      : puppy.name}
               </Text>
               {view === "menu" && (
                 <Text className="text-xs text-gray-500">
@@ -156,10 +202,30 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
                 </TouchableOpacity>
                 <TouchableOpacity
                   onPress={() => setView("feeding")}
-                  className="bg-sky-600 rounded-2xl py-4 items-center mb-4"
+                  className="bg-sky-600 rounded-2xl py-4 items-center mb-3"
                 >
                   <Text className="text-white text-base font-bold">🍽  Log Food & Water</Text>
                 </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => setView("weight")}
+                  className="bg-emerald-600 rounded-2xl py-4 items-center mb-1"
+                >
+                  <Text className="text-white text-base font-bold">⚖️  Log Weigh-In</Text>
+                </TouchableOpacity>
+                {growth.latest ? (
+                  <Text className="text-[11px] text-gray-500 text-center mb-4">
+                    {`Last: ${formatLbs(growth.latest.weight_lbs)} on ${shortDate(
+                      growth.latest.weighed_on
+                    )}`}
+                    {growth.sinceLast
+                      ? ` · ${formatDelta(growth.sinceLast.deltaLbs)} since the one before`
+                      : ""}
+                  </Text>
+                ) : (
+                  <Text className="text-[11px] text-gray-400 text-center mb-4">
+                    No weigh-ins yet.
+                  </Text>
+                )}
 
                 <NextLikelyCard
                   pottyLogs={pottyLogs}
@@ -318,6 +384,109 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
                 <Text className="text-[11px] text-gray-400 text-center mt-2">
                   Meal times sharpen the #2 projections.
                 </Text>
+              </View>
+            )}
+
+            {view === "weight" && (
+              <View className="p-4">
+                <Text className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                  Weight (lbs)
+                </Text>
+                <TextInput
+                  value={weight}
+                  onChangeText={setWeight}
+                  placeholder="e.g. 4.4"
+                  keyboardType="decimal-pad"
+                  autoFocus
+                  className="border border-gray-300 rounded-xl px-3 py-3 text-2xl font-semibold bg-white mb-1"
+                />
+                {weight.trim().length > 0 && weightLbs == null && (
+                  <Text className="text-[11px] text-red-600 mb-2">
+                    Enter a number of pounds, like 4.4.
+                  </Text>
+                )}
+                {growth.latest && weightLbs != null && (
+                  <Text className="text-[11px] text-gray-500 mb-2">
+                    {`${formatDelta(
+                      weightLbs - growth.latest.weight_lbs
+                    )} from ${formatLbs(growth.latest.weight_lbs)} on ${shortDate(
+                      growth.latest.weighed_on
+                    )}`}
+                  </Text>
+                )}
+
+                <View className="mt-2">
+                  <DateInput
+                    label="Date weighed"
+                    value={weighedOn}
+                    onChange={setWeighedOn}
+                    hint="Defaults to today — change it if you're entering an older weigh-in."
+                  />
+                </View>
+
+                <Text className="text-xs font-semibold text-gray-500 uppercase mb-2 mt-2">
+                  Note (optional)
+                </Text>
+                <TextInput
+                  value={weightNote}
+                  onChangeText={setWeightNote}
+                  placeholder="e.g. at the vet, with harness on"
+                  className="border border-gray-300 rounded-xl px-3 py-3 text-base bg-white"
+                />
+
+                <TouchableOpacity
+                  onPress={saveWeight}
+                  disabled={weightLbs == null || !weighedOn || logWeight.isPending}
+                  className={`rounded-2xl py-4 items-center mt-5 ${
+                    weightLbs == null || !weighedOn || logWeight.isPending
+                      ? "bg-gray-200"
+                      : "bg-emerald-600"
+                  }`}
+                >
+                  <Text
+                    className={`text-base font-bold ${
+                      weightLbs == null || !weighedOn ? "text-gray-400" : "text-white"
+                    }`}
+                  >
+                    {logWeight.isPending ? "Saving…" : "Save Weigh-In"}
+                  </Text>
+                </TouchableOpacity>
+                <Text className="text-[11px] text-gray-400 text-center mt-2">
+                  Shows on {puppy.name}'s profile and the printed report card.
+                </Text>
+
+                {growth.entries.length > 0 && (
+                  <View className="mt-5 pt-4 border-t border-gray-100">
+                    <Text className="text-xs font-semibold text-gray-500 uppercase mb-2">
+                      Recent weigh-ins
+                    </Text>
+                    {growth.entries.slice(0, 5).map((w) => {
+                      const chg = growth.changes[w.id];
+                      return (
+                        <View key={w.id} className="flex-row items-center py-1.5">
+                          <Text className="text-xs text-gray-500 w-14">
+                            {shortDate(w.weighed_on)}
+                          </Text>
+                          <Text className="text-sm font-semibold text-gray-900 flex-1">
+                            {formatLbs(w.weight_lbs)}
+                          </Text>
+                          {chg && (
+                            <Text
+                              className={`text-xs font-semibold ${
+                                chg.flagged ? "text-red-600" : "text-emerald-700"
+                              }`}
+                            >
+                              {formatDelta(chg.deltaLbs)}
+                            </Text>
+                          )}
+                        </View>
+                      );
+                    })}
+                    <Text className="text-[11px] text-gray-400 mt-1">
+                      Edit or remove past weigh-ins on the Daily Report.
+                    </Text>
+                  </View>
+                )}
               </View>
             )}
           </ScrollView>
