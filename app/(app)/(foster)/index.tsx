@@ -185,8 +185,10 @@ export default function FosterPuppyScreen() {
       >
         {/* Current puppy — the one the Home button logs against */}
         {current && (
-          <TouchableOpacity onPress={() => setLogFor(current)} activeOpacity={0.85}>
-            <Card className="mb-3 border-amber-200 bg-amber-50">
+          <Card className="mb-3 border-amber-200 bg-amber-50">
+            {/* Only the identity block and the button open the log dialog — the
+                weight row below is its own press target, outside this one. */}
+            <TouchableOpacity onPress={() => setLogFor(current)} activeOpacity={0.85}>
               <View className="flex-row items-center">
                 <Text style={{ fontSize: 30 }} className="mr-3">🐶</Text>
                 <View className="flex-1">
@@ -194,18 +196,15 @@ export default function FosterPuppyScreen() {
                   <Text className="text-xs text-gray-600 mt-0.5">
                     {describePuppy(current)}
                   </Text>
-                  <PuppyWeightLine
-                    puppy={current}
-                    onPress={() => setWeightFor(current)}
-                  />
                 </View>
                 <Badge label="Current" variant="warning" size="sm" />
               </View>
               <View className="bg-amber-500 rounded-xl py-3 items-center mt-3">
                 <Text className="text-white text-sm font-bold">Open Puppy Behavior Log</Text>
               </View>
-            </Card>
-          </TouchableOpacity>
+            </TouchableOpacity>
+            <PuppyWeightLine puppy={current} onPress={() => setWeightFor(current)} />
+          </Card>
         )}
 
         {!current && !isLoading && (

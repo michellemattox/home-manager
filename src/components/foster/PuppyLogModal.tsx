@@ -26,6 +26,7 @@ import { computeAge } from "@/utils/puppyPredict";
 import { DateInput } from "@/components/ui/DateInput";
 import { getTodayPT } from "@/utils/dateUtils";
 import { summarizeGrowth, formatLbs, formatDelta, shortDate } from "@/utils/puppyGrowth";
+import { WeighInList } from "./WeighInList";
 
 type View_ = "menu" | "potty" | "feeding" | "weight";
 
@@ -458,33 +459,20 @@ export function PuppyLogModal({ visible, puppy, onClose }: PuppyLogModalProps) {
                 {growth.entries.length > 0 && (
                   <View className="mt-5 pt-4 border-t border-gray-100">
                     <Text className="text-xs font-semibold text-gray-500 uppercase mb-2">
-                      Recent weigh-ins
+                      Recent weigh-ins · tap Edit to correct one
                     </Text>
-                    {growth.entries.slice(0, 5).map((w) => {
-                      const chg = growth.changes[w.id];
-                      return (
-                        <View key={w.id} className="flex-row items-center py-1.5">
-                          <Text className="text-xs text-gray-500 w-14">
-                            {shortDate(w.weighed_on)}
+                    <WeighInList
+                      puppy={puppy}
+                      growth={growth}
+                      limit={5}
+                      footer={
+                        growth.entries.length > 5 ? (
+                          <Text className="text-[11px] text-gray-400 mt-2">
+                            {`Showing the 5 most recent of ${growth.entries.length}. The rest are on the Daily Report.`}
                           </Text>
-                          <Text className="text-sm font-semibold text-gray-900 flex-1">
-                            {formatLbs(w.weight_lbs)}
-                          </Text>
-                          {chg && (
-                            <Text
-                              className={`text-xs font-semibold ${
-                                chg.flagged ? "text-red-600" : "text-emerald-700"
-                              }`}
-                            >
-                              {formatDelta(chg.deltaLbs)}
-                            </Text>
-                          )}
-                        </View>
-                      );
-                    })}
-                    <Text className="text-[11px] text-gray-400 mt-1">
-                      Edit or remove past weigh-ins on the Daily Report.
-                    </Text>
+                        ) : null
+                      }
+                    />
                   </View>
                 )}
               </View>

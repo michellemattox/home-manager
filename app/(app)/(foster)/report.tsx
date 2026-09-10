@@ -19,6 +19,7 @@ import { AppHeader } from "@/components/ui/AppHeader";
 import { NextLikelyCard } from "@/components/foster/NextLikelyCard";
 import { EntryEditModal, type EditTarget } from "@/components/foster/EntryEditModal";
 import { WeightHistoryModal } from "@/components/foster/WeightHistoryModal";
+import { WeighInList } from "@/components/foster/WeighInList";
 import { buildReportCardHtml, reportCardFilename, REPORT_CARD_DAYS } from "@/utils/puppyReportCard";
 import { printHtmlDocument } from "@/utils/printHtml";
 import { showAlert, showConfirm } from "@/lib/alert";
@@ -164,6 +165,9 @@ export default function FosterReportScreen() {
       <ScrollView
         className="flex-1 px-4"
         contentContainerStyle={{ paddingBottom: 40 }}
+        // The inline weigh-in editor lives in this scroll view; without this a
+        // tap on Save/Cancel while the keyboard is up only dismisses the keyboard.
+        keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
         {/* Puppy switcher — only when there's more than one profile */}
@@ -259,39 +263,32 @@ export default function FosterReportScreen() {
                 {growthHeadline(growth, puppy)}
               </Text>
 
-              {growth.entries.length > 1 && (
+              {growth.entries.length > 0 && (
                 <View className="mt-3 pt-3 border-t border-gray-100">
-                  {growth.entries.slice(0, 6).map((w) => {
-                    const chg = growth.changes[w.id];
-                    return (
-                      <View key={w.id} className="flex-row items-center py-1">
-                        <Text className="text-xs text-gray-500 w-14">
-                          {shortDate(w.weighed_on)}
+                  <WeighInList
+                    puppy={puppy}
+                    growth={growth}
+                    limit={6}
+                    footer={
+                      growth.entries.length > 6 ? (
+                        <Text className="text-[11px] text-gray-400 mt-2">
+                          {`Showing the 6 most recent of ${growth.entries.length}.`}
                         </Text>
-                        <Text className="text-sm text-gray-900 flex-1">
-                          {formatLbs(w.weight_lbs)}
-                        </Text>
-                        {chg && (
-                          <Text
-                            className={`text-xs font-semibold ${
-                              chg.flagged ? "text-red-600" : "text-emerald-700"
-                            }`}
-                          >
-                            {formatDelta(chg.deltaLbs)}
-                          </Text>
-                        )}
-                      </View>
-                    );
-                  })}
+                      ) : null
+                    }
+                  />
                 </View>
               )}
             </>
           )}
-          <TouchableOpacity onPress={() => setShowWeights(true)} className="pt-3">
-            <Text className="text-xs font-semibold text-blue-600">
-              {growth.entries.length > 6
-                ? `All ${growth.entries.length} weigh-ins · edit or delete`
-                : "Edit weigh-ins"}
+          <TouchableOpacity
+            onPress={() => setShowWeights(true)}
+            className="mt-3 rounded-xl py-3 items-center border border-gray-300 bg-white"
+          >
+            <Text className="text-sm font-semibold text-gray-800">
+              {growth.entries.length
+                ? `⚖️  All ${growth.entries.length} weigh-ins · edit or delete`
+                : "⚖️  Weigh-in history"}
             </Text>
           </TouchableOpacity>
         </Card>
